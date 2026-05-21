@@ -1,0 +1,18 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    queries: "db/queries"
+    schema:
+      - "db/migrations/000001_master.up.sql"
+      - "db/migrations/000002_licenses.up.sql"
+      - "db/migrations/000003_inventory.up.sql"
+      - "db/migrations/000004_approvals.up.sql"
+      - "db/migrations/000005_app.up.sql"
+      - "db/migrations/000006_indexes_views.up.sql"
+    gen:
+      go:
+        package: "repository"
+        out: "internal/repository"
+        emit_interface: false
+        emit_pointers_for_null_types: true
+        emit_json_tags: false
