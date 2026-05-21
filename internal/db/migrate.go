@@ -12,6 +12,18 @@ import (
 	"github.com/tagawa0525/app_man/db/migrations"
 )
 
+// newMigrator は embed.FS と外部所有の *sql.DB から
+// *migrate.Migrate を組み立てる。
+//
+// **Migrate.Close() は意図的に呼ばない**。migrate v4 の
+// database/sqlite ドライバ (`sqlitedrv.WithInstance`) は Close 時に
+// 外部から渡された *sql.DB まで閉じてしまうため、CheckVersion の
+// 直後にハンドラで sqlDB を使う appmgr-server では二重 close で
+// 落ちる。一方 iofs ソースは in-memory (embed.FS) で Close は実質
+// no-op、データベース接続は呼び出し側 (appmgr-server / appmgr-migrate)
+// が defer closeDB() で必ず閉じるため、結果的にリークは発生しない。
+// (上流の挙動が外部所有接続を尊重するよう改善されたら本コメントを
+// 撤回し m.Close() を defer する設計に戻す)
 func newMigrator(sqlDB *sql.DB) (*migrate.Migrate, error) {
 	src, err := iofs.New(migrations.FS, ".")
 	if err != nil {
