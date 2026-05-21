@@ -15,6 +15,6 @@ func main() {
 	flag.String("notify-email", "", "notification email address (recommended for local admins)")
 	flag.Parse()
 
-	fmt.Fprintf(os.Stdout, "%s: not implemented (flag skeleton only)\n", binaryName)
+	_, _ = fmt.Fprintf(os.Stdout, "%s: not implemented (flag skeleton only)\n", binaryName)
 	os.Exit(0)
 }

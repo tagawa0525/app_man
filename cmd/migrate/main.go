@@ -39,12 +39,12 @@ func run(configPath, direction string) error {
 		if err := db.MigrateUp(sqlDB); err != nil {
 			return fmt.Errorf("migrate up: %w", err)
 		}
-		fmt.Fprintf(os.Stdout, "%s: migrated up to version %d\n", binaryName, db.RequiredMigrationVersion())
+		_, _ = fmt.Fprintf(os.Stdout, "%s: migrated up to version %d\n", binaryName, db.RequiredMigrationVersion())
 	case "down":
 		if err := db.MigrateDown(sqlDB); err != nil {
 			return fmt.Errorf("migrate down: %w", err)
 		}
-		fmt.Fprintf(os.Stdout, "%s: rolled back all migrations\n", binaryName)
+		_, _ = fmt.Fprintf(os.Stdout, "%s: rolled back all migrations\n", binaryName)
 	default:
 		return fmt.Errorf("invalid direction %q (must be 'up' or 'down')", direction)
 	}

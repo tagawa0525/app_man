@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 
+	// pure-Go SQLite ドライバを database/sql に登録する (driver name "sqlite")。
+	// CGO_ENABLED=0 で単一バイナリビルドするために mattn/go-sqlite3 ではなく modernc.org/sqlite を採用する。
 	_ "modernc.org/sqlite"
 
 	"github.com/tagawa0525/app_man/internal/config"
