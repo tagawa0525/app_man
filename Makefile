@@ -1,14 +1,12 @@
 BIN_DIR := bin
-BINARIES := appmgr-server appmgr-create-app-user
+BINARIES := appmgr-server appmgr-create-app-user appmgr-migrate
 
 GO ?= go
 GOFLAGS_BUILD := -trimpath
 LDFLAGS := -s -w
 export CGO_ENABLED := 0
 
-DB_PATH ?= ./data/app.db
-DB_URL := sqlite://$(DB_PATH)
-MIGRATIONS_DIR := db/migrations
+CONFIG ?= config.yml
 
 .PHONY: all build test lint run clean tidy migrate-up migrate-down generate
 
@@ -23,6 +21,10 @@ $(BIN_DIR)/appmgr-server: $(shell find cmd/server internal db -type f \( -name '
 $(BIN_DIR)/appmgr-create-app-user: $(shell find cmd/create-app-user internal -type f -name '*.go') go.mod go.sum
 	@mkdir -p $(BIN_DIR)
 	$(GO) build $(GOFLAGS_BUILD) -ldflags '$(LDFLAGS)' -o $@ ./cmd/create-app-user
+
+$(BIN_DIR)/appmgr-migrate: $(shell find cmd/migrate internal db -type f \( -name '*.go' -o -name '*.sql' \)) go.mod go.sum
+	@mkdir -p $(BIN_DIR)
+	$(GO) build $(GOFLAGS_BUILD) -ldflags '$(LDFLAGS)' -o $@ ./cmd/migrate
 
 test:
 	$(GO) test ./...
@@ -39,11 +41,11 @@ tidy:
 clean:
 	rm -rf $(BIN_DIR)
 
-migrate-up:
-	migrate -path $(MIGRATIONS_DIR) -database "$(DB_URL)" up
+migrate-up: $(BIN_DIR)/appmgr-migrate
+	./$(BIN_DIR)/appmgr-migrate --config $(CONFIG) --direction up
 
-migrate-down:
-	migrate -path $(MIGRATIONS_DIR) -database "$(DB_URL)" down -all
+migrate-down: $(BIN_DIR)/appmgr-migrate
+	./$(BIN_DIR)/appmgr-migrate --config $(CONFIG) --direction down
 
 generate:
 	sqlc generate
