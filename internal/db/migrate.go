@@ -55,3 +55,19 @@ func MigrateDown(sqlDB *sql.DB) error {
 	}
 	return nil
 }
+
+// RequiredMigrationVersion は appmgr-server が要求する
+// スキーマ版数を返す。マイグレーションファイルを追加した際は
+// この値も更新する。
+func RequiredMigrationVersion() uint {
+	panic("not implemented")
+}
+
+// CheckVersion は現在の DB スキーマ版数が RequiredMigrationVersion
+// と一致するか確認する。未初期化・不一致・dirty 状態のいずれでも
+// エラーを返し、appmgr-server はそれを受けて起動失敗する想定。
+// マイグレーションの自動適用は行わない (誤デプロイ防止)。
+func CheckVersion(sqlDB *sql.DB) error {
+	_ = sqlDB
+	panic("not implemented")
+}

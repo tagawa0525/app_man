@@ -70,3 +70,34 @@ func countViews(t *testing.T, sqlDB *sql.DB, name string) int {
 	}
 	return n
 }
+
+func TestRequiredMigrationVersion(t *testing.T) {
+	if got := db.RequiredMigrationVersion(); got != 6 {
+		t.Errorf("RequiredMigrationVersion() = %d, want 6", got)
+	}
+}
+
+func TestCheckVersion_failsOnStaleSchema(t *testing.T) {
+	cfg := config.DatabaseConfig{
+		Path: filepath.Join(t.TempDir(), "test.db"),
+		WAL:  true,
+	}
+	sqlDB, closeFn, err := db.Open(cfg)
+	if err != nil {
+		t.Fatalf("db.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = closeFn() })
+
+	// 未初期化: error を期待
+	if err := db.CheckVersion(sqlDB); err == nil {
+		t.Error("CheckVersion on uninitialized schema: want error, got nil")
+	}
+
+	// 完全 up 後: nil を期待
+	if err := db.MigrateUp(sqlDB); err != nil {
+		t.Fatalf("MigrateUp: %v", err)
+	}
+	if err := db.CheckVersion(sqlDB); err != nil {
+		t.Errorf("CheckVersion after MigrateUp: want nil, got %v", err)
+	}
+}
