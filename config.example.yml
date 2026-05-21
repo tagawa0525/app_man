@@ -1,0 +1,22 @@
+# app-manager 設定ファイル例
+#
+# 配置：本番では config.yml にコピーし、環境ごとに値を差し替える。
+# キーが `_env` で終わる場合、値は環境変数名として解決される
+# （例：session_secret_env: SESSION_SECRET）。
+
+server:
+  listen: 0.0.0.0:8180
+  base_url: http://localhost:8180
+  # session_secret_env: SESSION_SECRET    # PR2 以降で利用
+
+database:
+  path: ./data/app.db
+  wal: true
+
+locks:
+  base_dir: ./data/locks
+
+logging:
+  level: info                 # debug / info / warn / error
+  base_dir: ./logs
+  format: json                # json / text
