@@ -1,5 +1,14 @@
 -- name: GetAppUserByUsername :one
-SELECT *
+SELECT
+  id,
+  username,
+  password_hash,
+  linked_user_id,
+  notify_email,
+  auth_type,
+  disabled_at,
+  last_login_at,
+  created_at
 FROM app_users
 WHERE username = ?
 LIMIT 1;
@@ -14,4 +23,13 @@ INSERT INTO app_users (
 ) VALUES (
   ?, ?, ?, ?, ?
 )
-RETURNING *;
+RETURNING
+  id,
+  username,
+  password_hash,
+  linked_user_id,
+  notify_email,
+  auth_type,
+  disabled_at,
+  last_login_at,
+  created_at;

@@ -306,7 +306,7 @@ type VLicenseUsage struct {
 	ProductID           int64
 	CanonicalName       string
 	VendorName          string
-	TotalOwned          interface{}
+	TotalOwned          int64
 	InstalledCount      int64
 	UserAssignedCount   int64
 	DeviceAssignedCount int64

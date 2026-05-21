@@ -19,7 +19,16 @@ INSERT INTO app_users (
 ) VALUES (
   ?, ?, ?, ?, ?
 )
-RETURNING id, username, password_hash, linked_user_id, notify_email, auth_type, disabled_at, last_login_at, created_at
+RETURNING
+  id,
+  username,
+  password_hash,
+  linked_user_id,
+  notify_email,
+  auth_type,
+  disabled_at,
+  last_login_at,
+  created_at
 `
 
 type CreateAppUserParams struct {
@@ -54,7 +63,16 @@ func (q *Queries) CreateAppUser(ctx context.Context, arg CreateAppUserParams) (A
 }
 
 const getAppUserByUsername = `-- name: GetAppUserByUsername :one
-SELECT id, username, password_hash, linked_user_id, notify_email, auth_type, disabled_at, last_login_at, created_at
+SELECT
+  id,
+  username,
+  password_hash,
+  linked_user_id,
+  notify_email,
+  auth_type,
+  disabled_at,
+  last_login_at,
+  created_at
 FROM app_users
 WHERE username = ?
 LIMIT 1
