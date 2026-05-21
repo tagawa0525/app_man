@@ -31,6 +31,60 @@ func TestAcquire_secondCallReturnsErrAlreadyHeld(t *testing.T) {
 	}
 }
 
+// ModeGlobal は BatchBinaries の全 lock を排他取得するため、
+// 他バッチが 1 つでも hold 中なら ErrAlreadyHeld を返す。
+func TestAcquireGlobal_failsWhenAnyBatchLockHeld(t *testing.T) {
+	dir := t.TempDir()
+
+	held, err := lockfile.Acquire(dir, "appmgr-import-skysea", lockfile.ModeShared)
+	if err != nil {
+		t.Fatalf("Acquire appmgr-import-skysea: %v", err)
+	}
+	t.Cleanup(func() { _ = held.Release() })
+
+	if _, err := lockfile.Acquire(dir, "appmgr-backup", lockfile.ModeGlobal); !errors.Is(err, lockfile.ErrAlreadyHeld) {
+		t.Fatalf("Acquire appmgr-backup ModeGlobal: want ErrAlreadyHeld, got %v", err)
+	}
+}
+
+// ModeGlobal で hold 中は、他バッチの ModeShared Acquire も弾かれる。
+func TestAcquireGlobal_blocksOtherBatches(t *testing.T) {
+	dir := t.TempDir()
+
+	backup, err := lockfile.Acquire(dir, "appmgr-backup", lockfile.ModeGlobal)
+	if err != nil {
+		t.Fatalf("Acquire appmgr-backup ModeGlobal: %v", err)
+	}
+	t.Cleanup(func() { _ = backup.Release() })
+
+	if _, err := lockfile.Acquire(dir, "appmgr-import-skysea", lockfile.ModeShared); !errors.Is(err, lockfile.ErrAlreadyHeld) {
+		t.Fatalf("Acquire appmgr-import-skysea: want ErrAlreadyHeld, got %v", err)
+	}
+}
+
+// ModeGlobal の部分取得後に失敗した場合、取得済みの他バッチ lock は
+// 逆順 release で全解放される。Plan の「取得失敗時は逆順 release」決定の検証。
+func TestAcquireGlobal_releasesPartialOnFailure(t *testing.T) {
+	dir := t.TempDir()
+
+	blocker, err := lockfile.Acquire(dir, "appmgr-import-skysea", lockfile.ModeShared)
+	if err != nil {
+		t.Fatalf("Acquire blocker: %v", err)
+	}
+	t.Cleanup(func() { _ = blocker.Release() })
+
+	if _, err := lockfile.Acquire(dir, "appmgr-backup", lockfile.ModeGlobal); !errors.Is(err, lockfile.ErrAlreadyHeld) {
+		t.Fatalf("Acquire appmgr-backup ModeGlobal: want ErrAlreadyHeld, got %v", err)
+	}
+
+	// 部分取得が漏れていれば appmgr-notify の単独取得も詰まる。
+	other, err := lockfile.Acquire(dir, "appmgr-notify", lockfile.ModeShared)
+	if err != nil {
+		t.Fatalf("Acquire appmgr-notify after partial release: %v", err)
+	}
+	t.Cleanup(func() { _ = other.Release() })
+}
+
 // 過去プロセスの異常終了で lock ファイル残骸が残っていても、
 // flock(2) はプロセス終了で自動解放されるため次の Acquire が成功する。
 // このテストは flock 方式の挙動を documenting し、stale PID 判定を
