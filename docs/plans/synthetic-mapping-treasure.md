@@ -77,7 +77,7 @@ PR2 は機能を増やさず「動く DB レイヤと上物の準備」に専念
 **編集**：
 
 - `go.mod` / `go.sum` — 依存追加
-- `cmd/server/main.go` — `chi.Router` 置換 + `db.Open` + `db.CheckVersion` + `defer closeDB()`（`closeDB` は `closeLog` より **前** に defer 登録：shutdown ログを残せるよう logger を最後にクローズ）
+- `cmd/server/main.go` — `chi.Router` 置換 + `db.Open` + `db.CheckVersion` + `defer closeDB()`（`closeDB` は `closeLog` より **後** に defer 登録：LIFO で `closeDB → closeLog` の順に実行され、DB クローズ中のエラーも logger が生きているうちに記録できる）
 - `Makefile` — `BINARIES := appmgr-server appmgr-create-app-user`、`migrate-up` / `migrate-down` / `generate` ターゲット追加、`cmd/create-app-user` のビルドルール追加
 - `README.md` — 起動手順に `make migrate-up` と必須スキーマ版 (=6) を追記
 
