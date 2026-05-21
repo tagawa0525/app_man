@@ -47,6 +47,7 @@ go.work.sum
 /data/
 /logs/
 /tmp/
+/config.yml
 
 # エディタ
 .vscode/
