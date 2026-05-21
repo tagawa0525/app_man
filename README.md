@@ -17,30 +17,43 @@ nix develop
 ## ビルド・実行
 
 ```sh
-make build          # bin/ にバイナリを生成
+make build          # bin/ に appmgr-server / appmgr-create-app-user / appmgr-migrate を生成
 make test           # 全テスト実行
 make lint           # golangci-lint 実行
 
 cp config.example.yml config.yml
+mkdir -p ./data     # DB_PATH 既定 (./data/app.db) の親ディレクトリ
+make migrate-up     # マイグレーションを適用 (必須スキーマ版 = 6)
 make run            # appmgr-server を起動
 
 curl http://localhost:8180/healthz   # "ok" が返れば起動成功
 ```
+
+**起動時の自動マイグレーションはしない**。`make migrate-up` を実行せずに `appmgr-server` を起動するとスキーマ版数不一致で exit 1 する。誤デプロイ防止のため、マイグレーションは明示的に行う運用とする。
+
+スキーマ・クエリを変更したときは `make generate` で sqlc 生成物 (`internal/repository/*.sql.go`) を再生成してから commit する。
 
 ## ディレクトリ構造（フェーズ 1 時点）
 
 ```text
 app_man/
 ├── cmd/
-│   └── server/                 # appmgr-server: Web サーバ本体
+│   ├── server/                 # appmgr-server: Web サーバ本体
+│   ├── create-app-user/        # appmgr-create-app-user: ローカル admin 作成 CLI (骨格)
+│   └── migrate/                # appmgr-migrate: マイグレーション実行 CLI
 ├── internal/
 │   ├── config/                 # YAML 設定ファイル読込（*_env 環境変数展開対応）
-│   └── applog/                 # slog ロガー初期化
-├── db/                         # PR2 以降：マイグレーション・sqlc クエリ
+│   ├── applog/                 # slog ロガー初期化
+│   ├── db/                     # modernc/sqlite 接続、go-migrate ランナ、版数チェック
+│   └── repository/             # sqlc 生成物（コミット対象、手書きしない）
+├── db/
+│   ├── migrations/             # up/down SQL + embed.FS (現在 6 マイグレーション)
+│   └── queries/                # sqlc 入力クエリ
 ├── docs/
 │   ├── specs/                  # 背景・要件定義
 │   └── plans/                  # 実装フェーズ計画
 ├── config.example.yml          # 設定ファイル雛形
+├── sqlc.yaml                   # sqlc 設定
 ├── flake.nix                   # 開発環境定義
 └── Makefile
 ```
