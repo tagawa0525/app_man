@@ -104,3 +104,77 @@ func TestLoad_nonExistentFile(t *testing.T) {
 		t.Fatal("Load() expected error for non-existent file, got nil")
 	}
 }
+
+func TestLoad_envExpansion(t *testing.T) {
+	const envName = "TEST_APP_MAN_SESSION_SECRET"
+	const envValue = "supersecret-from-env"
+	t.Setenv(envName, envValue)
+
+	yamlBody := `server:
+  listen: 0.0.0.0:8180
+  base_url: http://localhost:8180
+  session_secret_env: ` + envName + `
+
+database:
+  path: ./data/app.db
+  wal: true
+
+locks:
+  base_dir: ./data/locks
+
+logging:
+  level: info
+  base_dir: ./logs
+  format: json
+`
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(path, []byte(yamlBody), 0o644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	got, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+	if got.Server.SessionSecret != envValue {
+		t.Errorf("Server.SessionSecret = %q, want %q (env-expanded)", got.Server.SessionSecret, envValue)
+	}
+}
+
+func TestLoad_envExpansion_missingEnv(t *testing.T) {
+	const envName = "TEST_APP_MAN_UNSET_SECRET_XYZ"
+	if err := os.Unsetenv(envName); err != nil {
+		t.Fatalf("unsetenv: %v", err)
+	}
+
+	yamlBody := `server:
+  listen: 0.0.0.0:8180
+  base_url: http://localhost:8180
+  session_secret_env: ` + envName + `
+
+database:
+  path: ./data/app.db
+  wal: true
+
+locks:
+  base_dir: ./data/locks
+
+logging:
+  level: info
+  base_dir: ./logs
+  format: json
+`
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(path, []byte(yamlBody), 0o644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	_, err := config.Load(path)
+	if err == nil {
+		t.Fatal("Load() expected error when env var is unset for *_env key, got nil")
+	}
+}

@@ -15,8 +15,9 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Listen  string `yaml:"listen"`
-	BaseURL string `yaml:"base_url"`
+	Listen        string `yaml:"listen"`
+	BaseURL       string `yaml:"base_url"`
+	SessionSecret string `yaml:"session_secret"`
 }
 
 type DatabaseConfig struct {
