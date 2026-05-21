@@ -38,10 +38,10 @@ SELECT
   p.id AS product_id,
   p.canonical_name,
   v.name AS vendor_name,
-  COALESCE(SUM(CASE
+  CAST(COALESCE(SUM(CASE
     WHEN l.expires_at IS NULL OR l.expires_at > date('now') THEN l.total_count
     ELSE 0
-  END), 0) AS total_owned,
+  END), 0) AS INTEGER) AS total_owned,
   (SELECT COUNT(*) FROM installations i
      WHERE i.product_id = p.id AND i.uninstalled_at IS NULL) AS installed_count,
   (SELECT COUNT(*) FROM user_assignments ua
