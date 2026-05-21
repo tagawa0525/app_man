@@ -90,6 +90,10 @@ func (l *Lock) Release() error {
 }
 
 // releaseOne は単一 acquiredLock を解放する。既に解放済みなら no-op。
+// unlock と close の両方が成功した場合のみ lock ファイルを削除する。
+// close が失敗して fd が残っている状態でファイルだけ消すと、次の Acquire が
+// 新しい inode で flock 通過してしまい排他が破綻する。close 失敗時は
+// ファイルを残し、後続の Acquire が flock 競合で正しく弾けるようにする。
 func releaseOne(a *acquiredLock) error {
 	if a == nil || a.file == nil {
 		return nil
@@ -97,16 +101,16 @@ func releaseOne(a *acquiredLock) error {
 	fd := int(a.file.Fd())
 	flockErr := syscall.Flock(fd, syscall.LOCK_UN)
 	closeErr := a.file.Close()
-	removeErr := os.Remove(a.path)
 	a.file = nil
 
-	switch {
-	case flockErr != nil:
+	if flockErr != nil {
 		return fmt.Errorf("unlock %s: %w", a.path, flockErr)
-	case closeErr != nil:
+	}
+	if closeErr != nil {
 		return fmt.Errorf("close lock file %s: %w", a.path, closeErr)
-	case removeErr != nil && !errors.Is(removeErr, os.ErrNotExist):
-		return fmt.Errorf("remove lock file %s: %w", a.path, removeErr)
+	}
+	if err := os.Remove(a.path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove lock file %s: %w", a.path, err)
 	}
 	return nil
 }
