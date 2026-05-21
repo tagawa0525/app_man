@@ -61,7 +61,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - uses: golangci/golangci-lint-action@v6
+      # golangci-lint v2 を使うには action も v7 以上が必須
+      # （v6 は v1 系のみサポート）。
+      - uses: golangci/golangci-lint-action@v7
         with:
           # 再現性のためバージョン固定。更新は別 PR で意図的に上げる
           # （`gh api repos/golangci/golangci-lint/releases/latest` で最新確認）。
