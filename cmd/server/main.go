@@ -12,6 +12,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+
 	"github.com/tagawa0525/app_man/internal/applog"
 	"github.com/tagawa0525/app_man/internal/config"
 )
@@ -48,12 +51,14 @@ func run(configPath string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", healthHandler)
+	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	r.Use(middleware.Recoverer)
+	r.Get("/healthz", healthHandler)
 
 	srv := &http.Server{
 		Addr:              cfg.Server.Listen,
-		Handler:           mux,
+		Handler:           r,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
