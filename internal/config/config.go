@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -41,9 +42,18 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("read config file %s: %w", path, err)
 	}
 
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	var root yaml.Node
+	if err := yaml.Unmarshal(data, &root); err != nil {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
+	}
+
+	if err := resolveEnvKeys(&root); err != nil {
+		return nil, fmt.Errorf("resolve env in %s: %w", path, err)
+	}
+
+	var cfg Config
+	if err := root.Decode(&cfg); err != nil {
+		return nil, fmt.Errorf("decode config %s: %w", path, err)
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -65,6 +75,51 @@ func (c *Config) validate() error {
 	}
 	if c.Logging.BaseDir == "" {
 		return fmt.Errorf("logging.base_dir is required")
+	}
+	return nil
+}
+
+// resolveEnvKeys walks a YAML node tree and rewrites any mapping key ending
+// in "_env" by removing the suffix and replacing the value with the contents
+// of the referenced environment variable. Returns an error if any referenced
+// variable is not set.
+func resolveEnvKeys(n *yaml.Node) error {
+	if n == nil {
+		return nil
+	}
+	switch n.Kind {
+	case yaml.DocumentNode, yaml.SequenceNode:
+		for _, c := range n.Content {
+			if err := resolveEnvKeys(c); err != nil {
+				return err
+			}
+		}
+	case yaml.MappingNode:
+		newContent := make([]*yaml.Node, 0, len(n.Content))
+		for i := 0; i < len(n.Content); i += 2 {
+			keyNode := n.Content[i]
+			valNode := n.Content[i+1]
+
+			if keyNode.Kind == yaml.ScalarNode && strings.HasSuffix(keyNode.Value, "_env") && len(keyNode.Value) > len("_env") {
+				envName := valNode.Value
+				envVal, ok := os.LookupEnv(envName)
+				if !ok {
+					return fmt.Errorf("environment variable %s referenced by key %s is not set", envName, keyNode.Value)
+				}
+				resolvedKey := strings.TrimSuffix(keyNode.Value, "_env")
+				newContent = append(newContent,
+					&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: resolvedKey},
+					&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: envVal},
+				)
+				continue
+			}
+
+			if err := resolveEnvKeys(valNode); err != nil {
+				return err
+			}
+			newContent = append(newContent, keyNode, valNode)
+		}
+		n.Content = newContent
 	}
 	return nil
 }
