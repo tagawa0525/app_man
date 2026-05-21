@@ -2,21 +2,30 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
+
+	_ "modernc.org/sqlite"
 
 	"github.com/tagawa0525/app_man/internal/config"
 )
 
-// Open は modernc.org/sqlite で SQLite に接続し、WAL モードと
-// foreign_keys ON の PRAGMA を適用した *sql.DB と Close 用関数を返す。
-// 呼び出し側は closeFn を defer して解放する。
+// Open は modernc.org/sqlite で SQLite に接続する。
+// foreign_keys は DSN の _pragma で接続単位に適用するため pool 内の
+// 全接続で有効。WAL は DB ファイル全体の設定なので接続後 1 回だけ
+// PRAGMA で切り替える。返す closeFn は *sql.DB.Close をそのまま指す。
 func Open(cfg config.DatabaseConfig) (*sql.DB, func() error, error) {
-	panic("not implemented")
-}
+	dsn := cfg.Path + "?_pragma=foreign_keys(1)"
+	sqlDB, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, nil, fmt.Errorf("sql.Open: %w", err)
+	}
 
-// applyPragmas は接続済み DB に必須 PRAGMA を適用する。
-// (テストから直接 PRAGMA を確認するため、Open 内ではなくここで分離)
-func applyPragmas(db *sql.DB, wal bool) error {
-	_ = db
-	_ = wal
-	panic("not implemented")
+	if cfg.WAL {
+		if _, err := sqlDB.Exec("PRAGMA journal_mode = WAL"); err != nil {
+			_ = sqlDB.Close()
+			return nil, nil, fmt.Errorf("PRAGMA journal_mode=WAL: %w", err)
+		}
+	}
+
+	return sqlDB, sqlDB.Close, nil
 }
