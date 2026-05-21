@@ -3,15 +3,35 @@ CREATE INDEX idx_installations_device ON installations(device_id) WHERE uninstal
 CREATE INDEX idx_user_assignments_active ON user_assignments(license_id) WHERE revoked_at IS NULL;
 CREATE INDEX idx_user_assignments_user ON user_assignments(user_id) WHERE revoked_at IS NULL;
 CREATE INDEX idx_device_assignments_active ON device_assignments(license_id) WHERE revoked_at IS NULL;
-CREATE INDEX idx_dept_product_approvals_active
-  ON department_product_approvals(department_id, product_id)
-  WHERE revoked_at IS NULL;
 CREATE INDEX idx_users_department ON users(department_id) WHERE deactivated_at IS NULL;
 CREATE INDEX idx_devices_department ON devices(department_id) WHERE retired_at IS NULL;
 CREATE INDEX idx_departments_active ON departments(code) WHERE valid_to IS NULL;
 CREATE INDEX idx_app_users_linked ON app_users(linked_user_id) WHERE disabled_at IS NULL;
 CREATE INDEX idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
 CREATE INDEX idx_audit_logs_occurred ON audit_logs(occurred_at);
+
+-- 「アクティブな割当・承認・ロールが (キー) ごとに高々 1 つ」を保証する partial UNIQUE INDEX。
+-- 各テーブルの UNIQUE(..., revoked_at) では revoked_at IS NULL の重複を防げない
+-- (SQLite は NULL を distinct 扱いするため) ので、active 行だけを対象に重複禁止する。
+-- 履歴側 (revoked_at IS NOT NULL) は UNIQUE 制約に同じタイムスタンプが入る確率が無視できる
+-- 前提でテーブル制約に任せる。
+CREATE UNIQUE INDEX uniq_user_assignments_active
+  ON user_assignments(license_id, user_id)
+  WHERE revoked_at IS NULL;
+CREATE UNIQUE INDEX uniq_device_assignments_active
+  ON device_assignments(license_id, device_id)
+  WHERE revoked_at IS NULL;
+CREATE UNIQUE INDEX uniq_dept_product_approvals_active
+  ON department_product_approvals(department_id, product_id)
+  WHERE revoked_at IS NULL;
+-- user_department_roles は department_id NULL (= 全社スコープ) も許容するので、
+-- NULL / NOT NULL を分けた 2 本立てで「同一 app_user × 同一スコープ × 同一 role」の active 重複を防ぐ。
+CREATE UNIQUE INDEX uniq_user_dept_roles_active_dept
+  ON user_department_roles(app_user_id, department_id, role)
+  WHERE revoked_at IS NULL AND department_id IS NOT NULL;
+CREATE UNIQUE INDEX uniq_user_dept_roles_active_global
+  ON user_department_roles(app_user_id, role)
+  WHERE revoked_at IS NULL AND department_id IS NULL;
 
 CREATE VIEW v_license_usage AS
 SELECT
