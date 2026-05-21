@@ -26,15 +26,19 @@ type Mode int
 const (
 	// ModeShared は通常バッチ用。自身の lock のみ取得する。
 	ModeShared Mode = iota
-	// ModeGlobal は appmgr-backup 用。自身 + BatchBinaries の全 lock を排他取得する。
+	// ModeGlobal は appmgr-backup 用。自身 + batchBinaries の全 lock を排他取得する。
 	ModeGlobal
 	// ModeServer は appmgr-server 用。自身の lock のみ取得し、バッチ系の Global 対象外。
 	ModeServer
 )
 
-// BatchBinaries は要件書 § 8.8 の排他制御対象バッチ。
+// batchBinaries は要件書 § 8.8 の排他制御対象バッチ。
 // ModeGlobal で取得を試みる対象。順序は固定（取得・解放の決定性のため）。
-var BatchBinaries = []string{
+//
+// unexport にすることで、外部パッケージからスライス内容を書き換えられて
+// ModeGlobal の対象が意図せず変わる事故を防ぐ。外部で参照したくなったら
+// 配列コピーを返す getter を別途公開する。
+var batchBinaries = []string{
 	"appmgr-sync-directory",
 	"appmgr-import-skysea",
 	"appmgr-check-integrity",

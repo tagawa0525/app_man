@@ -21,7 +21,7 @@ PR3 完了時点で **11 バイナリ**が `make build` で生成され、要件
 |---|---|---|
 | Windows lock | unix を本実装（`syscall.Flock`）、windows はビルドが通るだけの error 返却スタブ | 本番は Windows Server だが、開発・CI は Linux。Windows 本実装は本番投入直前の別 PR に分離。CLAUDE.md「現在の要件に対する最小限の実装」 |
 | lock 排他方式 | OS のファイルロック（`syscall.LOCK_EX\|LOCK_NB`）+ メタデータ用 PID 書込 | flock(2) はプロセス終了（正常・異常問わず）で fd と共に自動解放される。lock ファイル残骸の上から再 Acquire できる（flock が free なら成功）ため、PID 生存確認による stale 判定ロジックは入れない。PID 書込は運用時に「誰が hold 中か」を grep するための情報。CLAUDE.md「早すぎる抽象化禁止 / 現在の要件に対する最小限の実装」 |
-| `ModeGlobal` の実現 | `BatchBinaries` 定数（8 バッチ名）を `internal/lockfile` に定義し、`backup` 起動時は自身 + 他 7 つの lock を順次 `LOCK_EX\|LOCK_NB` で取得。1 つでも失敗したら取得済みを逆順 release して `ErrAlreadyHeld` | 共有ロック (LOCK_SH) を使う案より単純で、PID 書込・stale 検出の整合が取れる |
+| `ModeGlobal` の実現 | unexport な `batchBinaries` 定数（8 バッチ名）を `internal/lockfile` に定義し、`backup` 起動時は自身 + 他 7 つの lock を順次 `LOCK_EX\|LOCK_NB` で取得。1 つでも失敗したら取得済みを逆順 release して `ErrAlreadyHeld`。export しないのは、外部からスライス内容を書き換えられて ModeGlobal の対象が意図せず変わる事故を防ぐため | 共有ロック (LOCK_SH) を使う案より単純で、PID 書込・stale 検出の整合が取れる |
 | `appmgr-server` の lock | `<base>/locks/appmgr-server.lock` を `lockfile.Acquire(ModeServer)` で個別取得。バッチ系のグローバルロック対象外 | 要件書 § 8.8 明記。常駐前提なので shutdown までホールドしっぱなし |
 | `appmgr-migrate` / `appmgr-create-app-user` の lock | **lock 不要**（既存実装に変更を加えない） | 要件書 § 8.8 の対象列挙にも、§ 9 の運用バッチにも含まれない（前者は手動運用、後者は初期セットアップ）。`appmgr-backup` との衝突は運用ドキュメントで案内 |
 | exit code 規約 | 0=正常 / 1=実行エラー / 2=lock 取得失敗 / 3=設定エラー（config 読込・logger 初期化・フラグ不正） | rustling-discovering-beaver.md PR3 確定値 |
@@ -41,7 +41,7 @@ PR3 完了時点で **11 バイナリ**が `make build` で生成され、要件
 4. `docs(plans): stale 検出を flock 自動解放で代替し別ロジックは入れない方針に変更` — Plan の揺れを履歴化
 5. `test(lockfile): lock ファイル残存からの再取得（flock 自動解放）を回帰テスト化` — RED ではなく、flock 方式の挙動を documenting & 固定化
 6. `test(lockfile): ModeGlobal は他全バッチ lock も同時排他取得、いずれかが取得済みなら ErrAlreadyHeld` — RED
-7. `feat(lockfile): ModeGlobal + BatchBinaries を実装、取得失敗時は逆順 release` — GREEN
+7. `feat(lockfile): ModeGlobal + batchBinaries を実装、取得失敗時は逆順 release` — GREEN
 8. `feat(lockfile): windows 側の build-tag スタブ（呼ぶと error 返却）を追加` — クロスコンパイル維持
 9. `feat(clirun): 共通起動ヘルパー Run と exit code 規約を実装` — `Run(name, mode, handler)`、内部で `os.Exit` を呼ぶ
 10. `feat(cmd): 8 バッチバイナリの骨格を追加` — `appmgr-backup` のみ `ModeGlobal`、他 7 つは `ModeShared`
@@ -62,12 +62,13 @@ type Mode int
 
 const (
     ModeShared Mode = iota // 自身の lock のみ取得（通常バッチ）
-    ModeGlobal             // 自身 + BatchBinaries 全 lock を排他取得（appmgr-backup 用）
+    ModeGlobal             // 自身 + batchBinaries 全 lock を排他取得（appmgr-backup 用）
     ModeServer             // 自身の lock のみ取得（バッチ系の Global 対象外）
 )
 
 // 要件書 § 8.8 の lock 対象。順序固定（取得 / 解放の決定性のため）。
-var BatchBinaries = []string{
+// unexport にして外部からの書き換えを防ぐ。
+var batchBinaries = []string{
     "appmgr-sync-directory",
     "appmgr-import-skysea",
     "appmgr-check-integrity",
@@ -84,7 +85,7 @@ type Lock struct { /* baseDir, name, *os.File, holds []*os.File */ }
 
 // Acquire は baseDir/<name>.lock を排他取得する。
 //   - ModeShared / ModeServer: 自身の lock のみ
-//   - ModeGlobal: 自身 + 他 BatchBinaries の lock を順次取得
+//   - ModeGlobal: 自身 + 他 batchBinaries の lock を順次取得
 // 取得済み（他プロセス保持中）なら ErrAlreadyHeld を返す。
 // 過去プロセスの lock ファイル残骸の上からも、flock が free なら成功する
 // （flock(2) はプロセス終了で自動解放されるため）。

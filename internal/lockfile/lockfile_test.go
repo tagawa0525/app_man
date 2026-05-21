@@ -31,7 +31,7 @@ func TestAcquire_secondCallReturnsErrAlreadyHeld(t *testing.T) {
 	}
 }
 
-// ModeGlobal は BatchBinaries の全 lock を排他取得するため、
+// ModeGlobal は batchBinaries の全 lock を排他取得するため、
 // 他バッチが 1 つでも hold 中なら ErrAlreadyHeld を返す。
 func TestAcquireGlobal_failsWhenAnyBatchLockHeld(t *testing.T) {
 	dir := t.TempDir()

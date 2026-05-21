@@ -11,7 +11,7 @@ import (
 
 // Acquire は baseDir/<name>.lock を排他取得する。
 //   - ModeShared / ModeServer: 自身の lock のみ
-//   - ModeGlobal: 自身 + BatchBinaries の他バッチ全 lock を順次取得
+//   - ModeGlobal: 自身 + batchBinaries の他バッチ全 lock を順次取得
 //
 // 取得済み（他プロセスが flock を保持中）なら ErrAlreadyHeld を返す。
 // baseDir が存在しなければ作成する。
@@ -28,7 +28,7 @@ func Acquire(baseDir, name string, mode Mode) (*Lock, error) {
 	lock := &Lock{primary: primary}
 
 	if mode == ModeGlobal {
-		for _, other := range BatchBinaries {
+		for _, other := range batchBinaries {
 			if other == name {
 				continue // 自分自身は primary で取得済み
 			}
