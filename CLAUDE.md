@@ -18,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```sh
 nix develop                                # go, sqlc, go-migrate, templ, golangci-lint, air, sqlite
-make build                                 # bin/ に CLI バイナリを生成（CGO_ENABLED=0 固定）
+make build                                 # bin/appmgr-server を生成（CGO_ENABLED=0 固定。バッチ系バイナリは後続フェーズで追加予定）
 make test                                  # go test ./...
 make lint                                  # golangci-lint run（v2 設定）
 make run                                   # appmgr-server を config.yml で起動
