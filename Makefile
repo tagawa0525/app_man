@@ -1,5 +1,20 @@
 BIN_DIR := bin
-BINARIES := appmgr-server appmgr-create-app-user appmgr-migrate
+
+# 既存 3 バイナリ + フェーズ 1 PR3 で追加した 8 バッチ。
+# 計 11 バイナリ。バッチ系は cmd/<name>/ 配下に骨格を持ち、
+# 共通起動を internal/clirun に委譲する。
+BINARIES := \
+	appmgr-server \
+	appmgr-create-app-user \
+	appmgr-migrate \
+	appmgr-sync-directory \
+	appmgr-import-skysea \
+	appmgr-check-integrity \
+	appmgr-notify \
+	appmgr-backup \
+	appmgr-prune-logs \
+	appmgr-generate-meta \
+	appmgr-import-bootstrap
 
 GO ?= go
 GOFLAGS_BUILD := -trimpath
@@ -25,6 +40,15 @@ $(BIN_DIR)/appmgr-create-app-user: $(shell find cmd/create-app-user internal -ty
 $(BIN_DIR)/appmgr-migrate: $(shell find cmd/migrate internal db -type f \( -name '*.go' -o -name '*.sql' \)) go.mod go.sum
 	@mkdir -p $(BIN_DIR)
 	$(GO) build $(GOFLAGS_BUILD) -ldflags '$(LDFLAGS)' -o $@ ./cmd/migrate
+
+# PR3 で追加した 8 バッチ用の汎用パターンルール。
+# 上記 3 つの明示ルールが優先されるため、appmgr-server / -migrate /
+# -create-app-user には適用されない。$* がパターン部分 (例: backup) に展開される。
+# 依存は cmd / internal の全 Go ファイル（過剰だが、骨格バイナリの
+# 再ビルドコストは小さいため許容）。
+$(BIN_DIR)/appmgr-%: $(shell find cmd internal -type f -name '*.go') go.mod go.sum
+	@mkdir -p $(BIN_DIR)
+	$(GO) build $(GOFLAGS_BUILD) -ldflags '$(LDFLAGS)' -o $@ ./cmd/$*
 
 test:
 	$(GO) test ./...
