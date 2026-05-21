@@ -14,6 +14,30 @@ coverage.*
 go.work
 go.work.sum
 
+# cmd/<name>/ から `go build ./cmd/<name>` 直接実行時にプロジェクトルートに
+# 落ちる成果物。通常は `make build` で bin/ に出力するため不要だが、
+# 手動 `go build` した際の事故防止用。
+/appmgr-server
+/server
+/appmgr-sync-directory
+/sync-directory
+/appmgr-import-skysea
+/import-skysea
+/appmgr-check-integrity
+/check-integrity
+/appmgr-notify
+/notify
+/appmgr-backup
+/backup
+/appmgr-prune-logs
+/prune-logs
+/appmgr-generate-meta
+/generate-meta
+/appmgr-create-app-user
+/create-app-user
+/appmgr-import-bootstrap
+/import-bootstrap
+
 # sqlc / 自動生成物（必要なら個別に許可）
 # internal/repository/*.sql.go は通常コミットするのでここでは除外しない
 
