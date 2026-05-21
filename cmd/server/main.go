@@ -34,10 +34,15 @@ func run(configPath string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	logger, err := applog.New(cfg.Logging, binaryName)
+	logger, closeLog, err := applog.New(cfg.Logging, binaryName)
 	if err != nil {
 		return fmt.Errorf("init logger: %w", err)
 	}
+	defer func() {
+		if cerr := closeLog(); cerr != nil {
+			fmt.Fprintf(os.Stderr, "%s: close log: %v\n", binaryName, cerr)
+		}
+	}()
 	slog.SetDefault(logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

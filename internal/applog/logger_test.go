@@ -19,10 +19,11 @@ func TestNew_writesJSONWithBinaryAndPID(t *testing.T) {
 		Format:  "json",
 	}
 
-	logger, err := applog.New(cfg, "appmgr-test")
+	logger, cleanup, err := applog.New(cfg, "appmgr-test")
 	if err != nil {
 		t.Fatalf("New() error: %v", err)
 	}
+	t.Cleanup(func() { _ = cleanup() })
 	if logger == nil {
 		t.Fatal("New() returned nil logger")
 	}
@@ -72,9 +73,11 @@ func TestNew_createsLogDirectory(t *testing.T) {
 		Format:  "json",
 	}
 
-	if _, err := applog.New(cfg, "appmgr-test"); err != nil {
+	_, cleanup, err := applog.New(cfg, "appmgr-test")
+	if err != nil {
 		t.Fatalf("New() error: %v", err)
 	}
+	t.Cleanup(func() { _ = cleanup() })
 
 	if _, err := os.Stat(nested); err != nil {
 		t.Fatalf("expected log dir to be created: %v", err)
@@ -89,10 +92,11 @@ func TestNew_respectsLogLevel(t *testing.T) {
 		Format:  "json",
 	}
 
-	logger, err := applog.New(cfg, "appmgr-test")
+	logger, cleanup, err := applog.New(cfg, "appmgr-test")
 	if err != nil {
 		t.Fatalf("New() error: %v", err)
 	}
+	t.Cleanup(func() { _ = cleanup() })
 
 	logger.Info("info-msg")
 	logger.Warn("warn-msg")
