@@ -26,15 +26,7 @@ go test -run TestLoad ./internal/config/   # 単一テスト実行
 go test -race ./...                        # レースコンディション検出
 ```
 
-PR2 以降で追加される DB 関連：
-
-```sh
-make migrate-up    # 全マイグレーションを順に適用
-make migrate-down  # 逆順に DROP
-make generate      # sqlc generate
-```
-
-**起動時の自動マイグレーションはしない**設計（誤デプロイで DB が壊れる事故防止）。デプロイ手順で明示的に `make migrate-up` を実行する。`appmgr-server` は起動時に版数チェックのみ行う。
+**起動時の自動マイグレーションはしない**設計（誤デプロイで DB が壊れる事故防止）。マイグレーションはデプロイ手順で明示的に実行する。`appmgr-server` は起動時にスキーマ版数チェックのみ行い、不一致なら起動失敗。
 
 ## アーキテクチャの大枠
 
@@ -111,7 +103,7 @@ server:
 
 ## ロギング
 
-各 CLI バイナリは `applog.New(cfg.Logging, binaryName)` で `*slog.Logger` を初期化する。全ログに `binary` 属性（バイナリ名）と `pid` 属性（プロセス ID）が常時付与され、JSON 形式で `logs/<binary-name>.log` に出力される。リクエスト ID 等のスコープ属性は PR3 以降で Chi ミドルウェアと一緒に追加予定。
+各 CLI バイナリは `applog.New(cfg.Logging, binaryName)` で `*slog.Logger` を初期化する。全ログに `binary` 属性（バイナリ名）と `pid` 属性（プロセス ID）が常時付与され、JSON 形式で `logs/<binary-name>.log` に出力される。
 
 ## sqlc 生成物の扱い
 
