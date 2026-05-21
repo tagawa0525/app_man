@@ -1,6 +1,11 @@
 package config
 
-import "errors"
+import (
+	"fmt"
+	"os"
+
+	"gopkg.in/yaml.v3"
+)
 
 type Config struct {
 	Server   ServerConfig   `yaml:"server"`
@@ -30,5 +35,35 @@ type LoggingConfig struct {
 }
 
 func Load(path string) (*Config, error) {
-	return nil, errors.New("not implemented")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read config file %s: %w", path, err)
+	}
+
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("parse config %s: %w", path, err)
+	}
+
+	if err := cfg.validate(); err != nil {
+		return nil, fmt.Errorf("validate config %s: %w", path, err)
+	}
+
+	return &cfg, nil
+}
+
+func (c *Config) validate() error {
+	if c.Server.Listen == "" {
+		return fmt.Errorf("server.listen is required")
+	}
+	if c.Database.Path == "" {
+		return fmt.Errorf("database.path is required")
+	}
+	if c.Locks.BaseDir == "" {
+		return fmt.Errorf("locks.base_dir is required")
+	}
+	if c.Logging.BaseDir == "" {
+		return fmt.Errorf("logging.base_dir is required")
+	}
+	return nil
 }
