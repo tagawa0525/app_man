@@ -60,7 +60,7 @@ func MigrateDown(sqlDB *sql.DB) error {
 // スキーマ版数を返す。マイグレーションファイルを追加した際は
 // この値も更新する。
 func RequiredMigrationVersion() uint {
-	panic("not implemented")
+	return 6
 }
 
 // CheckVersion は現在の DB スキーマ版数が RequiredMigrationVersion
@@ -68,6 +68,24 @@ func RequiredMigrationVersion() uint {
 // エラーを返し、appmgr-server はそれを受けて起動失敗する想定。
 // マイグレーションの自動適用は行わない (誤デプロイ防止)。
 func CheckVersion(sqlDB *sql.DB) error {
-	_ = sqlDB
-	panic("not implemented")
+	m, err := newMigrator(sqlDB)
+	if err != nil {
+		return err
+	}
+
+	current, dirty, err := m.Version()
+	if err != nil {
+		if errors.Is(err, migrate.ErrNilVersion) {
+			return fmt.Errorf("schema not initialized: run `make migrate-up`")
+		}
+		return fmt.Errorf("get current schema version: %w", err)
+	}
+	if dirty {
+		return fmt.Errorf("schema is dirty at version %d (previous migration failed; manual fix required)", current)
+	}
+	required := RequiredMigrationVersion()
+	if current != required {
+		return fmt.Errorf("schema version mismatch: got %d, want %d (run `make migrate-up`)", current, required)
+	}
+	return nil
 }
