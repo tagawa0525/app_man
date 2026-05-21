@@ -1,0 +1,30 @@
+# direnv / nix
+.direnv/
+.envrc.local
+result
+result-*
+
+# Go
+.go/
+/bin/
+/dist/
+*.test
+*.out
+coverage.*
+go.work
+go.work.sum
+
+# sqlc / 自動生成物（必要なら個別に許可）
+# internal/repository/*.sql.go は通常コミットするのでここでは除外しない
+
+# データ・ローカル成果物
+/data/
+/logs/
+/tmp/
+
+# エディタ
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
