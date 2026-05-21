@@ -95,13 +95,22 @@ func resolveEnvKeys(n *yaml.Node) error {
 			}
 		}
 	case yaml.MappingNode:
+		if len(n.Content)%2 != 0 {
+			return fmt.Errorf("malformed YAML mapping at line %d: odd number of key/value nodes", n.Line)
+		}
 		newContent := make([]*yaml.Node, 0, len(n.Content))
 		for i := 0; i < len(n.Content); i += 2 {
 			keyNode := n.Content[i]
 			valNode := n.Content[i+1]
 
 			if keyNode.Kind == yaml.ScalarNode && strings.HasSuffix(keyNode.Value, "_env") && len(keyNode.Value) > len("_env") {
+				if valNode.Kind != yaml.ScalarNode {
+					return fmt.Errorf("key %s at line %d expects a scalar environment variable name, got non-scalar value", keyNode.Value, keyNode.Line)
+				}
 				envName := valNode.Value
+				if envName == "" {
+					return fmt.Errorf("key %s at line %d has empty environment variable name", keyNode.Value, keyNode.Line)
+				}
 				envVal, ok := os.LookupEnv(envName)
 				if !ok {
 					return fmt.Errorf("environment variable %s referenced by key %s is not set", envName, keyNode.Value)

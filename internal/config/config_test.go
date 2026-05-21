@@ -143,6 +143,69 @@ logging:
 	}
 }
 
+func TestLoad_envExpansion_nonScalarValue(t *testing.T) {
+	yamlBody := `server:
+  listen: 0.0.0.0:8180
+  base_url: http://localhost:8180
+  session_secret_env:
+    - LIST_INSTEAD_OF_ENV_NAME
+
+database:
+  path: ./data/app.db
+  wal: true
+
+locks:
+  base_dir: ./data/locks
+
+logging:
+  level: info
+  base_dir: ./logs
+  format: json
+`
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(path, []byte(yamlBody), 0o644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	_, err := config.Load(path)
+	if err == nil {
+		t.Fatal("Load() expected error for non-scalar *_env value, got nil")
+	}
+}
+
+func TestLoad_envExpansion_emptyEnvName(t *testing.T) {
+	yamlBody := `server:
+  listen: 0.0.0.0:8180
+  base_url: http://localhost:8180
+  session_secret_env: ""
+
+database:
+  path: ./data/app.db
+  wal: true
+
+locks:
+  base_dir: ./data/locks
+
+logging:
+  level: info
+  base_dir: ./logs
+  format: json
+`
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(path, []byte(yamlBody), 0o644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	_, err := config.Load(path)
+	if err == nil {
+		t.Fatal("Load() expected error for empty *_env value, got nil")
+	}
+}
+
 func TestLoad_envExpansion_missingEnv(t *testing.T) {
 	const envName = "TEST_APP_MAN_UNSET_SECRET_XYZ"
 	if err := os.Unsetenv(envName); err != nil {
