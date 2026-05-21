@@ -37,6 +37,8 @@ go.work.sum
 /create-app-user
 /appmgr-import-bootstrap
 /import-bootstrap
+/appmgr-migrate
+/migrate
 
 # sqlc / 自動生成物（必要なら個別に許可）
 # internal/repository/*.sql.go は通常コミットするのでここでは除外しない
