@@ -17,6 +17,7 @@ import (
 
 	"github.com/tagawa0525/app_man/internal/applog"
 	"github.com/tagawa0525/app_man/internal/config"
+	"github.com/tagawa0525/app_man/internal/db"
 )
 
 const binaryName = "appmgr-server"
@@ -47,6 +48,23 @@ func run(configPath string) error {
 		}
 	}()
 	slog.SetDefault(logger)
+
+	sqlDB, closeDB, err := db.Open(cfg.Database)
+	if err != nil {
+		return fmt.Errorf("open db: %w", err)
+	}
+	// closeDB は closeLog より後に defer 登録する。LIFO で
+	// closeDB → closeLog の順に実行され、DB クローズ中のエラーも
+	// logger が生きているうちに記録できる。
+	defer func() {
+		if cerr := closeDB(); cerr != nil {
+			logger.Error("close db", slog.Any("error", cerr))
+		}
+	}()
+
+	if err := db.CheckVersion(sqlDB); err != nil {
+		return fmt.Errorf("check schema version: %w", err)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
