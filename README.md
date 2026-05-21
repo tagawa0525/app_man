@@ -17,7 +17,7 @@ nix develop
 ## ビルド・実行
 
 ```sh
-make build          # bin/ に appmgr-server と appmgr-create-app-user を生成
+make build          # bin/ に appmgr-server / appmgr-create-app-user / appmgr-migrate を生成
 make test           # 全テスト実行
 make lint           # golangci-lint 実行
 
@@ -39,7 +39,8 @@ curl http://localhost:8180/healthz   # "ok" が返れば起動成功
 app_man/
 ├── cmd/
 │   ├── server/                 # appmgr-server: Web サーバ本体
-│   └── create-app-user/        # appmgr-create-app-user: ローカル admin 作成 CLI (骨格)
+│   ├── create-app-user/        # appmgr-create-app-user: ローカル admin 作成 CLI (骨格)
+│   └── migrate/                # appmgr-migrate: マイグレーション実行 CLI
 ├── internal/
 │   ├── config/                 # YAML 設定ファイル読込（*_env 環境変数展開対応）
 │   ├── applog/                 # slog ロガー初期化
