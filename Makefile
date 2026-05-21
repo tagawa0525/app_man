@@ -1,5 +1,3 @@
-SHELL := /usr/bin/env bash
-
 BIN_DIR := bin
 BINARIES := appmgr-server
 
