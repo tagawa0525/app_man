@@ -90,16 +90,24 @@ server:
 
 ## ブランチ運用の特記事項
 
-新しいブランチを切る順序：
+### Plan ファイルを最初のコミットに含める（ブランチ種別を問わない）
 
-1. `git switch -c feat/...`
-2. `docs/plans/<plan-name>.md` を書く → **最初のコミットで含める**（`docs(plans): ...`）
-3. その後 TDD サイクルでコミットを積む
+新しいブランチを切るときは、**最初のコミットを `docs/plans/<slug>.md` の追加にする**。`feat/` での実装はもちろん、`docs/`・`fix/`・`refactor/`・`chore/` でも、非自明な意思決定（何を / なぜ / どう作るか）を含むなら Plan ファイルを先に書いて、その後のコミットで本体を積む。
+
+例外は「設計判断を含まない最小変更」のみ：1 行 typo 修正、リンク切れ修正、自明な lint 警告解消等。それ以外、たとえドキュメント追加のみの PR でも Plan を先に置く（CLAUDE.md 追加 PR 自体もこのルールに従う）。
+
+これにより `git log` 上で「設計意図 → 本体変更」が時系列で読める履歴になる。実装中に方針が変わった場合は Plan ファイルを編集するコミットを追加する（揺れも履歴に残す）。
+
+### ブランチを切る順序
+
+1. `git switch -c <type>/<topic>`（`type` は `feat` / `fix` / `docs` / `refactor` / `chore` 等）
+2. `docs/plans/<slug>.md` を書く → **最初のコミットで含める**（`docs(plans): ...`）
+3. 本体のコミットを積む（実装系なら TDD サイクル：RED テスト → GREEN 実装 → 必要なら REFACTOR）
 4. PR 作成
 
-これで `git log` 上で「設計意図 → 実装」が時系列で読める履歴になる。
+### PR マージ
 
-PR マージは `gh pr merge --merge`（`--squash` / `--rebase` 禁止 — 個別コミット履歴と TDD サイクルの可視性を保つ）。マージコミットは **Why / What / Impact** 形式で記述する。
+`gh pr merge --merge`（`--squash` / `--rebase` 禁止 — 個別コミット履歴と TDD サイクルの可視性を保つ）。マージコミットは **Why / What / Impact** 形式で記述する。
 
 ## ロギング
 
