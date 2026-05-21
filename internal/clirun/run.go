@@ -11,6 +11,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -48,7 +49,8 @@ func Run(binaryName string, mode lockfile.Mode, handler Handler) {
 
 // runMain は Run の本体を exit code 返却にしたもの。
 // args は CLI 引数（os.Args[1:] 相当）、stderr は失敗メッセージの出力先。
-func runMain(args []string, stderr *os.File, binaryName string, mode lockfile.Mode, handler Handler) int {
+// stderr は io.Writer なのでテストで bytes.Buffer 等に差し替えできる。
+func runMain(args []string, stderr io.Writer, binaryName string, mode lockfile.Mode, handler Handler) int {
 	fs := flag.NewFlagSet(binaryName, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", "config.yml", "path to config.yml")
