@@ -56,7 +56,7 @@ server:
 
 ## ログ
 
-JSON 構造化ログを `logs/<binary-name>.log` に出力する。各エントリには `binary`（バイナリ名）と `pid`（プロセス ID）属性が常時付与される。
+JSON 構造化ログを `<logging.base_dir>/<binary-name>.log` に出力する（`base_dir` は `config.yml` の `logging.base_dir` で指定。デフォルト `./logs`）。各エントリには `binary`（バイナリ名）と `pid`（プロセス ID）属性が常時付与される。
 
 ## 開発ルール
 
