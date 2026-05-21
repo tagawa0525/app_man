@@ -19,26 +19,25 @@ PR2 は機能を増やさず「動く DB レイヤと上物の準備」に専念
 
 ブランチ `feat/phase1-pr2-db-foundation` を切り、Plan ファイル先行ルールに従う。TDD サイクルが必要な `internal/db` のテストは RED → GREEN を別コミットで残す。
 
-想定コミット列（13〜15 個）：
+想定コミット列（12〜14 個）：
 
 1. `docs(plans): フェーズ 1 PR2 DB 基盤の実装プラン` — Plan ファイル先行
-2. `chore(deps): modernc/sqlite、chi、golang-migrate を追加`
-3. `feat(migrations): 6 ファイルの up/down SQL を追加` — 23 テーブル DDL + インデックス + `v_license_usage` ビュー
-4. `test(db): Open が WAL モードと foreign_keys ON で接続できる` — RED
+2. `feat(migrations): 6 ファイルの up/down SQL を追加` — 23 テーブル DDL + インデックス + `v_license_usage` ビュー
+3. `test(db): Open が WAL モードと foreign_keys ON で接続できる` — RED
    - `TestOpen_setsWALAndForeignKeys` で `PRAGMA journal_mode` / `PRAGMA foreign_keys` を `SELECT` し直して検証
-5. `feat(db): modernc/sqlite で Open / Close と PRAGMA 適用` — GREEN
-6. `test(db): MigrateUp / MigrateDown が embed.FS から全テーブル作成・破棄できる` — RED
+4. `feat(db): modernc/sqlite で Open / Close と PRAGMA 適用` — GREEN（このコミットで modernc/sqlite を `go get`）
+5. `test(db): MigrateUp / MigrateDown が embed.FS から全テーブル作成・破棄できる` — RED
    - `TestMigrate_upDownRoundTrip` で `t.TempDir()` 上に SQLite を作って Up → 23 テーブル＋ビュー検証 → Down → テーブル数 0 検証
-7. `feat(db): embed.FS と golang-migrate/iofs でマイグレーションランナを実装` — GREEN
-8. `test(db): CheckVersion が必要版未満で error、一致時に nil を返す` — RED
+6. `feat(db): embed.FS と golang-migrate/iofs でマイグレーションランナを実装` — GREEN（このコミットで golang-migrate を `go get`）
+7. `test(db): CheckVersion が必要版未満で error、一致時に nil を返す` — RED
    - `TestCheckVersion_failsOnStaleSchema` で version 5 のとき error、6 で nil
-9. `feat(db): CheckVersion と RequiredMigrationVersion (= 6) を実装` — GREEN
-10. `feat(sqlc): sqlc.yaml と最小クエリ、生成物 internal/repository/* をコミット`
-11. `feat(server): ルータを chi に置換し RequestID / Recoverer middleware を追加`
-12. `feat(server): 起動時に db.Open → db.CheckVersion、不一致なら exit 1`
-13. `feat(create-app-user): フラグ定義のみの骨格バイナリを追加`
-14. `chore(make): migrate-up / migrate-down / generate ターゲットを追加`
-15. `docs(readme): make migrate-up 手順と必須スキーマ版を追記`
+8. `feat(db): CheckVersion と RequiredMigrationVersion (= 6) を実装` — GREEN
+9. `feat(sqlc): sqlc.yaml と最小クエリ、生成物 internal/repository/* をコミット`
+10. `feat(server): ルータを chi に置換し RequestID / Recoverer middleware を追加`（このコミットで go-chi/chi を `go get`）
+11. `feat(server): 起動時に db.Open → db.CheckVersion、不一致なら exit 1`
+12. `feat(create-app-user): フラグ定義のみの骨格バイナリを追加`
+13. `chore(make): migrate-up / migrate-down / generate ターゲットを追加`
+14. `docs(readme): make migrate-up 手順と必須スキーマ版を追記`
 
 ### 主要決定
 
@@ -52,7 +51,7 @@ PR2 は機能を増やさず「動く DB レイヤと上物の準備」に専念
 | Chi の middleware | `chi.Router` 採用、middleware は `RequestID`、`Recoverer` の最小 2 つのみ | ロガー middleware は applog と組合せる別 PR の専用設計に回す（予防抽象を避ける）。 |
 | `cmd/create-app-user` | フラグ定義 + `fmt.Println("not implemented")` で exit 0 | 実処理は次フェーズ。help 表示と exit code 経路だけ通す。 |
 | `internal/repository` | sqlc 生成物のみ。手書きラッパは作らない | CLAUDE.md 規約。 |
-| go.mod に追加 | `modernc.org/sqlite`、`github.com/go-chi/chi/v5`、`github.com/golang-migrate/migrate/v4` | sqlc バイナリは Nix shell 経由（flake.nix に `sqlc` あり）で go.mod には不要。 |
+| go.mod の依存追加方針 | 各実装コミット内で `go get` を実行し、import と require を同コミットにまとめる | `go mod tidy` が未使用 require を削除する性質上、依存追加だけを単独コミットにすると次のコミットで消える。`modernc.org/sqlite` は GREEN コミット(4)、`golang-migrate/migrate/v4` + `database/sqlite` + `source/iofs` は GREEN コミット(6)、`github.com/go-chi/chi/v5` は chi 置換コミット(10) に含める。sqlc バイナリは Nix shell 経由なので go.mod には不要。 |
 
 ## Critical Files
 
