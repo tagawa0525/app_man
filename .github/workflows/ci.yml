@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (CGO_ENABLED=0)
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build all binaries
+        run: go build -trimpath ./cmd/...
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: go test
+        run: go test ./...
+
+  race:
+    name: race detector
+    runs-on: ubuntu-latest
+    # -race は CGO が必須。modernc.org/sqlite は pure Go のため CGO=1 でも動作する。
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: go test -race
+        run: go test -race ./...
+
+  lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      # golangci-lint v2 を使うには action も v7 以上が必須
+      # （v6 は v1 系のみサポート）。
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          # 再現性のためバージョン固定。更新は別 PR で意図的に上げる
+          # （`gh api repos/golangci/golangci-lint/releases/latest` で最新確認）。
+          version: v2.12.2
