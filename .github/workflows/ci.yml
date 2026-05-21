@@ -63,4 +63,6 @@ jobs:
           cache: true
       - uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          # 再現性のためバージョン固定。更新は別 PR で意図的に上げる
+          # （`gh api repos/golangci/golangci-lint/releases/latest` で最新確認）。
+          version: v2.12.2
