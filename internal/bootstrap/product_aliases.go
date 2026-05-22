@@ -62,8 +62,14 @@ func (ProductAliasesImporter) Validate(ctx context.Context, q *repository.Querie
 		}
 
 		// alias_name の DB 重複
-		if _, err := q.GetAliasByName(ctx, alias); err == nil {
+		_, aerr := q.GetAliasByName(ctx, alias)
+		switch {
+		case aerr == nil:
 			errs = append(errs, ValidationError{Line: r.Line, Column: "alias_name", Message: "別名 '" + alias + "' は DB に既に登録されています"})
+		case errors.Is(aerr, sql.ErrNoRows):
+			// 未登録 — OK
+		default:
+			errs = append(errs, ValidationError{Line: r.Line, Column: "alias_name", Message: "lookup error: " + aerr.Error()})
 		}
 
 		// CSV 内重複
