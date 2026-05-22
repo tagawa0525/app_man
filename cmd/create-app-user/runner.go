@@ -5,14 +5,22 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"golang.org/x/term"
 
+	"github.com/tagawa0525/app_man/internal/applog"
 	"github.com/tagawa0525/app_man/internal/auth"
+	"github.com/tagawa0525/app_man/internal/config"
+	"github.com/tagawa0525/app_man/internal/db"
 	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/lockfile"
 	"github.com/tagawa0525/app_man/internal/repository"
 )
 
@@ -28,6 +36,148 @@ type runOptions struct {
 	departmentCode string // create モード + system_admin 以外で必須
 	notifyEmail    string // create モードでのみ意味を持つ。空欄可
 	resetPassword  bool   // true なら reset モード、false なら create モード
+}
+
+// run は本体。テストから差し替え可能になるよう stdin / stdout / stderr / getenv を
+// 引数で受ける。clirun.Run は flag 受け取り口を持たないため独立実装にする
+// (import-bootstrap と同方針)。
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(string) string) int {
+	fs := flag.NewFlagSet(binaryName, flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	opts := runOptions{}
+	fs.StringVar(&opts.configPath, "config", "config.yml", "path to config.yml")
+	fs.StringVar(&opts.username, "username", "", "username (required for both modes)")
+	fs.StringVar(&opts.role, "role", "system_admin", "role to grant (create mode only)")
+	fs.StringVar(&opts.departmentCode, "department-code", "", "department code (required for non-system_admin roles)")
+	fs.StringVar(&opts.notifyEmail, "notify-email", "", "notification email (recommended for local admins)")
+	fs.BoolVar(&opts.resetPassword, "reset-password", false, "reset password for an existing user")
+	if err := fs.Parse(args); err != nil {
+		return exitConfigInvalid
+	}
+
+	if err := validateFlags(opts); err != nil {
+		_, _ = fmt.Fprintf(stderr, "%s: %v\n", binaryName, err)
+		return exitConfigInvalid
+	}
+
+	cfg, err := config.Load(opts.configPath)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "%s: load config: %v\n", binaryName, err)
+		return exitConfigInvalid
+	}
+
+	logger, closeLog, err := applog.New(cfg.Logging, binaryName)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "%s: init logger: %v\n", binaryName, err)
+		return exitConfigInvalid
+	}
+	defer func() {
+		if cerr := closeLog(); cerr != nil {
+			_, _ = fmt.Fprintf(stderr, "%s: close log: %v\n", binaryName, cerr)
+		}
+	}()
+
+	lock, err := lockfile.Acquire(cfg.Locks.BaseDir, binaryName, lockfile.ModeShared)
+	if err != nil {
+		if errors.Is(err, lockfile.ErrAlreadyHeld) {
+			logger.Warn("lock already held by another process; exiting", slog.String("error", err.Error()))
+			return exitLockConflict
+		}
+		logger.Error("acquire lock", slog.Any("error", err))
+		return exitHandlerError
+	}
+	defer func() {
+		if rerr := lock.Release(); rerr != nil {
+			logger.Error("release lock", slog.Any("error", rerr))
+		}
+	}()
+
+	sqlDB, closeDB, err := db.Open(cfg.Database)
+	if err != nil {
+		logger.Error("open db", slog.Any("error", err))
+		return exitHandlerError
+	}
+	defer func() {
+		if cerr := closeDB(); cerr != nil {
+			logger.Error("close db", slog.Any("error", cerr))
+		}
+	}()
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	mode := "create"
+	if opts.resetPassword {
+		mode = "reset"
+	}
+	logger.Info("create-app-user starting",
+		slog.String("mode", mode),
+		slog.String("username", opts.username),
+		slog.String("role", opts.role),
+		slog.String("department_code", opts.departmentCode),
+	)
+
+	q := repository.New(sqlDB)
+	existing, err := q.GetAppUserByUsername(ctx, opts.username)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		if opts.resetPassword {
+			_, _ = fmt.Fprintf(stderr, "%s: user %q does not exist\n", binaryName, opts.username)
+			return exitHandlerError
+		}
+		// create モードはこれが正常 (新規作成)
+	case err == nil:
+		if !opts.resetPassword {
+			_, _ = fmt.Fprintf(stderr, "%s: user %q already exists\n", binaryName, opts.username)
+			return exitHandlerError
+		}
+		_ = existing // reset モードはこれが正常
+	default:
+		logger.Error("lookup app_user", slog.Any("error", err))
+		return exitHandlerError
+	}
+
+	plaintext, err := readPassword(stdin, stdout, getenv)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "%s: %v\n", binaryName, err)
+		return exitConfigInvalid
+	}
+	passwordHash, err := auth.Hash(plaintext)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "%s: hash password: %v\n", binaryName, err)
+		return exitHandlerError
+	}
+
+	if opts.resetPassword {
+		if err := resetPassword(ctx, sqlDB, opts.username, passwordHash); err != nil {
+			logger.Error("reset password", slog.Any("error", err))
+			return exitHandlerError
+		}
+		// audit hook 挿入点 (audit_logs PR で追加): app_user.password_reset
+		_, _ = fmt.Fprintf(stdout, "reset password for username=%s\n", opts.username)
+		logger.Info("password reset done", slog.String("username", opts.username))
+		return exitOK
+	}
+
+	if err := createUser(ctx, sqlDB, opts, passwordHash); err != nil {
+		logger.Error("create user", slog.Any("error", err))
+		return exitHandlerError
+	}
+	// audit hook 挿入点 (audit_logs PR で追加): app_user.create
+	created, err := q.GetAppUserByUsername(ctx, opts.username)
+	if err != nil {
+		// 直前に commit したので通常起こらないが、念のため
+		logger.Warn("re-fetch created user", slog.Any("error", err))
+		_, _ = fmt.Fprintf(stdout, "created app_user username=%s role=%s\n", opts.username, opts.role)
+		return exitOK
+	}
+	_, _ = fmt.Fprintf(stdout, "created app_user id=%d username=%s role=%s\n", created.ID, created.Username, opts.role)
+	logger.Info("create done",
+		slog.Int64("id", created.ID),
+		slog.String("username", created.Username),
+		slog.String("role", opts.role),
+	)
+	return exitOK
 }
 
 // validateFlags は flag.Parse 後の opts に対する必須/排他チェック。

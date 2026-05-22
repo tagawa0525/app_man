@@ -85,7 +85,7 @@ func loadRolesForUser(t *testing.T, sqlDB *sql.DB, appUserID int64) []roleRow {
 	if err != nil {
 		t.Fatalf("query roles: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var result []roleRow
 	for rows.Next() {
