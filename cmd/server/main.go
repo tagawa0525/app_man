@@ -136,4 +136,3 @@ func run(configPath string) error {
 	logger.Info("server stopped")
 	return nil
 }
-

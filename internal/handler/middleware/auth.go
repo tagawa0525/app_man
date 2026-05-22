@@ -43,8 +43,8 @@ func DummyAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw := r.Header.Get("X-User-Role")
 		role := Role(raw)
-		switch {
-		case raw == "":
+		switch raw {
+		case "":
 			role = RoleGeneralUser
 		default:
 			if _, ok := validRoles[role]; !ok {

@@ -59,7 +59,7 @@ func TestRouter_StaticHTMX_ByteEqual(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open htmx.min.js from embed: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	want, err := io.ReadAll(f)
 	if err != nil {
 		t.Fatalf("read embed: %v", err)
