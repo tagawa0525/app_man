@@ -1,0 +1,151 @@
+package web_test
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+
+	"github.com/tagawa0525/app_man/internal/handler/handlertest"
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+)
+
+func TestSetRole_SetsCookie_RedirectsToReferer(t *testing.T) {
+	t.Parallel()
+	r, _ := newWebRouter(t)
+
+	req := handlertest.PostForm(t, "/__set_role", "", url.Values{
+		"role": {string(middleware.RoleLicenseManager)},
+	})
+	req.Header.Set("Referer", "http://example.test/vendors")
+	req.Host = "example.test"
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 (body: %s)", rec.Code, rec.Body.String())
+	}
+	if loc := rec.Header().Get("Location"); loc != "/vendors" {
+		t.Errorf("Location = %q, want /vendors", loc)
+	}
+	var found *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == middleware.RoleCookieName {
+			found = c
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("expected Set-Cookie %q, got cookies=%v", middleware.RoleCookieName, rec.Result().Cookies())
+	}
+	if found.Value != string(middleware.RoleLicenseManager) {
+		t.Errorf("Cookie value = %q, want %q", found.Value, middleware.RoleLicenseManager)
+	}
+	if !found.HttpOnly {
+		t.Errorf("Cookie should be HttpOnly")
+	}
+	if found.SameSite != http.SameSiteLaxMode {
+		t.Errorf("Cookie SameSite = %v, want Lax", found.SameSite)
+	}
+}
+
+func TestSetRole_RedirectsToRoot_WhenNoReferer(t *testing.T) {
+	t.Parallel()
+	r, _ := newWebRouter(t)
+
+	req := handlertest.PostForm(t, "/__set_role", "", url.Values{
+		"role": {string(middleware.RoleViewer)},
+	})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/" {
+		t.Errorf("Location = %q, want /", loc)
+	}
+}
+
+func TestSetRole_RedirectsToRoot_WhenRefererIsExternal(t *testing.T) {
+	t.Parallel()
+	r, _ := newWebRouter(t)
+
+	req := handlertest.PostForm(t, "/__set_role", "", url.Values{
+		"role": {string(middleware.RoleViewer)},
+	})
+	req.Header.Set("Referer", "https://evil.example/steal")
+	req.Host = "example.test"
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/" {
+		t.Errorf("Location = %q, want / (external referer must be rejected)", loc)
+	}
+}
+
+func TestSetRole_RejectsInvalidRole_400(t *testing.T) {
+	t.Parallel()
+	r, _ := newWebRouter(t)
+
+	req := handlertest.PostForm(t, "/__set_role", "", url.Values{
+		"role": {"supreme_overlord"},
+	})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body: %s)", rec.Code, rec.Body.String())
+	}
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == middleware.RoleCookieName && c.MaxAge >= 0 {
+			t.Errorf("invalid role should not set a positive-lifetime cookie, got %#v", c)
+		}
+	}
+}
+
+func TestSetRole_RejectsWithoutCSRF_403(t *testing.T) {
+	t.Parallel()
+	r, _ := newWebRouter(t)
+
+	body := url.Values{"role": {string(middleware.RoleViewer)}}.Encode()
+	req := httptest.NewRequest(http.MethodPost, "/__set_role", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 (CSRF protection should kick in)", rec.Code)
+	}
+}
+
+func TestSetRole_AcceptedForAllRoles(t *testing.T) {
+	t.Parallel()
+	roles := []middleware.Role{
+		middleware.RoleSystemAdmin,
+		middleware.RoleDepartmentSecurityAdmin,
+		middleware.RoleLicenseManager,
+		middleware.RoleViewer,
+		middleware.RoleGeneralUser,
+	}
+	for _, role := range roles {
+		t.Run(string(role), func(t *testing.T) {
+			t.Parallel()
+			r, _ := newWebRouter(t)
+
+			req := handlertest.PostForm(t, "/__set_role", "", url.Values{
+				"role": {string(role)},
+			})
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusSeeOther {
+				t.Fatalf("status = %d, want 303 for role %q (body: %s)", rec.Code, role, rec.Body.String())
+			}
+		})
+	}
+}
