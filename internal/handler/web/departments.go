@@ -220,13 +220,20 @@ func (h *departmentHandlers) editForm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	pinned, err := resolvePinnedDepartments(r, q, parents, d.ParentID, d.SuccessorDepartmentID)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "resolve pinned departments", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 
 	h.renderForm(w, r, http.StatusOK, departmentview.FormProps{
-		Action:  "/departments/" + strconv.FormatInt(d.ID, 10),
-		Title:   "部署編集",
-		Submit:  "更新",
-		Input:   formInputFromDepartment(d),
-		Parents: parents,
+		Action:        "/departments/" + strconv.FormatInt(d.ID, 10),
+		Title:         "部署編集",
+		Submit:        "更新",
+		Input:         formInputFromDepartment(d),
+		Parents:       parents,
+		PinnedOptions: pinned,
 	})
 }
 
@@ -239,6 +246,12 @@ func (h *departmentHandlers) update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	in, parsed, errs := decodeDepartmentForm(r)
+	if parsed.ParentID != nil && *parsed.ParentID == id {
+		errs["parent_id"] = "自身を親に設定できません"
+	}
+	if parsed.SuccessorID != nil && *parsed.SuccessorID == id {
+		errs["successor_department_id"] = "自身を後継に設定できません"
+	}
 	q := repository.New(h.db)
 
 	if len(errs) > 0 {
@@ -247,13 +260,19 @@ func (h *departmentHandlers) update(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		pinned, pperr := resolvePinnedDepartments(r, q, parents, parsed.ParentID, parsed.SuccessorID)
+		if pperr != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 		h.renderForm(w, r, http.StatusBadRequest, departmentview.FormProps{
-			Action:  "/departments/" + strconv.FormatInt(id, 10),
-			Title:   "部署編集",
-			Submit:  "更新",
-			Input:   in,
-			Errors:  errs,
-			Parents: parents,
+			Action:        "/departments/" + strconv.FormatInt(id, 10),
+			Title:         "部署編集",
+			Submit:        "更新",
+			Input:         in,
+			Errors:        errs,
+			Parents:       parents,
+			PinnedOptions: pinned,
 		})
 		return
 	}
@@ -436,6 +455,37 @@ func formInputFromDepartment(d repository.Department) departmentview.FormInput {
 		out.ValidFrom = d.ValidFrom.Format("2006-01-02")
 	}
 	return out
+}
+
+// resolvePinnedDepartments は parents (現役) に含まれていない参照先を
+// 1 件ずつ fetch して PinnedOptions として返す。編集中レコードが既に
+// 廃止済みの parent / successor を指している場合に、その option を
+// 「(廃止)」付きで select に残すために使う。
+//
+// id が nil、もしくは既に parents 中に存在する、もしくは pinned で重複
+// する場合は何もしない。sql.ErrNoRows は無視する (整合性崩れの保護)。
+func resolvePinnedDepartments(r *http.Request, q *repository.Queries, parents []repository.Department, ids ...*int64) ([]repository.Department, error) {
+	activeIDs := make(map[int64]bool, len(parents))
+	for _, p := range parents {
+		activeIDs[p.ID] = true
+	}
+	seen := make(map[int64]bool)
+	var pinned []repository.Department
+	for _, idp := range ids {
+		if idp == nil || activeIDs[*idp] || seen[*idp] {
+			continue
+		}
+		d, err := q.GetDepartment(r.Context(), *idp)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return nil, err
+		}
+		pinned = append(pinned, d)
+		seen[*idp] = true
+	}
+	return pinned, nil
 }
 
 // lookupDepartment は *int64 が nil なら nil を返し、そうでなければ id で fetch する。

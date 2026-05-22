@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"testing"
 
 	"github.com/tagawa0525/app_man/internal/handler/handlertest"
@@ -462,6 +463,92 @@ func TestDepartments_Restore_GeneralUser_403(t *testing.T) {
 	r.ServeHTTP(rec, req)
 
 	handlertest.AssertStatus(t, rec, http.StatusForbidden)
+}
+
+func TestDepartments_Update_RejectsSelfAsParent(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
+		Code: "DEPT001",
+		Name: "営業本部",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	req := handlertest.PostForm(t, fmt.Sprintf("/departments/%d", d.ID), middleware.RoleLicenseManager, url.Values{
+		"code":      {d.Code},
+		"name":      {d.Name},
+		"parent_id": {strconv.FormatInt(d.ID, 10)},
+	})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body: %s)", rec.Code, rec.Body.String())
+	}
+	handlertest.AssertContains(t, rec, "自身を親")
+}
+
+func TestDepartments_Update_RejectsSelfAsSuccessor(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
+		Code: "DEPT001",
+		Name: "営業本部",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	req := handlertest.PostForm(t, fmt.Sprintf("/departments/%d", d.ID), middleware.RoleLicenseManager, url.Values{
+		"code":                    {d.Code},
+		"name":                    {d.Name},
+		"successor_department_id": {strconv.FormatInt(d.ID, 10)},
+	})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body: %s)", rec.Code, rec.Body.String())
+	}
+	handlertest.AssertContains(t, rec, "自身を後継")
+}
+
+func TestDepartments_EditForm_PinsInactiveParent(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	parent, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
+		Code: "DEPT-PARENT",
+		Name: "親部署",
+	})
+	if err != nil {
+		t.Fatalf("seed parent: %v", err)
+	}
+	child, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
+		Code:     "DEPT-CHILD",
+		Name:     "子部署",
+		ParentID: &parent.ID,
+	})
+	if err != nil {
+		t.Fatalf("seed child: %v", err)
+	}
+	// 親を廃止
+	if _, derr := q.SoftDeleteDepartment(context.Background(), parent.ID); derr != nil {
+		t.Fatalf("soft delete parent: %v", derr)
+	}
+
+	req := handlertest.NewRequest(t, http.MethodGet, fmt.Sprintf("/departments/%d/edit", child.ID), middleware.RoleLicenseManager, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusOK)
+	// 廃止親が「(廃止)」付きで select に残る
+	handlertest.AssertContains(t, rec, "DEPT-PARENT")
+	handlertest.AssertContains(t, rec, "(廃止)")
 }
 
 func TestDepartments_Update_RejectsDuplicateCode(t *testing.T) {
