@@ -258,6 +258,73 @@ func TestResetPassword_UserNotFound(t *testing.T) {
 	}
 }
 
+// TestCreateUser_DuplicateUsername は同じ username で 2 回 create すると
+// 2 回目が UNIQUE 制約違反でエラーになることを確認する。
+func TestCreateUser_DuplicateUsername(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := handlertest.NewTestDB(t)
+	ctx := context.Background()
+
+	opts := runOptions{username: "dup", role: "system_admin"}
+	if err := createUser(ctx, sqlDB, opts, "$2a$10$one"); err != nil {
+		t.Fatalf("first createUser: %v", err)
+	}
+	err := createUser(ctx, sqlDB, opts, "$2a$10$two")
+	if err == nil {
+		t.Fatal("second createUser with same username: want error, got nil")
+	}
+
+	// 失敗時は user_department_roles に余計な行が残らないこと (rollback 確認)
+	var roleCount int
+	row := sqlDB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM user_department_roles
+		   WHERE app_user_id IN (SELECT id FROM app_users WHERE username = 'dup')`)
+	if err := row.Scan(&roleCount); err != nil {
+		t.Fatalf("count roles: %v", err)
+	}
+	// 1 つ目の createUser が付けた 1 行のみが残るはず (2 回目は rollback で 0 行追加)
+	if roleCount != 1 {
+		t.Errorf("roles for dup user: want 1, got %d", roleCount)
+	}
+}
+
+func TestValidateFlags(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		opts    runOptions
+		wantErr bool
+	}{
+		{"system_admin OK", runOptions{username: "a", role: "system_admin"}, false},
+		{"license_manager with dept OK", runOptions{username: "a", role: "license_manager", departmentCode: "D"}, false},
+		{"reset OK", runOptions{username: "a", resetPassword: true}, false},
+
+		{"missing username", runOptions{role: "system_admin"}, true},
+		{"reset missing username", runOptions{resetPassword: true}, true},
+		{"unknown role", runOptions{username: "a", role: "wizard"}, true},
+		{"license_manager without dept", runOptions{username: "a", role: "license_manager"}, true},
+		{"viewer without dept", runOptions{username: "a", role: "viewer"}, true},
+		{"general_user without dept", runOptions{username: "a", role: "general_user"}, true},
+		{"create empty role", runOptions{username: "a"}, true},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateFlags(tc.opts)
+			if tc.wantErr && err == nil {
+				t.Errorf("validateFlags(%+v): want error, got nil", tc.opts)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("validateFlags(%+v): want nil, got %v", tc.opts, err)
+			}
+		})
+	}
+}
+
 // seedDepartment は active な部署を 1 件挿入して id を返すテスト用 helper。
 func seedDepartment(t *testing.T, sqlDB *sql.DB, code, name string) int64 {
 	t.Helper()

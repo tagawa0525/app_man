@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
 	"github.com/tagawa0525/app_man/internal/repository"
 )
 
@@ -17,6 +18,28 @@ type runOptions struct {
 	departmentCode string // create モード + system_admin 以外で必須
 	notifyEmail    string // create モードでのみ意味を持つ。空欄可
 	resetPassword  bool   // true なら reset モード、false なら create モード
+}
+
+// validateFlags は flag.Parse 後の opts に対する必須/排他チェック。
+// create / reset 両モードで username は必須。create モードでは role が
+// 有効値であること、system_admin 以外なら department-code が必須。
+func validateFlags(opts runOptions) error {
+	if opts.username == "" {
+		return errors.New("--username is required")
+	}
+	if opts.resetPassword {
+		return nil // reset モードでは role / department-code は不要
+	}
+	if opts.role == "" {
+		return errors.New("--role is required (create mode)")
+	}
+	if !middleware.IsValidRole(middleware.Role(opts.role)) {
+		return fmt.Errorf("invalid --role: %q (allowed: system_admin / department_security_admin / license_manager / viewer / general_user)", opts.role)
+	}
+	if opts.role != "system_admin" && opts.departmentCode == "" {
+		return fmt.Errorf("--department-code is required for role %q", opts.role)
+	}
+	return nil
 }
 
 // createUser は app_users INSERT と user_department_roles INSERT を
