@@ -159,7 +159,16 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 		return exitOK
 	}
 
-	if err := createUser(ctx, sqlDB, opts, passwordHash); err != nil {
+	// create モード: 部署解決を先に行い、ユーザ flag ミス (存在しない部署 /
+	// 廃止済み部署) を config エラー (exit 3) として扱う。INSERT 中の
+	// DB エラーは handler error (exit 1)。
+	departmentID, err := resolveDepartmentID(ctx, q, opts.role, opts.departmentCode)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "%s: %v\n", binaryName, err)
+		return exitConfigInvalid
+	}
+
+	if err := createUser(ctx, sqlDB, opts, passwordHash, departmentID); err != nil {
 		logger.Error("create user", slog.Any("error", err))
 		return exitHandlerError
 	}
@@ -207,18 +216,12 @@ func validateFlags(opts runOptions) error {
 // 付与されない状態) を防ぐため、tx 内で 2 件続けて書き込み、どちらかが
 // 失敗したら全件ロールバックする。
 //
-// 本関数は flag 検証・パスワード入力・lock 取得などはしない。それらは
-// 上位の run() が完了させ、ここには検証済みの opts と bcrypt 済み hash
-// だけが渡される前提。
-//
+// departmentID は呼び出し側で resolveDepartmentID 済みの値を渡す。
+// system_admin (全社) なら nil、それ以外なら DB 解決済みの id。
+// 本関数は flag 検証・パスワード入力・lock 取得・部署解決はしない。
 // 戻り値の error は app_users / user_department_roles INSERT のどちらか
 // に起因するエラーを wrap して返す。呼び出し側は exit code を決める。
-func createUser(ctx context.Context, sqlDB *sql.DB, opts runOptions, passwordHash string) error {
-	departmentID, err := resolveDepartmentID(ctx, repository.New(sqlDB), opts.role, opts.departmentCode)
-	if err != nil {
-		return err
-	}
-
+func createUser(ctx context.Context, sqlDB *sql.DB, opts runOptions, passwordHash string, departmentID *int64) error {
 	tx, err := sqlDB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)

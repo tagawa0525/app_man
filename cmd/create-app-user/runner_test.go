@@ -34,7 +34,7 @@ func TestCreateUser_SystemAdmin(t *testing.T) {
 	// ここでは「createUser が tx で 2 表に書き込む」ことだけ確認。
 	const passwordHash = "$2a$10$dummy.hash.for.test.only"
 
-	if err := createUser(ctx, sqlDB, opts, passwordHash); err != nil {
+	if err := createUser(ctx, sqlDB, opts, passwordHash, nil); err != nil {
 		t.Fatalf("createUser: %v", err)
 	}
 
@@ -126,7 +126,7 @@ func TestCreateUser_LicenseManager_WithDepartment(t *testing.T) {
 	}
 	const passwordHash = "$2a$10$dummy.hash"
 
-	if err := createUser(ctx, sqlDB, opts, passwordHash); err != nil {
+	if err := createUser(ctx, sqlDB, opts, passwordHash, &deptID); err != nil {
 		t.Fatalf("createUser: %v", err)
 	}
 
@@ -224,7 +224,7 @@ func TestResetPassword_OverwritesHash(t *testing.T) {
 		username: "admin",
 		role:     "system_admin",
 	}
-	if err := createUser(ctx, sqlDB, opts, "$2a$10$old.hash.value"); err != nil {
+	if err := createUser(ctx, sqlDB, opts, "$2a$10$old.hash.value", nil); err != nil {
 		t.Fatalf("seed createUser: %v", err)
 	}
 
@@ -271,10 +271,10 @@ func TestCreateUser_DuplicateUsername(t *testing.T) {
 	ctx := context.Background()
 
 	opts := runOptions{username: "dup", role: "system_admin"}
-	if err := createUser(ctx, sqlDB, opts, "$2a$10$one"); err != nil {
+	if err := createUser(ctx, sqlDB, opts, "$2a$10$one", nil); err != nil {
 		t.Fatalf("first createUser: %v", err)
 	}
-	err := createUser(ctx, sqlDB, opts, "$2a$10$two")
+	err := createUser(ctx, sqlDB, opts, "$2a$10$two", nil)
 	if err == nil {
 		t.Fatal("second createUser with same username: want error, got nil")
 	}
