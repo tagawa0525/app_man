@@ -26,16 +26,6 @@ func (DevicesImporter) HeaderColumns() []string {
 func (DevicesImporter) Validate(ctx context.Context, q *repository.Queries, rows []Row) []ValidationError {
 	var errs []ValidationError
 
-	// DB 既存 asset_code
-	existing := map[string]struct{}{}
-	ds, err := q.ListDevicesIncludingInactive(ctx)
-	if err != nil {
-		return []ValidationError{{Line: 0, Column: "", Message: "list devices: " + err.Error()}}
-	}
-	for _, d := range ds {
-		existing[d.AssetCode] = struct{}{}
-	}
-
 	seen := map[string]int{}
 
 	for _, r := range rows {
@@ -47,8 +37,16 @@ func (DevicesImporter) Validate(ctx context.Context, q *repository.Queries, rows
 			errs = append(errs, ValidationError{Line: r.Line, Column: "asset_code", Message: "資産コードは必須です"})
 		}
 		if code != "" {
-			if _, ok := existing[code]; ok {
+			// DB 既存重複は GetDeviceByAssetCode で 1 件ずつ確認
+			// (ListDevicesIncludingInactive は LIMIT 200 で取りこぼすため)。
+			_, err := q.GetDeviceByAssetCode(ctx, code)
+			switch {
+			case err == nil:
 				errs = append(errs, ValidationError{Line: r.Line, Column: "asset_code", Message: "DB に既に登録されています: " + code})
+			case errors.Is(err, sql.ErrNoRows):
+				// 未登録 — OK
+			default:
+				errs = append(errs, ValidationError{Line: r.Line, Column: "asset_code", Message: "lookup error: " + err.Error()})
 			}
 			if prev, ok := seen[code]; ok {
 				errs = append(errs, ValidationError{Line: r.Line, Column: "asset_code", Message: "CSV 内で重複しています (line " + itoa(prev) + ")"})
