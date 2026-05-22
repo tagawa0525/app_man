@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/tagawa0525/app_man/internal/handler/handlertest"
@@ -146,6 +147,160 @@ func TestUsers_Search_MatchesEmployeeCode(t *testing.T) {
 	if body := rec.Body.String(); contains(body, "X999") {
 		t.Errorf("search E001 should not match X999, body=\n%s", body)
 	}
+}
+
+func TestUsers_List_ExcludesInactive_ByDefault(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	if _, err := q.CreateUser(context.Background(), repository.CreateUserParams{
+		EmployeeCode: "E001",
+		Name:         "現役社員",
+	}); err != nil {
+		t.Fatalf("seed active: %v", err)
+	}
+	retired, err := q.CreateUser(context.Background(), repository.CreateUserParams{
+		EmployeeCode: "E002",
+		Name:         "退職者A",
+	})
+	if err != nil {
+		t.Fatalf("seed retired: %v", err)
+	}
+	if _, err := q.SoftDeleteUser(context.Background(), retired.ID); err != nil {
+		t.Fatalf("soft delete: %v", err)
+	}
+
+	req := handlertest.NewRequest(t, http.MethodGet, "/users", middleware.RoleViewer, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusOK)
+	handlertest.AssertContains(t, rec, "E001")
+	if body := rec.Body.String(); contains(body, "E002") {
+		t.Errorf("default list should not show retired user, body=\n%s", body)
+	}
+}
+
+func TestUsers_List_IncludesInactive_WithQueryParam(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	if _, err := q.CreateUser(context.Background(), repository.CreateUserParams{
+		EmployeeCode: "E001",
+		Name:         "現役社員",
+	}); err != nil {
+		t.Fatalf("seed active: %v", err)
+	}
+	retired, err := q.CreateUser(context.Background(), repository.CreateUserParams{
+		EmployeeCode: "E002",
+		Name:         "退職者A",
+	})
+	if err != nil {
+		t.Fatalf("seed retired: %v", err)
+	}
+	if _, err := q.SoftDeleteUser(context.Background(), retired.ID); err != nil {
+		t.Fatalf("soft delete: %v", err)
+	}
+
+	req := handlertest.NewRequest(t, http.MethodGet, "/users?include_inactive=1", middleware.RoleViewer, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusOK)
+	handlertest.AssertContains(t, rec, "E001")
+	handlertest.AssertContains(t, rec, "E002")
+	handlertest.AssertContains(t, rec, "退職")
+	handlertest.AssertContains(t, rec, "row-inactive")
+}
+
+func TestUsers_List_IncludeInactiveCheckbox_Rendered(t *testing.T) {
+	t.Parallel()
+	r, _ := newWebRouter(t)
+
+	req := handlertest.NewRequest(t, http.MethodGet, "/users", middleware.RoleViewer, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusOK)
+	handlertest.AssertContains(t, rec, `name="include_inactive"`)
+}
+
+func TestUsers_Search_ExcludesInactive_ByDefault(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	if _, err := q.CreateUser(context.Background(), repository.CreateUserParams{
+		EmployeeCode: "E001",
+		Name:         "現役社員",
+	}); err != nil {
+		t.Fatalf("seed active: %v", err)
+	}
+	retired, err := q.CreateUser(context.Background(), repository.CreateUserParams{
+		EmployeeCode: "E002",
+		Name:         "退職者E",
+	})
+	if err != nil {
+		t.Fatalf("seed retired: %v", err)
+	}
+	if _, err := q.SoftDeleteUser(context.Background(), retired.ID); err != nil {
+		t.Fatalf("soft delete: %v", err)
+	}
+
+	req := handlertest.NewRequest(t, http.MethodGet, "/users?q=E0", middleware.RoleViewer, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusOK)
+	handlertest.AssertContains(t, rec, "E001")
+	if body := rec.Body.String(); contains(body, "E002") {
+		t.Errorf("default search should not show retired user, body=\n%s", body)
+	}
+}
+
+func TestUsers_Search_IncludesInactive_WithQueryParam(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	retired, err := q.CreateUser(context.Background(), repository.CreateUserParams{
+		EmployeeCode: "E002",
+		Name:         "退職者E",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := q.SoftDeleteUser(context.Background(), retired.ID); err != nil {
+		t.Fatalf("soft delete: %v", err)
+	}
+
+	req := handlertest.NewRequest(t, http.MethodGet, "/users?q=E002&include_inactive=1", middleware.RoleViewer, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusOK)
+	handlertest.AssertContains(t, rec, "E002")
+}
+
+func TestUsers_Show_RetiredBadgeShown(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	u, err := q.CreateUser(context.Background(), repository.CreateUserParams{
+		EmployeeCode: "E001",
+		Name:         "田川太郎",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := q.SoftDeleteUser(context.Background(), u.ID); err != nil {
+		t.Fatalf("soft delete: %v", err)
+	}
+
+	req := handlertest.NewRequest(t, http.MethodGet, "/users/"+strconv.FormatInt(u.ID, 10), middleware.RoleViewer, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusOK)
+	handlertest.AssertContains(t, rec, "退職")
 }
 
 func TestUsers_Search_MatchesEmail(t *testing.T) {
