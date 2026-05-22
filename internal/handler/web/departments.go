@@ -173,20 +173,21 @@ func (h *departmentHandlers) show(w http.ResponseWriter, r *http.Request) {
 	}
 
 	props := departmentview.ShowProps{Department: d, Children: children}
-	if parent, perr := lookupDepartment(r, q, d.ParentID); perr != nil {
+	parent, perr := lookupDepartment(r, q, d.ParentID)
+	if perr != nil {
 		h.logger.ErrorContext(r.Context(), "lookup parent department", "err", perr)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
-	} else {
-		props.Parent = parent
 	}
-	if successor, serr := lookupDepartment(r, q, d.SuccessorDepartmentID); serr != nil {
+	props.Parent = parent
+
+	successor, serr := lookupDepartment(r, q, d.SuccessorDepartmentID)
+	if serr != nil {
 		h.logger.ErrorContext(r.Context(), "lookup successor department", "err", serr)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
-	} else {
-		props.Successor = successor
 	}
+	props.Successor = successor
 
 	role := middleware.RoleFrom(r.Context())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
