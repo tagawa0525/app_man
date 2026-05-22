@@ -17,7 +17,7 @@ import (
 //   - note 任意
 type VendorsImporter struct{}
 
-func (VendorsImporter) Kind() string             { return "vendors" }
+func (VendorsImporter) Kind() string            { return "vendors" }
 func (VendorsImporter) HeaderColumns() []string { return []string{"name", "url", "note"} }
 
 func (VendorsImporter) Validate(ctx context.Context, q *repository.Queries, rows []Row) []ValidationError {

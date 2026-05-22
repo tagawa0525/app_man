@@ -71,13 +71,13 @@ func Run(ctx context.Context, db *sql.DB, csvPath string, importer Importer, dry
 	verrs := importer.Validate(ctx, q, rows)
 	if len(verrs) > 0 {
 		for _, e := range verrs {
-			fmt.Fprintf(out, "line %d, column %s: %s\n", e.Line, e.Column, e.Message)
+			_, _ = fmt.Fprintf(out, "line %d, column %s: %s\n", e.Line, e.Column, e.Message)
 		}
 		return fmt.Errorf("%d validation error(s)", len(verrs))
 	}
 
 	if dryRun {
-		fmt.Fprintf(out, "%d 行検証 OK、commit しません\n", len(rows))
+		_, _ = fmt.Fprintf(out, "%d 行検証 OK、commit しません\n", len(rows))
 		return nil
 	}
 
@@ -99,7 +99,7 @@ func Run(ctx context.Context, db *sql.DB, csvPath string, importer Importer, dry
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}
-	fmt.Fprintf(out, "%d 行投入\n", n)
+	_, _ = fmt.Fprintf(out, "%d 行投入\n", n)
 	return nil
 }
 

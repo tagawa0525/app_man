@@ -60,30 +60,30 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return exitConfigInvalid
 	}
 	if *kind == "" || *file == "" {
-		fmt.Fprintln(stderr, "--kind and --file are required")
+		_, _ = fmt.Fprintln(stderr, "--kind and --file are required")
 		return exitConfigInvalid
 	}
 
 	importer, ok := importerByKind(*kind)
 	if !ok {
-		fmt.Fprintf(stderr, "unknown kind: %s\n", *kind)
+		_, _ = fmt.Fprintf(stderr, "unknown kind: %s\n", *kind)
 		return exitConfigInvalid
 	}
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: load config: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stderr, "%s: load config: %v\n", binaryName, err)
 		return exitConfigInvalid
 	}
 
 	logger, closeLog, err := applog.New(cfg.Logging, binaryName)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: init logger: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stderr, "%s: init logger: %v\n", binaryName, err)
 		return exitConfigInvalid
 	}
 	defer func() {
 		if cerr := closeLog(); cerr != nil {
-			fmt.Fprintf(stderr, "%s: close log: %v\n", binaryName, cerr)
+			_, _ = fmt.Fprintf(stderr, "%s: close log: %v\n", binaryName, cerr)
 		}
 	}()
 

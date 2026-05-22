@@ -23,7 +23,7 @@ type fakeImporter struct {
 	insertCalled   int
 }
 
-func (f *fakeImporter) Kind() string           { return f.kind }
+func (f *fakeImporter) Kind() string            { return f.kind }
 func (f *fakeImporter) HeaderColumns() []string { return f.header }
 func (f *fakeImporter) Validate(_ context.Context, _ *repository.Queries, _ []bootstrap.Row) []bootstrap.ValidationError {
 	return f.validateErrors
