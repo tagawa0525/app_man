@@ -43,13 +43,21 @@ func (q *Queries) CreateAlias(ctx context.Context, arg CreateAliasParams) (Produ
 	return i, err
 }
 
-const deleteAlias = `-- name: DeleteAlias :exec
-DELETE FROM product_aliases WHERE id = ?
+const deleteAlias = `-- name: DeleteAlias :execrows
+DELETE FROM product_aliases WHERE id = ? AND product_id = ?
 `
 
-func (q *Queries) DeleteAlias(ctx context.Context, id int64) error {
-	_, err := q.db.ExecContext(ctx, deleteAlias, id)
-	return err
+type DeleteAliasParams struct {
+	ID        int64
+	ProductID int64
+}
+
+func (q *Queries) DeleteAlias(ctx context.Context, arg DeleteAliasParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteAlias, arg.ID, arg.ProductID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const listAliasesByProduct = `-- name: ListAliasesByProduct :many

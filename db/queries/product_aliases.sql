@@ -24,5 +24,5 @@ RETURNING
   source,
   created_at;
 
--- name: DeleteAlias :exec
-DELETE FROM product_aliases WHERE id = ?;
+-- name: DeleteAlias :execrows
+DELETE FROM product_aliases WHERE id = ? AND product_id = ?;

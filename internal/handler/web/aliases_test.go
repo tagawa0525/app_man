@@ -80,6 +80,38 @@ func TestAliases_Create_GeneralUser_403(t *testing.T) {
 	handlertest.AssertStatus(t, rec, http.StatusForbidden)
 }
 
+// 別 product 配下の alias の ID を推測して /products/{他のID}/aliases/{aid}/delete
+// に POST しても 404 になり削除されないこと。
+func TestAliases_Delete_BlocksCrossProduct(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+	v := seedVendor(t, q, "Adobe")
+	p1 := seedProduct(t, q, v.ID, "Acrobat")
+	p2 := seedProduct(t, q, v.ID, "Photoshop")
+	a, err := q.CreateAlias(context.Background(), repository.CreateAliasParams{
+		ProductID: p1.ID,
+		AliasName: "Acrobat DC",
+	})
+	if err != nil {
+		t.Fatalf("seed CreateAlias: %v", err)
+	}
+
+	// p2 の URL に p1 配下の alias ID を渡してみる。
+	req := handlertest.PostForm(t, fmt.Sprintf("/products/%d/aliases/%d/delete", p2.ID, a.ID), middleware.RoleLicenseManager, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusNotFound)
+
+	aliases, err := q.ListAliasesByProduct(context.Background(), p1.ID)
+	if err != nil {
+		t.Fatalf("ListAliasesByProduct: %v", err)
+	}
+	if len(aliases) != 1 {
+		t.Errorf("alias should remain on p1, got %d", len(aliases))
+	}
+}
+
 func TestAliases_Delete_RemovesRow(t *testing.T) {
 	t.Parallel()
 	r, q := newWebRouter(t)

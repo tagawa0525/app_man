@@ -247,6 +247,9 @@ func (h *productHandlers) aliasCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 // aliasDelete は POST /products/:id/aliases/:aid/delete。
+// URL の {id} (product) と {aid} (alias) が一致しなければ何も削除せず 404。
+// 別製品の alias の ID を推測して URL を組み立てても削除できないようにする
+// ため、DeleteAlias は WHERE id = ? AND product_id = ? で守る。
 func (h *productHandlers) aliasDelete(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseInt64Param(r, "id")
 	if !ok {
@@ -259,9 +262,17 @@ func (h *productHandlers) aliasDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := repository.New(h.db)
-	if err := q.DeleteAlias(r.Context(), aid); err != nil {
+	affected, err := q.DeleteAlias(r.Context(), repository.DeleteAliasParams{
+		ID:        aid,
+		ProductID: id,
+	})
+	if err != nil {
 		h.logger.ErrorContext(r.Context(), "delete alias", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if affected == 0 {
+		http.NotFound(w, r)
 		return
 	}
 	http.Redirect(w, r, "/products/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
