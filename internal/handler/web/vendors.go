@@ -56,15 +56,241 @@ func (h *vendorHandlers) list(w http.ResponseWriter, r *http.Request) {
 
 // newForm は GET /vendors/new の新規作成フォームを返す。
 func (h *vendorHandlers) newForm(w http.ResponseWriter, r *http.Request) {
-	h.renderForm(w, r, vendorview.FormProps{
+	h.renderForm(w, r, http.StatusOK, vendorview.FormProps{
 		Action: "/vendors",
 		Title:  "ベンダー新規作成",
 		Submit: "作成",
 	})
 }
 
-func (h *vendorHandlers) renderForm(w http.ResponseWriter, r *http.Request, props vendorview.FormProps) {
+// create は POST /vendors の新規作成。検証エラー時は 400/409 で
+// 同じフォームを再表示する。成功時は 303 で /vendors/:id へ。
+func (h *vendorHandlers) create(w http.ResponseWriter, r *http.Request) {
+	input, errs := decodeVendorForm(r)
+	if len(errs) > 0 {
+		h.renderForm(w, r, http.StatusBadRequest, vendorview.FormProps{
+			Action: "/vendors",
+			Title:  "ベンダー新規作成",
+			Submit: "作成",
+			Input:  input,
+			Errors: errs,
+		})
+		return
+	}
+
+	q := repository.New(h.db)
+	v, err := q.CreateVendor(r.Context(), repository.CreateVendorParams{
+		Name: input.Name,
+		Url:  nilIfEmpty(input.URL),
+		Note: nilIfEmpty(input.Note),
+	})
+	if err != nil {
+		if isUniqueConstraintErr(err) {
+			h.renderForm(w, r, http.StatusConflict, vendorview.FormProps{
+				Action: "/vendors",
+				Title:  "ベンダー新規作成",
+				Submit: "作成",
+				Input:  input,
+				Errors: map[string]string{"name": "同じ名前のベンダーが既に存在します"},
+			})
+			return
+		}
+		h.logger.ErrorContext(r.Context(), "create vendor", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/vendors/"+strconv.FormatInt(v.ID, 10), http.StatusSeeOther)
+}
+
+// show は GET /vendors/:id の詳細 + 配下 product 一覧を返す。
+func (h *vendorHandlers) show(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseInt64Param(r, "id")
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	q := repository.New(h.db)
+	v, err := q.GetVendor(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		h.logger.ErrorContext(r.Context(), "get vendor", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	products, err := q.ListProductsByVendor(r.Context(), id)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "list products by vendor", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	role := middleware.RoleFrom(r.Context())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := vendorview.Show(role, vendorview.ShowProps{
+		Vendor:   v,
+		Products: products,
+	}).Render(r.Context(), w); err != nil {
+		h.logger.ErrorContext(r.Context(), "render vendor show", "err", err)
+	}
+}
+
+// editForm は GET /vendors/:id/edit の編集フォームを返す。
+func (h *vendorHandlers) editForm(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseInt64Param(r, "id")
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	q := repository.New(h.db)
+	v, err := q.GetVendor(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		h.logger.ErrorContext(r.Context(), "get vendor for edit", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	h.renderForm(w, r, http.StatusOK, vendorview.FormProps{
+		Action: "/vendors/" + strconv.FormatInt(v.ID, 10),
+		Title:  "ベンダー編集",
+		Submit: "更新",
+		Input: vendorview.FormInput{
+			Name: v.Name,
+			URL:  derefString(v.Url),
+			Note: derefString(v.Note),
+		},
+	})
+}
+
+// update は POST /vendors/:id の更新。
+func (h *vendorHandlers) update(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseInt64Param(r, "id")
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	input, errs := decodeVendorForm(r)
+	formProps := vendorview.FormProps{
+		Action: "/vendors/" + strconv.FormatInt(id, 10),
+		Title:  "ベンダー編集",
+		Submit: "更新",
+		Input:  input,
+		Errors: errs,
+	}
+	if len(errs) > 0 {
+		h.renderForm(w, r, http.StatusBadRequest, formProps)
+		return
+	}
+
+	q := repository.New(h.db)
+	if _, err := q.UpdateVendor(r.Context(), repository.UpdateVendorParams{
+		Name: input.Name,
+		Url:  nilIfEmpty(input.URL),
+		Note: nilIfEmpty(input.Note),
+		ID:   id,
+	}); err != nil {
+		if isUniqueConstraintErr(err) {
+			formProps.Errors = map[string]string{"name": "同じ名前のベンダーが既に存在します"}
+			h.renderForm(w, r, http.StatusConflict, formProps)
+			return
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		h.logger.ErrorContext(r.Context(), "update vendor", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/vendors/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+}
+
+// delete は POST /vendors/:id/delete。配下に product があれば 409。
+func (h *vendorHandlers) delete(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseInt64Param(r, "id")
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	q := repository.New(h.db)
+	count, err := q.CountProductsByVendor(r.Context(), id)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "count products by vendor", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if count > 0 {
+		v, gerr := q.GetVendor(r.Context(), id)
+		if gerr != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		products, perr := q.ListProductsByVendor(r.Context(), id)
+		if perr != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		role := middleware.RoleFrom(r.Context())
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusConflict)
+		if rerr := vendorview.Show(role, vendorview.ShowProps{
+			Vendor:   v,
+			Products: products,
+			Flash:    "配下に製品が紐づいているため削除できません。先に製品を削除または別ベンダーへ付け替えてください。",
+		}).Render(r.Context(), w); rerr != nil {
+			h.logger.ErrorContext(r.Context(), "render vendor show on conflict", "err", rerr)
+		}
+		return
+	}
+
+	if err := q.DeleteVendor(r.Context(), id); err != nil {
+		h.logger.ErrorContext(r.Context(), "delete vendor", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/vendors", http.StatusSeeOther)
+}
+
+// decodeVendorForm は POST フォームから入力を取り出し、必須項目を検証する。
+// 戻り値 errs はフィールド名 → メッセージのマップ。空ならエラー無し。
+func decodeVendorForm(r *http.Request) (vendorview.FormInput, map[string]string) {
+	_ = r.ParseForm()
+	in := vendorview.FormInput{
+		Name: strings.TrimSpace(r.PostFormValue("name")),
+		URL:  strings.TrimSpace(r.PostFormValue("url")),
+		Note: r.PostFormValue("note"),
+	}
+	errs := map[string]string{}
+	if in.Name == "" {
+		errs["name"] = "名前は必須です"
+	}
+	return in, errs
+}
+
+// derefString は *string を string にする (nil なら空文字)。
+func derefString(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+func (h *vendorHandlers) renderForm(w http.ResponseWriter, r *http.Request, status int, props vendorview.FormProps) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if status != http.StatusOK {
+		w.WriteHeader(status)
+	}
 	role := middleware.RoleFrom(r.Context())
 	if err := vendorview.Form(role, props).Render(r.Context(), w); err != nil {
 		h.logger.ErrorContext(r.Context(), "render vendors form", "err", err)

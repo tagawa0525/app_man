@@ -47,8 +47,13 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 
 	r.With(mw.RequireRole(viewers...)).Group(func(r chi.Router) {
 		r.Get("/vendors", v.list)
+		r.Get("/vendors/{id}", v.show)
 	})
 	r.With(mw.RequireRole(editors...)).Group(func(r chi.Router) {
 		r.Get("/vendors/new", v.newForm)
+		r.Post("/vendors", v.create)
+		r.Get("/vendors/{id}/edit", v.editForm)
+		r.Post("/vendors/{id}", v.update)
+		r.Post("/vendors/{id}/delete", v.delete)
 	})
 }
