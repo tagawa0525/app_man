@@ -289,6 +289,87 @@ func (h *departmentHandlers) update(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/departments/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
 }
 
+// delete は POST /departments/:id/delete の論理削除 (valid_to を立てる)。
+// 既に廃止済みなら 409 + flash 付きで show を再描画する。
+func (h *departmentHandlers) delete(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseInt64Param(r, "id")
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	q := repository.New(h.db)
+	affected, err := q.SoftDeleteDepartment(r.Context(), id)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "soft delete department", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if affected == 0 {
+		// id が存在しないなら 404、廃止済みなら 409。
+		if _, gerr := q.GetDepartment(r.Context(), id); errors.Is(gerr, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		h.showWithFlash(w, r, id, http.StatusConflict, "この部署は既に廃止されています。")
+		return
+	}
+	http.Redirect(w, r, "/departments/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+}
+
+// restore は POST /departments/:id/restore の論理削除取り消し
+// (valid_to を NULL に戻す)。既に現役なら 409 + flash 付き再描画。
+func (h *departmentHandlers) restore(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseInt64Param(r, "id")
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	q := repository.New(h.db)
+	affected, err := q.RestoreDepartment(r.Context(), id)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "restore department", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if affected == 0 {
+		if _, gerr := q.GetDepartment(r.Context(), id); errors.Is(gerr, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		h.showWithFlash(w, r, id, http.StatusConflict, "この部署は既に現役です。")
+		return
+	}
+	http.Redirect(w, r, "/departments/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+}
+
+// showWithFlash は status を付けて show templ を再描画する (409 用)。
+func (h *departmentHandlers) showWithFlash(w http.ResponseWriter, r *http.Request, id int64, status int, flash string) {
+	q := repository.New(h.db)
+	d, err := q.GetDepartment(r.Context(), id)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	children, err := q.ListChildDepartments(r.Context(), &id)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	props := departmentview.ShowProps{Department: d, Children: children, Flash: flash}
+	if parent, perr := lookupDepartment(r, q, d.ParentID); perr == nil {
+		props.Parent = parent
+	}
+	if successor, serr := lookupDepartment(r, q, d.SuccessorDepartmentID); serr == nil {
+		props.Successor = successor
+	}
+	role := middleware.RoleFrom(r.Context())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if err := departmentview.Show(role, props).Render(r.Context(), w); err != nil {
+		h.logger.ErrorContext(r.Context(), "render department show on conflict", "err", err)
+	}
+}
+
 // departmentParsed は decodeDepartmentForm がパースした sqlc 用パラメータ。
 type departmentParsed struct {
 	Code        string
