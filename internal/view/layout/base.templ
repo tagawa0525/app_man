@@ -27,7 +27,7 @@ templ Base(p BaseProps) {
 			<script src="/static/htmx.min.js"></script>
 		</head>
 		<body hx-headers={ `{"X-CSRF-Token":"` + p.CSRFToken + `"}` }>
-			@Nav(p.Role)
+			@Nav(p.Role, p.CSRFToken)
 			<main>
 				if p.Flash != "" {
 					<div class="flash">{ p.Flash }</div>
@@ -46,7 +46,11 @@ templ Base(p BaseProps) {
 //
 // role 切替は dev 用のフォームで POST /__set_role に送る。フェーズ 3
 // 認証実装時に削除 / act-as へ転用のどちらかを再判断する。
-templ Nav(role middleware.Role) {
+//
+// csrfToken は呼び出し側 (Base) から props として受け取る (DummyCSRFToken
+// を直接参照しない)。フェーズ 3 で session-bound トークンに差し替える際に
+// テンプレ本体を触らずに済むよう、Base 側の方針と揃える。
+templ Nav(role middleware.Role, csrfToken string) {
 	<nav class="appbar">
 		<span class="brand">社内アプリ管理</span>
 		<ul class="appbar-menu">
@@ -57,7 +61,7 @@ templ Nav(role middleware.Role) {
 			<li><a href="/devices">端末</a></li>
 		</ul>
 		<form class="role-switcher" method="post" action="/__set_role">
-			@CSRFInput(middleware.DummyCSRFToken)
+			@CSRFInput(csrfToken)
 			<label for="role-select">role:</label>
 			<select id="role-select" name="role" onchange="this.form.submit()">
 				@roleOption(role, middleware.RoleSystemAdmin)
