@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"errors"
+	"strings"
 	"testing"
 
+	"github.com/tagawa0525/app_man/internal/auth"
 	"github.com/tagawa0525/app_man/internal/handler/handlertest"
 	"github.com/tagawa0525/app_man/internal/repository"
 )
@@ -322,6 +326,96 @@ func TestValidateFlags(t *testing.T) {
 				t.Errorf("validateFlags(%+v): want nil, got %v", tc.opts, err)
 			}
 		})
+	}
+}
+
+func TestReadPassword_FromEnv(t *testing.T) {
+	t.Parallel()
+
+	stdin := &bytes.Buffer{} // env が優先されるので使われない
+	stdout := &bytes.Buffer{}
+	getenv := func(k string) string {
+		if k == "APPMGR_INITIAL_PASSWORD" {
+			return "FromEnvPass1"
+		}
+		return ""
+	}
+
+	pw, err := readPassword(stdin, stdout, getenv)
+	if err != nil {
+		t.Fatalf("readPassword: %v", err)
+	}
+	if pw != "FromEnvPass1" {
+		t.Errorf("password: want FromEnvPass1, got %q", pw)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("env mode should not print prompt, got: %q", stdout.String())
+	}
+}
+
+func TestReadPassword_EnvTooShort(t *testing.T) {
+	t.Parallel()
+
+	getenv := func(k string) string {
+		if k == "APPMGR_INITIAL_PASSWORD" {
+			return "short" // 5 文字、MinPasswordLength=8 未満
+		}
+		return ""
+	}
+
+	_, err := readPassword(&bytes.Buffer{}, &bytes.Buffer{}, getenv)
+	if !errors.Is(err, auth.ErrPasswordTooShort) {
+		t.Fatalf("readPassword too-short env: want ErrPasswordTooShort, got %v", err)
+	}
+}
+
+func TestReadPassword_FromStdinBuffer(t *testing.T) {
+	t.Parallel()
+
+	// stdin が *os.File でない場合 (テスト = bytes.Buffer) は
+	// プロンプト 2 回 + 1 行ずつ読みで一致確認する設計。
+	stdin := strings.NewReader("MyTestPass1\nMyTestPass1\n")
+	stdout := &bytes.Buffer{}
+	getenv := func(string) string { return "" } // env 未設定 → stdin 経路
+
+	pw, err := readPassword(stdin, stdout, getenv)
+	if err != nil {
+		t.Fatalf("readPassword: %v", err)
+	}
+	if pw != "MyTestPass1" {
+		t.Errorf("password: want MyTestPass1, got %q", pw)
+	}
+
+	// プロンプトが 2 回出ているはず (Password: / Password (again):)
+	if got := stdout.String(); !strings.Contains(got, "Password:") || !strings.Contains(got, "again") {
+		t.Errorf("prompts not shown twice, got: %q", got)
+	}
+}
+
+func TestReadPassword_StdinMismatch(t *testing.T) {
+	t.Parallel()
+
+	stdin := strings.NewReader("MyTestPass1\nDifferent2\n")
+	getenv := func(string) string { return "" }
+
+	_, err := readPassword(stdin, &bytes.Buffer{}, getenv)
+	if err == nil {
+		t.Fatal("readPassword mismatch: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "match") && !strings.Contains(err.Error(), "mismatch") {
+		t.Errorf("expected mismatch error, got: %v", err)
+	}
+}
+
+func TestReadPassword_StdinTooShort(t *testing.T) {
+	t.Parallel()
+
+	stdin := strings.NewReader("abc\nabc\n")
+	getenv := func(string) string { return "" }
+
+	_, err := readPassword(stdin, &bytes.Buffer{}, getenv)
+	if !errors.Is(err, auth.ErrPasswordTooShort) {
+		t.Fatalf("readPassword stdin too-short: want ErrPasswordTooShort, got %v", err)
 	}
 }
 

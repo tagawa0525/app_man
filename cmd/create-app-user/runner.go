@@ -1,14 +1,24 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 
+	"golang.org/x/term"
+
+	"github.com/tagawa0525/app_man/internal/auth"
 	"github.com/tagawa0525/app_man/internal/handler/middleware"
 	"github.com/tagawa0525/app_man/internal/repository"
 )
+
+// envInitialPassword は readPassword が優先的に読む環境変数名。
+// CI / docker などスクリプト経由で再現可能な投入経路として用意する。
+const envInitialPassword = "APPMGR_INITIAL_PASSWORD"
 
 // runOptions は CLI flag を解釈した後の正規化済み引数。
 type runOptions struct {
@@ -140,6 +150,85 @@ func resetPassword(ctx context.Context, sqlDB *sql.DB, username, passwordHash st
 		return fmt.Errorf("user not found: %s", username)
 	}
 	return nil
+}
+
+// readPassword は env → stdin プロンプトの順でパスワードを取得する。
+//
+//   - envInitialPassword が設定されていればその値を採用 (プロンプト省略)
+//   - 未設定で stdin が *os.File かつ TTY なら term.ReadPassword で
+//     エコー抑制し、確認のため 2 回入力させて一致確認
+//   - 未設定で stdin が *os.File かつ非 TTY (パイプ) ならエラー
+//     (空入力でアカウント作成を防ぐ)
+//   - 未設定で stdin が *os.File でない (テストの bytes.Buffer 等) は
+//     bufio.Scanner で 1 行ずつ読んで 2 回一致確認 (テスト容易性のため)
+//
+// いずれの経路でも MinPasswordLength 未満なら auth.ErrPasswordTooShort。
+func readPassword(stdin io.Reader, stdout io.Writer, getenv func(string) string) (string, error) {
+	if pw := getenv(envInitialPassword); pw != "" {
+		if len(pw) < auth.MinPasswordLength {
+			return "", auth.ErrPasswordTooShort
+		}
+		return pw, nil
+	}
+
+	// stdin が TTY な *os.File なら term.ReadPassword でエコー抑制
+	if f, ok := stdin.(*os.File); ok {
+		if term.IsTerminal(int(f.Fd())) {
+			return readPasswordFromTerm(f, stdout)
+		}
+		// 非 TTY (パイプ・リダイレクト) で env も未設定 → エラー
+		return "", fmt.Errorf("set %s env or run from a TTY (stdin is not a terminal)", envInitialPassword)
+	}
+
+	// テスト等の non-File stdin: bufio.Scanner で 2 回読み
+	return readPasswordFromScanner(stdin, stdout)
+}
+
+func readPasswordFromTerm(f *os.File, stdout io.Writer) (string, error) {
+	_, _ = fmt.Fprint(stdout, "Password: ")
+	first, err := term.ReadPassword(int(f.Fd()))
+	_, _ = fmt.Fprintln(stdout) // 改行 (ReadPassword は echo しない)
+	if err != nil {
+		return "", fmt.Errorf("read password: %w", err)
+	}
+	_, _ = fmt.Fprint(stdout, "Password (again): ")
+	second, err := term.ReadPassword(int(f.Fd()))
+	_, _ = fmt.Fprintln(stdout)
+	if err != nil {
+		return "", fmt.Errorf("read password (again): %w", err)
+	}
+	return finalizePassword(string(first), string(second))
+}
+
+func readPasswordFromScanner(stdin io.Reader, stdout io.Writer) (string, error) {
+	scanner := bufio.NewScanner(stdin)
+	_, _ = fmt.Fprint(stdout, "Password: ")
+	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return "", fmt.Errorf("read password: %w", err)
+		}
+		return "", errors.New("read password: empty input")
+	}
+	first := scanner.Text()
+	_, _ = fmt.Fprint(stdout, "Password (again): ")
+	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return "", fmt.Errorf("read password (again): %w", err)
+		}
+		return "", errors.New("read password (again): empty input")
+	}
+	second := scanner.Text()
+	return finalizePassword(first, second)
+}
+
+func finalizePassword(first, second string) (string, error) {
+	if first != second {
+		return "", errors.New("passwords do not match")
+	}
+	if len(first) < auth.MinPasswordLength {
+		return "", auth.ErrPasswordTooShort
+	}
+	return first, nil
 }
 
 // nullableString は空文字を NULL (= nil) として扱うヘルパ。
