@@ -273,6 +273,197 @@ func TestDepartments_Update_RewritesFields(t *testing.T) {
 	}
 }
 
+func TestDepartments_Delete_SetsValidTo(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
+		Code: "DEPT001",
+		Name: "営業本部",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	req := handlertest.PostForm(t, fmt.Sprintf("/departments/%d/delete", d.ID), middleware.RoleLicenseManager, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code < 300 || rec.Code >= 400 {
+		t.Fatalf("status = %d, want 3xx (body: %s)", rec.Code, rec.Body.String())
+	}
+	wantLoc := fmt.Sprintf("/departments/%d", d.ID)
+	if got := rec.Header().Get("Location"); got != wantLoc {
+		t.Errorf("Location = %q, want %q", got, wantLoc)
+	}
+
+	got, err := q.GetDepartment(context.Background(), d.ID)
+	if err != nil {
+		t.Fatalf("GetDepartment after delete: %v", err)
+	}
+	if got.ValidTo == nil {
+		t.Fatalf("ValidTo = nil, want non-nil (should be set to today)")
+	}
+}
+
+func TestDepartments_Delete_HidesFromDefaultList(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
+		Code: "DEPT001",
+		Name: "営業本部",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	delReq := handlertest.PostForm(t, fmt.Sprintf("/departments/%d/delete", d.ID), middleware.RoleLicenseManager, nil)
+	delRec := httptest.NewRecorder()
+	r.ServeHTTP(delRec, delReq)
+
+	// ListDepartments は valid_to IS NULL のみ返す前提。
+	ds, err := q.ListDepartments(context.Background())
+	if err != nil {
+		t.Fatalf("ListDepartments: %v", err)
+	}
+	if len(ds) != 0 {
+		t.Errorf("expected no active departments after soft-delete, got %d", len(ds))
+	}
+}
+
+func TestDepartments_Delete_NotFound_404(t *testing.T) {
+	t.Parallel()
+	r, _ := newWebRouter(t)
+
+	req := handlertest.PostForm(t, "/departments/9999/delete", middleware.RoleLicenseManager, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusNotFound)
+}
+
+func TestDepartments_Delete_AlreadyDeleted_409(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
+		Code: "DEPT001",
+		Name: "営業本部",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// 1 回目: 成功
+	r.ServeHTTP(httptest.NewRecorder(),
+		handlertest.PostForm(t, fmt.Sprintf("/departments/%d/delete", d.ID), middleware.RoleLicenseManager, nil))
+
+	// 2 回目: 409
+	req2 := handlertest.PostForm(t, fmt.Sprintf("/departments/%d/delete", d.ID), middleware.RoleLicenseManager, nil)
+	rec2 := httptest.NewRecorder()
+	r.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 (body: %s)", rec2.Code, rec2.Body.String())
+	}
+	handlertest.AssertContains(t, rec2, "既に廃止")
+}
+
+func TestDepartments_Delete_GeneralUser_403(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
+		Code: "DEPT001",
+		Name: "営業本部",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	req := handlertest.PostForm(t, fmt.Sprintf("/departments/%d/delete", d.ID), middleware.RoleGeneralUser, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusForbidden)
+}
+
+func TestDepartments_Restore_ClearsValidTo(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
+		Code: "DEPT001",
+		Name: "営業本部",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// 一度廃止
+	if _, derr := q.SoftDeleteDepartment(context.Background(), d.ID); derr != nil {
+		t.Fatalf("soft delete: %v", derr)
+	}
+
+	req := handlertest.PostForm(t, fmt.Sprintf("/departments/%d/restore", d.ID), middleware.RoleLicenseManager, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code < 300 || rec.Code >= 400 {
+		t.Fatalf("status = %d, want 3xx (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	got, err := q.GetDepartment(context.Background(), d.ID)
+	if err != nil {
+		t.Fatalf("GetDepartment after restore: %v", err)
+	}
+	if got.ValidTo != nil {
+		t.Errorf("ValidTo = %v, want nil", got.ValidTo)
+	}
+}
+
+func TestDepartments_Restore_AlreadyActive_409(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
+		Code: "DEPT001",
+		Name: "営業本部",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	req := handlertest.PostForm(t, fmt.Sprintf("/departments/%d/restore", d.ID), middleware.RoleLicenseManager, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 (body: %s)", rec.Code, rec.Body.String())
+	}
+	handlertest.AssertContains(t, rec, "既に現役")
+}
+
+func TestDepartments_Restore_GeneralUser_403(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
+		Code: "DEPT001",
+		Name: "営業本部",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	req := handlertest.PostForm(t, fmt.Sprintf("/departments/%d/restore", d.ID), middleware.RoleGeneralUser, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusForbidden)
+}
+
 func TestDepartments_Update_RejectsDuplicateCode(t *testing.T) {
 	t.Parallel()
 	r, q := newWebRouter(t)
