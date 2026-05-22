@@ -12,13 +12,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-
 	"github.com/tagawa0525/app_man/internal/applog"
 	"github.com/tagawa0525/app_man/internal/config"
 	"github.com/tagawa0525/app_man/internal/db"
+	"github.com/tagawa0525/app_man/internal/handler"
 	"github.com/tagawa0525/app_man/internal/lockfile"
+	"github.com/tagawa0525/app_man/internal/view/static"
 )
 
 const binaryName = "appmgr-server"
@@ -96,10 +95,11 @@ func run(configPath string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	r := chi.NewRouter()
-	r.Use(middleware.RequestID)
-	r.Use(middleware.Recoverer)
-	r.Get("/healthz", healthHandler)
+	r := handler.NewRouter(handler.Deps{
+		Logger:   logger,
+		DB:       sqlDB,
+		StaticFS: static.FS(),
+	})
 
 	srv := &http.Server{
 		Addr:              cfg.Server.Listen,
@@ -137,7 +137,3 @@ func run(configPath string) error {
 	return nil
 }
 
-func healthHandler(w http.ResponseWriter, _ *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("ok"))
-}

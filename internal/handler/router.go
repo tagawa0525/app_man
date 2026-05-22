@@ -11,6 +11,9 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+
+	"github.com/go-chi/chi/v5"
+	chimw "github.com/go-chi/chi/v5/middleware"
 )
 
 // Deps は NewRouter が必要とする外部依存をまとめる。
@@ -25,7 +28,22 @@ type Deps struct {
 //
 // PR-A では /healthz と /static/* のみ登録する。
 // 業務ハンドラは PR-B 以降で追加する。
-func NewRouter(_ Deps) http.Handler {
-	// stub: 実装は次コミットで入れる
-	return http.NewServeMux()
+func NewRouter(deps Deps) http.Handler {
+	r := chi.NewRouter()
+	r.Use(chimw.RequestID)
+	r.Use(chimw.Recoverer)
+
+	r.Get("/healthz", healthHandler)
+
+	if deps.StaticFS != nil {
+		fileServer := http.FileServer(http.FS(deps.StaticFS))
+		r.Handle("/static/*", http.StripPrefix("/static/", fileServer))
+	}
+
+	return r
+}
+
+func healthHandler(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok"))
 }
