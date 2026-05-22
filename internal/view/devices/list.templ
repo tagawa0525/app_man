@@ -3,6 +3,7 @@ package devices
 import (
 	"github.com/tagawa0525/app_man/internal/handler/middleware"
 	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/common"
 	"github.com/tagawa0525/app_man/internal/view/layout"
 )
 
@@ -93,7 +94,7 @@ templ deviceRow(it ListItem) {
 	<td>
 		if it.Department != nil {
 			<a href={ templ.SafeURL("/departments/" + itoa(it.Department.ID)) }>
-				{ departmentLabel(*it.Department) }
+				{ common.DepartmentLabel(*it.Department) }
 			</a>
 		} else {
 			<span class="empty">(なし)</span>

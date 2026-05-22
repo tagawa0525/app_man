@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/tagawa0525/app_man/internal/handler/middleware"
-	"github.com/tagawa0525/app_man/internal/repository"
 )
 
 func itoa(n int64) string {
@@ -45,15 +44,6 @@ func sourceLabel(v string) string {
 	default:
 		return v
 	}
-}
-
-// departmentLabel は所属部署列 / show リンク / form select で共通利用する
-// ラベル。廃止部署は "営業部 (〜2026-04-01)" のように廃止日を併記する。
-func departmentLabel(d repository.Department) string {
-	if d.ValidTo != nil {
-		return d.Name + " (〜" + d.ValidTo.Format("2006-01-02") + ")"
-	}
-	return d.Name
 }
 
 // derefString は *string を文字列に展開する (nil は空文字)。

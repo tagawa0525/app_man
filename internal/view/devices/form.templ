@@ -3,6 +3,7 @@ package devices
 import (
 	"github.com/tagawa0525/app_man/internal/handler/middleware"
 	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/common"
 	"github.com/tagawa0525/app_man/internal/view/layout"
 )
 
@@ -86,13 +87,13 @@ templ Form(role middleware.Role, props FormProps) {
 						<option value="">(なし)</option>
 						for _, d := range props.Departments {
 							if itoa(d.ID) == props.Input.DepartmentID {
-								<option value={ itoa(d.ID) } selected>{ d.Code } / { departmentLabel(d) }</option>
+								<option value={ itoa(d.ID) } selected>{ d.Code } / { common.DepartmentLabel(d) }</option>
 							} else {
-								<option value={ itoa(d.ID) }>{ d.Code } / { departmentLabel(d) }</option>
+								<option value={ itoa(d.ID) }>{ d.Code } / { common.DepartmentLabel(d) }</option>
 							}
 						}
 						if props.PinnedDepartment != nil && itoa(props.PinnedDepartment.ID) == props.Input.DepartmentID {
-							<option value={ itoa(props.PinnedDepartment.ID) } selected>{ props.PinnedDepartment.Code } / { departmentLabel(*props.PinnedDepartment) }</option>
+							<option value={ itoa(props.PinnedDepartment.ID) } selected>{ props.PinnedDepartment.Code } / { common.DepartmentLabel(*props.PinnedDepartment) }</option>
 						}
 					</select>
 					if msg, ok := props.Errors["department_id"]; ok {

@@ -43,17 +43,6 @@ func userLabel(u repository.User) string {
 	return u.Name
 }
 
-// departmentLabel は所属部署列 / show リンク / form select で共通利用する
-// ラベル。廃止部署は "営業部 (〜2026-04-01)" のように廃止日を併記する。
-// users 側にも同型が存在し本 PR で 2 度目の登場。3 度目までは複製を許容し
-// 最終 2 コミットで internal/view/common.DepartmentLabel に集約する。
-func departmentLabel(d repository.Department) string {
-	if d.ValidTo != nil {
-		return d.Name + " (〜" + d.ValidTo.Format("2006-01-02") + ")"
-	}
-	return d.Name
-}
-
 // derefString は *string を文字列に展開する (nil は空文字)。
 func derefString(s *string) string {
 	if s == nil {

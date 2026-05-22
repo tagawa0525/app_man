@@ -11,6 +11,7 @@ import templruntime "github.com/a-h/templ/runtime"
 import (
 	"github.com/tagawa0525/app_man/internal/handler/middleware"
 	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/common"
 	"github.com/tagawa0525/app_man/internal/view/layout"
 )
 
@@ -80,7 +81,7 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(props.Title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 43, Col: 21}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 44, Col: 21}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
@@ -93,7 +94,7 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 			var templ_7745c5c3_Var4 templ.SafeURL
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(props.Action))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 46, Col: 59}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 47, Col: 59}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
@@ -114,7 +115,7 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(props.Input.EmployeeCode)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 51, Col: 96}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 52, Col: 96}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {
@@ -132,7 +133,7 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(msg)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 53, Col: 34}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 54, Col: 34}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 				if templ_7745c5c3_Err != nil {
@@ -150,7 +151,7 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 			var templ_7745c5c3_Var7 string
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(props.Input.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 59, Col: 70}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 60, Col: 70}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
@@ -168,7 +169,7 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 				var templ_7745c5c3_Var8 string
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(msg)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 61, Col: 34}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 62, Col: 34}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 				if templ_7745c5c3_Err != nil {
@@ -186,7 +187,7 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(props.Input.Username)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 67, Col: 82}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 68, Col: 82}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -204,7 +205,7 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 				var templ_7745c5c3_Var10 string
 				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(msg)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 69, Col: 34}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 70, Col: 34}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
@@ -222,7 +223,7 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(props.Input.Email)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 75, Col: 74}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 76, Col: 74}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
@@ -240,7 +241,7 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 				var templ_7745c5c3_Var12 string
 				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(msg)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 77, Col: 34}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 78, Col: 34}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 				if templ_7745c5c3_Err != nil {
@@ -264,7 +265,7 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 					var templ_7745c5c3_Var13 string
 					templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(itoa(d.ID))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 87, Col: 34}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 88, Col: 34}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 					if templ_7745c5c3_Err != nil {
@@ -277,7 +278,7 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 					var templ_7745c5c3_Var14 string
 					templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(d.Code)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 87, Col: 54}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 88, Col: 54}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 					if templ_7745c5c3_Err != nil {
@@ -288,9 +289,9 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var15 string
-					templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(departmentLabel(d))
+					templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(common.DepartmentLabel(d))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 87, Col: 79}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 88, Col: 86}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 					if templ_7745c5c3_Err != nil {
@@ -308,7 +309,7 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 					var templ_7745c5c3_Var16 string
 					templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(itoa(d.ID))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 89, Col: 34}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 90, Col: 34}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 					if templ_7745c5c3_Err != nil {
@@ -321,7 +322,7 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 					var templ_7745c5c3_Var17 string
 					templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(d.Code)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 89, Col: 45}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 90, Col: 45}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 					if templ_7745c5c3_Err != nil {
@@ -332,9 +333,9 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var18 string
-					templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(departmentLabel(d))
+					templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(common.DepartmentLabel(d))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 89, Col: 70}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 90, Col: 77}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 					if templ_7745c5c3_Err != nil {
@@ -354,7 +355,7 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 				var templ_7745c5c3_Var19 string
 				templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(itoa(props.PinnedOption.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 93, Col: 50}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 94, Col: 50}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 				if templ_7745c5c3_Err != nil {
@@ -367,7 +368,7 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 				var templ_7745c5c3_Var20 string
 				templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(props.PinnedOption.Code)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 93, Col: 87}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 94, Col: 87}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 				if templ_7745c5c3_Err != nil {
@@ -378,9 +379,9 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var21 string
-				templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(departmentLabel(*props.PinnedOption))
+				templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(common.DepartmentLabel(*props.PinnedOption))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 93, Col: 130}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 94, Col: 137}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 				if templ_7745c5c3_Err != nil {
@@ -403,7 +404,7 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 				var templ_7745c5c3_Var22 string
 				templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(msg)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 97, Col: 34}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 98, Col: 34}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 				if templ_7745c5c3_Err != nil {
@@ -421,7 +422,7 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 			var templ_7745c5c3_Var23 string
 			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(props.Submit)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 102, Col: 65}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/users/form.templ`, Line: 103, Col: 65}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 			if templ_7745c5c3_Err != nil {
