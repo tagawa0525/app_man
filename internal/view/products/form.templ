@@ -1,0 +1,162 @@
+package products
+
+import (
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+// FormInput は new/edit 兼用フォームの入力値 (バリデーション失敗時の
+// 再表示にもこの構造体を使う)。
+type FormInput struct {
+	VendorID              string
+	CanonicalName         string
+	Edition               string
+	SoftwareType          string
+	LicenseRequired       string // "" / "true" / "false"
+	DefaultApprovalStatus string
+	CanonicalDownloadURL  string
+	ServiceAdminURL       string
+	LicenseTermsURL       string
+	Note                  string
+}
+
+type FormProps struct {
+	Action  string
+	Title   string
+	Submit  string
+	Vendors []repository.Vendor
+	Input   FormInput
+	Errors  map[string]string
+}
+
+templ Form(role middleware.Role, props FormProps) {
+	@layout.Base(layout.BaseProps{
+		Title:     props.Title,
+		Role:      role,
+		CSRFToken: middleware.DummyCSRFToken,
+	}) {
+		<section class="page-products-form">
+			<header class="page-header">
+				<h1>{ props.Title }</h1>
+			</header>
+
+			<form method="post" action={ templ.SafeURL(props.Action) } class="vform">
+				@layout.CSRFInput(middleware.DummyCSRFToken)
+
+				<div class="field">
+					<label for="vendor_id">ベンダー <span class="required">*</span></label>
+					<select id="vendor_id" name="vendor_id" required>
+						<option value="">-- 選択 --</option>
+						for _, v := range props.Vendors {
+							if itoa(v.ID) == props.Input.VendorID {
+								<option value={ itoa(v.ID) } selected>{ v.Name }</option>
+							} else {
+								<option value={ itoa(v.ID) }>{ v.Name }</option>
+							}
+						}
+					</select>
+					if msg, ok := props.Errors["vendor_id"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
+				</div>
+
+				<div class="field">
+					<label for="canonical_name">製品名 <span class="required">*</span></label>
+					<input id="canonical_name" type="text" name="canonical_name" value={ props.Input.CanonicalName } required/>
+					if msg, ok := props.Errors["canonical_name"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
+				</div>
+
+				<div class="field">
+					<label for="edition">エディション</label>
+					<input id="edition" type="text" name="edition" value={ props.Input.Edition }/>
+				</div>
+
+				<div class="field">
+					<label for="software_type">種別</label>
+					<select id="software_type" name="software_type">
+						@softwareTypeOption("installed", "インストール型", props.Input.SoftwareType)
+						@softwareTypeOption("saas", "SaaS", props.Input.SoftwareType)
+						@softwareTypeOption("both", "両方", props.Input.SoftwareType)
+					</select>
+					if msg, ok := props.Errors["software_type"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
+				</div>
+
+				<div class="field">
+					<label for="license_required">ライセンス要否</label>
+					<select id="license_required" name="license_required">
+						@licReqOption("", "未判定", props.Input.LicenseRequired)
+						@licReqOption("true", "必要", props.Input.LicenseRequired)
+						@licReqOption("false", "不要", props.Input.LicenseRequired)
+					</select>
+				</div>
+
+				<div class="field">
+					<label for="default_approval_status">全社承認状態</label>
+					<select id="default_approval_status" name="default_approval_status">
+						@apprOption("unknown", "未審査", props.Input.DefaultApprovalStatus)
+						@apprOption("department_discretion", "部署裁量", props.Input.DefaultApprovalStatus)
+						@apprOption("globally_approved", "全社承認", props.Input.DefaultApprovalStatus)
+						@apprOption("globally_prohibited", "全社禁止", props.Input.DefaultApprovalStatus)
+					</select>
+					if msg, ok := props.Errors["default_approval_status"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
+				</div>
+
+				<div class="field">
+					<label for="canonical_download_url">正規ダウンロード URL</label>
+					<input id="canonical_download_url" type="url" name="canonical_download_url" value={ props.Input.CanonicalDownloadURL }/>
+				</div>
+
+				<div class="field">
+					<label for="service_admin_url">SaaS 管理画面 URL</label>
+					<input id="service_admin_url" type="url" name="service_admin_url" value={ props.Input.ServiceAdminURL }/>
+				</div>
+
+				<div class="field">
+					<label for="license_terms_url">ライセンス規約 URL</label>
+					<input id="license_terms_url" type="url" name="license_terms_url" value={ props.Input.LicenseTermsURL }/>
+				</div>
+
+				<div class="field">
+					<label for="note">メモ</label>
+					<textarea id="note" name="note" rows="4">{ props.Input.Note }</textarea>
+				</div>
+
+				<div class="form-actions">
+					<button type="submit" class="btn btn-primary">{ props.Submit }</button>
+					<a class="btn" href="/products">キャンセル</a>
+				</div>
+			</form>
+		</section>
+	}
+}
+
+templ softwareTypeOption(value, label, current string) {
+	if value == current {
+		<option value={ value } selected>{ label }</option>
+	} else {
+		<option value={ value }>{ label }</option>
+	}
+}
+
+templ licReqOption(value, label, current string) {
+	if value == current {
+		<option value={ value } selected>{ label }</option>
+	} else {
+		<option value={ value }>{ label }</option>
+	}
+}
+
+templ apprOption(value, label, current string) {
+	if value == current {
+		<option value={ value } selected>{ label }</option>
+	} else {
+		<option value={ value }>{ label }</option>
+	}
+}

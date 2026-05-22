@@ -44,10 +44,13 @@ var editors = []mw.Role{
 // 適用済みの前提。
 func RegisterRoutes(r chi.Router, deps Deps) {
 	v := &vendorHandlers{db: deps.DB, logger: deps.Logger}
+	p := &productHandlers{db: deps.DB, logger: deps.Logger}
 
 	r.With(mw.RequireRole(viewers...)).Group(func(r chi.Router) {
 		r.Get("/vendors", v.list)
 		r.Get("/vendors/{id}", v.show)
+		r.Get("/products", p.list)
+		r.Get("/products/{id}", p.show)
 	})
 	r.With(mw.RequireRole(editors...)).Group(func(r chi.Router) {
 		r.Get("/vendors/new", v.newForm)
@@ -55,5 +58,6 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 		r.Get("/vendors/{id}/edit", v.editForm)
 		r.Post("/vendors/{id}", v.update)
 		r.Post("/vendors/{id}/delete", v.delete)
+		r.Get("/products/new", p.newForm)
 	})
 }
