@@ -319,6 +319,15 @@ func isUniqueConstraintErr(err error) bool {
 	return serr.Code() == 2067
 }
 
+// isForeignKeyErr は sqlite の SQLITE_CONSTRAINT_FOREIGNKEY (787) か判定する。
+func isForeignKeyErr(err error) bool {
+	var serr *sqlite.Error
+	if !errors.As(err, &serr) {
+		return false
+	}
+	return serr.Code() == 787
+}
+
 // parseInt64Param は chi の URLParam("id" 等) を int64 化する。
 // 失敗時は ok=false を返し、呼び出し元で 400 を出す。
 func parseInt64Param(r *http.Request, name string) (int64, bool) {

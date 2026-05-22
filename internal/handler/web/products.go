@@ -215,12 +215,26 @@ func (h *productHandlers) update(w http.ResponseWriter, r *http.Request) {
 }
 
 // aliasCreate は POST /products/:id/aliases。
+// 未知 product_id は事前確認で 404 を返す (FK 違反 → 500 の流出防止)。
+// 事前確認後にレースで product が削除された場合に備え、FK 違反エラーも
+// 404 として捕捉する。
 func (h *productHandlers) aliasCreate(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseInt64Param(r, "id")
 	if !ok {
 		http.NotFound(w, r)
 		return
 	}
+	q := repository.New(h.db)
+	if _, err := q.GetProduct(r.Context(), id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		h.logger.ErrorContext(r.Context(), "get product for alias create", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
 	_ = r.ParseForm()
 	name := strings.TrimSpace(r.PostFormValue("alias_name"))
 	if name == "" {
@@ -228,7 +242,6 @@ func (h *productHandlers) aliasCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	q := repository.New(h.db)
 	if _, err := q.CreateAlias(r.Context(), repository.CreateAliasParams{
 		ProductID: id,
 		AliasName: name,
@@ -237,6 +250,11 @@ func (h *productHandlers) aliasCreate(w http.ResponseWriter, r *http.Request) {
 			// product_aliases.alias_name は GLOBAL UNIQUE。
 			// 既存があれば 409 + show 画面を flash 付きで再表示する。
 			h.showWithFlash(w, r, id, http.StatusConflict, "同じエイリアスが既に存在します。別の名前を使ってください。")
+			return
+		}
+		if isForeignKeyErr(err) {
+			// 事前確認後のレース (product が削除された) で起きる。
+			http.NotFound(w, r)
 			return
 		}
 		h.logger.ErrorContext(r.Context(), "create alias", "err", err)

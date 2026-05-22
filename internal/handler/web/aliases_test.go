@@ -41,6 +41,27 @@ func TestAliases_Create_AppearsOnShow(t *testing.T) {
 	}
 }
 
+func TestAliases_Create_404OnUnknownProduct(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	req := handlertest.PostForm(t, "/products/9999/aliases", middleware.RoleLicenseManager, url.Values{
+		"alias_name": {"X"},
+	})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusNotFound)
+
+	all, err := q.ListAliasesByProduct(context.Background(), 9999)
+	if err != nil {
+		t.Fatalf("ListAliasesByProduct: %v", err)
+	}
+	if len(all) != 0 {
+		t.Errorf("no alias should have been created, got %d", len(all))
+	}
+}
+
 func TestAliases_Create_RejectsDuplicate(t *testing.T) {
 	t.Parallel()
 	r, q := newWebRouter(t)
