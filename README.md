@@ -12,7 +12,7 @@ Nix flake で必要なツール一式が提供される。
 nix develop
 ```
 
-提供されるツール：`go`、`gopls`、`sqlc`、`go-migrate`（CLI 名 `migrate`）、`templ`、`golangci-lint`、`air`、`sqlite`。
+提供されるツール：`go`、`gopls`、`sqlc`、`templ`、`golangci-lint`、`air`、`sqlite`。
 
 ## ビルド・実行
 
