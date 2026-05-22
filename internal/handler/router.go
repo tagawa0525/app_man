@@ -34,7 +34,7 @@ type Deps struct {
 func NewRouter(deps Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
-	r.Use(chimw.Recoverer)
+	r.Use(recoverer(deps.Logger))
 	r.Use(middleware.DummyAuthMiddleware)
 	r.Use(middleware.CSRFMiddleware)
 
