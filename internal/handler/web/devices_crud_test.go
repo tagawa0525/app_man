@@ -608,3 +608,123 @@ func TestDevices_Restore_GeneralUser_403(t *testing.T) {
 
 	handlertest.AssertStatus(t, rec, http.StatusForbidden)
 }
+
+func TestDevices_EditForm_PinsRetiredUser(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	user, err := q.CreateUser(context.Background(), repository.CreateUserParams{
+		EmployeeCode: "E001",
+		Name:         "田川太郎",
+	})
+	if err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
+		AssetCode:     "PC-001",
+		PrimaryUserID: &user.ID,
+	})
+	if err != nil {
+		t.Fatalf("seed device: %v", err)
+	}
+	if _, err := q.SoftDeleteUser(context.Background(), user.ID); err != nil {
+		t.Fatalf("soft delete user: %v", err)
+	}
+
+	req := handlertest.NewRequest(t, http.MethodGet, fmt.Sprintf("/devices/%d/edit", d.ID), middleware.RoleLicenseManager, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusOK)
+	handlertest.AssertContains(t, rec, "(退職)")
+	handlertest.AssertContains(t, rec, fmt.Sprintf(`value="%d" selected`, user.ID))
+}
+
+func TestDevices_EditForm_PinsInactiveDepartment(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	dept, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
+		Code: "DEPT-GONE",
+		Name: "旧資材部",
+	})
+	if err != nil {
+		t.Fatalf("seed dept: %v", err)
+	}
+	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
+		AssetCode:    "PC-001",
+		DepartmentID: &dept.ID,
+	})
+	if err != nil {
+		t.Fatalf("seed device: %v", err)
+	}
+	if _, err := q.SoftDeleteDepartment(context.Background(), dept.ID); err != nil {
+		t.Fatalf("soft delete dept: %v", err)
+	}
+
+	req := handlertest.NewRequest(t, http.MethodGet, fmt.Sprintf("/devices/%d/edit", d.ID), middleware.RoleLicenseManager, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusOK)
+	handlertest.AssertContains(t, rec, "(〜")
+	handlertest.AssertContains(t, rec, fmt.Sprintf(`value="%d" selected`, dept.ID))
+}
+
+func TestDevices_List_RetiredUserLabel(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	user, err := q.CreateUser(context.Background(), repository.CreateUserParams{
+		EmployeeCode: "E001",
+		Name:         "田川太郎",
+	})
+	if err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if _, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
+		AssetCode:     "PC-001",
+		PrimaryUserID: &user.ID,
+	}); err != nil {
+		t.Fatalf("seed device: %v", err)
+	}
+	if _, err := q.SoftDeleteUser(context.Background(), user.ID); err != nil {
+		t.Fatalf("soft delete user: %v", err)
+	}
+
+	req := handlertest.NewRequest(t, http.MethodGet, "/devices", middleware.RoleViewer, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusOK)
+	handlertest.AssertContains(t, rec, "田川太郎 (退職)")
+}
+
+func TestDevices_List_RetiredDepartmentLabel(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	dept, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
+		Code: "DEPT-GONE",
+		Name: "旧資材部",
+	})
+	if err != nil {
+		t.Fatalf("seed dept: %v", err)
+	}
+	if _, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
+		AssetCode:    "PC-001",
+		DepartmentID: &dept.ID,
+	}); err != nil {
+		t.Fatalf("seed device: %v", err)
+	}
+	if _, err := q.SoftDeleteDepartment(context.Background(), dept.ID); err != nil {
+		t.Fatalf("soft delete dept: %v", err)
+	}
+
+	req := handlertest.NewRequest(t, http.MethodGet, "/devices", middleware.RoleViewer, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusOK)
+	handlertest.AssertContains(t, rec, "旧資材部 (〜")
+}
