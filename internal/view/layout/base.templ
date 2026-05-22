@@ -38,12 +38,18 @@ templ Base(p BaseProps) {
 	</html>
 }
 
-// Nav は PR-A 時点では空のヘッダ + 現在ロール表示のみ。
-// PR-B 以降で /products / /departments 等のリンクを role ベースで
-// 出し分ける形に拡張する想定。
+// Nav は appbar の左端ブランド + 業務リンク + 右端 role 表示。
+// PR-B で /vendors と /products を追加した。閲覧は general_user 以上で
+// 許可されているため、role ベースの出し分けはしない (要件書 §7.1)。
+// PR-C 以降で /departments / /users / /devices が増えるたびにここへ
+// リンクを足す。
 templ Nav(role middleware.Role) {
 	<nav class="appbar">
 		<span class="brand">社内アプリ管理</span>
+		<ul class="appbar-menu">
+			<li><a href="/products">製品</a></li>
+			<li><a href="/vendors">ベンダー</a></li>
+		</ul>
 		<span class="role">role: { string(role) }</span>
 	</nav>
 }

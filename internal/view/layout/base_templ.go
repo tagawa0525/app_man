@@ -126,9 +126,11 @@ func Base(p BaseProps) templ.Component {
 	})
 }
 
-// Nav は PR-A 時点では空のヘッダ + 現在ロール表示のみ。
-// PR-B 以降で /products / /departments 等のリンクを role ベースで
-// 出し分ける形に拡張する想定。
+// Nav は appbar の左端ブランド + 業務リンク + 右端 role 表示。
+// PR-B で /vendors と /products を追加した。閲覧は general_user 以上で
+// 許可されているため、role ベースの出し分けはしない (要件書 §7.1)。
+// PR-C 以降で /departments / /users / /devices が増えるたびにここへ
+// リンクを足す。
 func Nav(role middleware.Role) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -150,14 +152,14 @@ func Nav(role middleware.Role) templ.Component {
 			templ_7745c5c3_Var6 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<nav class=\"appbar\"><span class=\"brand\">社内アプリ管理</span> <span class=\"role\">role: ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<nav class=\"appbar\"><span class=\"brand\">社内アプリ管理</span><ul class=\"appbar-menu\"><li><a href=\"/products\">製品</a></li><li><a href=\"/vendors\">ベンダー</a></li></ul><span class=\"role\">role: ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(string(role))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/layout/base.templ`, Line: 47, Col: 41}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/layout/base.templ`, Line: 53, Col: 41}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
@@ -203,7 +205,7 @@ func CSRFInput(token string) templ.Component {
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(token)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/layout/base.templ`, Line: 56, Col: 48}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/layout/base.templ`, Line: 62, Col: 48}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 		if templ_7745c5c3_Err != nil {
