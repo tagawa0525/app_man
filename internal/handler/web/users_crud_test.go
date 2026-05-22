@@ -399,6 +399,191 @@ func TestUsers_Update_ClearsOptionalFieldsToNull(t *testing.T) {
 	}
 }
 
+func TestUsers_Delete_SetsDeactivatedAt(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	u, err := q.CreateUser(context.Background(), repository.CreateUserParams{
+		EmployeeCode: "E001",
+		Name:         "田川太郎",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	req := handlertest.PostForm(t, fmt.Sprintf("/users/%d/delete", u.ID), middleware.RoleLicenseManager, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code < 300 || rec.Code >= 400 {
+		t.Fatalf("status = %d, want 3xx (body: %s)", rec.Code, rec.Body.String())
+	}
+	wantLoc := fmt.Sprintf("/users/%d", u.ID)
+	if got := rec.Header().Get("Location"); got != wantLoc {
+		t.Errorf("Location = %q, want %q", got, wantLoc)
+	}
+
+	got, err := q.GetUser(context.Background(), u.ID)
+	if err != nil {
+		t.Fatalf("GetUser after delete: %v", err)
+	}
+	if got.DeactivatedAt == nil {
+		t.Fatalf("DeactivatedAt = nil, want non-nil")
+	}
+}
+
+func TestUsers_Delete_HidesFromDefaultList(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	u, err := q.CreateUser(context.Background(), repository.CreateUserParams{
+		EmployeeCode: "E001",
+		Name:         "田川太郎",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	r.ServeHTTP(httptest.NewRecorder(),
+		handlertest.PostForm(t, fmt.Sprintf("/users/%d/delete", u.ID), middleware.RoleLicenseManager, nil))
+
+	us, err := q.ListUsers(context.Background())
+	if err != nil {
+		t.Fatalf("ListUsers: %v", err)
+	}
+	if len(us) != 0 {
+		t.Errorf("expected no active users after soft-delete, got %d", len(us))
+	}
+}
+
+func TestUsers_Delete_NotFound_404(t *testing.T) {
+	t.Parallel()
+	r, _ := newWebRouter(t)
+
+	req := handlertest.PostForm(t, "/users/9999/delete", middleware.RoleLicenseManager, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusNotFound)
+}
+
+func TestUsers_Delete_AlreadyDeactivated_409(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	u, err := q.CreateUser(context.Background(), repository.CreateUserParams{
+		EmployeeCode: "E001",
+		Name:         "田川太郎",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	r.ServeHTTP(httptest.NewRecorder(),
+		handlertest.PostForm(t, fmt.Sprintf("/users/%d/delete", u.ID), middleware.RoleLicenseManager, nil))
+
+	req2 := handlertest.PostForm(t, fmt.Sprintf("/users/%d/delete", u.ID), middleware.RoleLicenseManager, nil)
+	rec2 := httptest.NewRecorder()
+	r.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 (body: %s)", rec2.Code, rec2.Body.String())
+	}
+	handlertest.AssertContains(t, rec2, "既に退職")
+}
+
+func TestUsers_Delete_GeneralUser_403(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	u, err := q.CreateUser(context.Background(), repository.CreateUserParams{
+		EmployeeCode: "E001",
+		Name:         "田川太郎",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	req := handlertest.PostForm(t, fmt.Sprintf("/users/%d/delete", u.ID), middleware.RoleGeneralUser, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusForbidden)
+}
+
+func TestUsers_Restore_ClearsDeactivatedAt(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	u, err := q.CreateUser(context.Background(), repository.CreateUserParams{
+		EmployeeCode: "E001",
+		Name:         "田川太郎",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, derr := q.SoftDeleteUser(context.Background(), u.ID); derr != nil {
+		t.Fatalf("soft delete: %v", derr)
+	}
+
+	req := handlertest.PostForm(t, fmt.Sprintf("/users/%d/restore", u.ID), middleware.RoleLicenseManager, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code < 300 || rec.Code >= 400 {
+		t.Fatalf("status = %d, want 3xx (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	got, err := q.GetUser(context.Background(), u.ID)
+	if err != nil {
+		t.Fatalf("GetUser after restore: %v", err)
+	}
+	if got.DeactivatedAt != nil {
+		t.Errorf("DeactivatedAt = %v, want nil", got.DeactivatedAt)
+	}
+}
+
+func TestUsers_Restore_AlreadyActive_409(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	u, err := q.CreateUser(context.Background(), repository.CreateUserParams{
+		EmployeeCode: "E001",
+		Name:         "田川太郎",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	req := handlertest.PostForm(t, fmt.Sprintf("/users/%d/restore", u.ID), middleware.RoleLicenseManager, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 (body: %s)", rec.Code, rec.Body.String())
+	}
+	handlertest.AssertContains(t, rec, "既に在籍")
+}
+
+func TestUsers_Restore_GeneralUser_403(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	u, err := q.CreateUser(context.Background(), repository.CreateUserParams{
+		EmployeeCode: "E001",
+		Name:         "田川太郎",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	req := handlertest.PostForm(t, fmt.Sprintf("/users/%d/restore", u.ID), middleware.RoleGeneralUser, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusForbidden)
+}
+
 func TestUsers_Update_RejectsDuplicateEmployeeCode(t *testing.T) {
 	t.Parallel()
 	r, q := newWebRouter(t)
