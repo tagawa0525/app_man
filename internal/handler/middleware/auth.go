@@ -9,11 +9,11 @@ import (
 type Role string
 
 const (
-	RoleSystemAdmin          Role = "system_admin"
+	RoleSystemAdmin             Role = "system_admin"
 	RoleDepartmentSecurityAdmin Role = "department_security_admin"
-	RoleLicenseManager       Role = "license_manager"
-	RoleViewer               Role = "viewer"
-	RoleGeneralUser          Role = "general_user"
+	RoleLicenseManager          Role = "license_manager"
+	RoleViewer                  Role = "viewer"
+	RoleGeneralUser             Role = "general_user"
 )
 
 // roleKey は context への role 格納キー。
@@ -23,11 +23,11 @@ type roleKey struct{}
 
 // validRoles は未知ヘッダ値を弾くための受理集合。
 var validRoles = map[Role]struct{}{
-	RoleSystemAdmin:          {},
+	RoleSystemAdmin:             {},
 	RoleDepartmentSecurityAdmin: {},
-	RoleLicenseManager:       {},
-	RoleViewer:               {},
-	RoleGeneralUser:          {},
+	RoleLicenseManager:          {},
+	RoleViewer:                  {},
+	RoleGeneralUser:             {},
 }
 
 // DummyAuthMiddleware は HTTP ヘッダ X-User-Role から role を取り出し、
