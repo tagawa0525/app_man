@@ -47,6 +47,7 @@ var batchBinaries = []string{
 	"appmgr-prune-logs",
 	"appmgr-generate-meta",
 	"appmgr-import-bootstrap",
+	"appmgr-create-app-user",
 }
 
 // ErrAlreadyHeld は別プロセスが既に lock を保持していることを示す。
