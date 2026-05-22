@@ -1,14 +1,19 @@
 package web_test
 
 import (
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/tagawa0525/app_man/internal/handler/handlertest"
 	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/handler/web"
+	"github.com/tagawa0525/app_man/internal/repository"
 )
 
 func TestSetRole_SetsCookie_RedirectsToReferer(t *testing.T) {
@@ -171,6 +176,33 @@ func TestSetRole_RejectsWithoutCSRF_403(t *testing.T) {
 
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403 (CSRF protection should kick in)", rec.Code)
+	}
+}
+
+func TestSetRole_ProductionMode_404(t *testing.T) {
+	t.Parallel()
+
+	// 本番想定で DevMode=false のルータを直接組み立てる (newWebRouter は
+	// DevMode=true なので使えない)。
+	sqlDB := handlertest.NewTestDB(t)
+	r := chi.NewRouter()
+	r.Use(middleware.DummyAuthMiddleware)
+	r.Use(middleware.CSRFMiddleware)
+	web.RegisterRoutes(r, web.Deps{
+		Logger:  slog.New(slog.DiscardHandler),
+		DB:      sqlDB,
+		DevMode: false,
+	})
+	_ = repository.New(sqlDB)
+
+	req := handlertest.PostForm(t, "/__set_role", "", url.Values{
+		"role": {string(middleware.RoleViewer)},
+	})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 404 or 405 (route should not exist in production mode)", rec.Code)
 	}
 }
 
