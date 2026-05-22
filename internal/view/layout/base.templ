@@ -26,7 +26,7 @@ templ Base(p BaseProps) {
 			<link rel="stylesheet" href="/static/css/app.css"/>
 			<script src="/static/htmx.min.js"></script>
 		</head>
-		<body>
+		<body hx-headers={ `{"X-CSRF-Token":"` + p.CSRFToken + `"}` }>
 			@Nav(p.Role)
 			<main>
 				if p.Flash != "" {
