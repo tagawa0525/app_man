@@ -40,7 +40,7 @@ func TestDummyAuthMiddleware_KnownRole_Passes(t *testing.T) {
 
 	cases := []middleware.Role{
 		middleware.RoleSystemAdmin,
-		middleware.RoleDepartmentSecurityAd,
+		middleware.RoleDepartmentSecurityAdmin,
 		middleware.RoleLicenseManager,
 		middleware.RoleViewer,
 		middleware.RoleGeneralUser,

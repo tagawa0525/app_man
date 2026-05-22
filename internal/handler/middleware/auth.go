@@ -10,7 +10,7 @@ type Role string
 
 const (
 	RoleSystemAdmin          Role = "system_admin"
-	RoleDepartmentSecurityAd Role = "department_security_admin"
+	RoleDepartmentSecurityAdmin Role = "department_security_admin"
 	RoleLicenseManager       Role = "license_manager"
 	RoleViewer               Role = "viewer"
 	RoleGeneralUser          Role = "general_user"
@@ -24,7 +24,7 @@ type roleKey struct{}
 // validRoles は未知ヘッダ値を弾くための受理集合。
 var validRoles = map[Role]struct{}{
 	RoleSystemAdmin:          {},
-	RoleDepartmentSecurityAd: {},
+	RoleDepartmentSecurityAdmin: {},
 	RoleLicenseManager:       {},
 	RoleViewer:               {},
 	RoleGeneralUser:          {},
