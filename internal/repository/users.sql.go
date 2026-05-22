@@ -112,6 +112,64 @@ func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
 	return i, err
 }
 
+const listActiveUsers = `-- name: ListActiveUsers :many
+SELECT
+  id,
+  employee_code,
+  username,
+  name,
+  email,
+  department_id,
+  deactivated_at,
+  source,
+  source_dn,
+  ad_modified_at,
+  last_synced_at,
+  created_at,
+  updated_at
+FROM users
+WHERE deactivated_at IS NULL
+ORDER BY employee_code
+LIMIT 200
+`
+
+func (q *Queries) ListActiveUsers(ctx context.Context) ([]User, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.EmployeeCode,
+			&i.Username,
+			&i.Name,
+			&i.Email,
+			&i.DepartmentID,
+			&i.DeactivatedAt,
+			&i.Source,
+			&i.SourceDn,
+			&i.AdModifiedAt,
+			&i.LastSyncedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUsers = `-- name: ListUsers :many
 SELECT
   id,

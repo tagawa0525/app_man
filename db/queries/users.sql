@@ -169,3 +169,23 @@ SET
   deactivated_at = NULL,
   updated_at = CURRENT_TIMESTAMP
 WHERE id = ? AND deactivated_at IS NOT NULL;
+
+-- name: ListActiveUsers :many
+SELECT
+  id,
+  employee_code,
+  username,
+  name,
+  email,
+  department_id,
+  deactivated_at,
+  source,
+  source_dn,
+  ad_modified_at,
+  last_synced_at,
+  created_at,
+  updated_at
+FROM users
+WHERE deactivated_at IS NULL
+ORDER BY employee_code
+LIMIT 200;

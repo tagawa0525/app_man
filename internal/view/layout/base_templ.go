@@ -127,11 +127,10 @@ func Base(p BaseProps) templ.Component {
 }
 
 // Nav は appbar の左端ブランド + 業務リンク + 右端 role 表示。
-// PR-B で /vendors と /products、PR-C で /departments、PR-D で /users を
-// 追加した。/departments / /users は要件書 §6.1 で viewer 以上、他は
-// general_user 以上で閲覧可能だが、Nav 側で出し分けはしない (押下時に
-// role middleware が 403 を返す)。PR-E 以降で /devices 等が増えるたびに
-// ここへリンクを足す。
+// PR-B で /vendors と /products、PR-C で /departments、PR-D で /users、
+// PR-E で /devices を追加した。/departments / /users / /devices は
+// 要件書 §6.1 で viewer 以上、他は general_user 以上で閲覧可能だが、
+// Nav 側で出し分けはしない (押下時に role middleware が 403 を返す)。
 func Nav(role middleware.Role) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -153,7 +152,7 @@ func Nav(role middleware.Role) templ.Component {
 			templ_7745c5c3_Var6 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<nav class=\"appbar\"><span class=\"brand\">社内アプリ管理</span><ul class=\"appbar-menu\"><li><a href=\"/products\">製品</a></li><li><a href=\"/vendors\">ベンダー</a></li><li><a href=\"/departments\">部署</a></li><li><a href=\"/users\">ユーザ</a></li></ul><span class=\"role\">role: ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<nav class=\"appbar\"><span class=\"brand\">社内アプリ管理</span><ul class=\"appbar-menu\"><li><a href=\"/products\">製品</a></li><li><a href=\"/vendors\">ベンダー</a></li><li><a href=\"/departments\">部署</a></li><li><a href=\"/users\">ユーザ</a></li><li><a href=\"/devices\">端末</a></li></ul><span class=\"role\">role: ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

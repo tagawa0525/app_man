@@ -57,6 +57,7 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 	p := &productHandlers{db: deps.DB, logger: deps.Logger}
 	d := &departmentHandlers{db: deps.DB, logger: deps.Logger}
 	u := &userHandlers{db: deps.DB, logger: deps.Logger}
+	dev := &deviceHandlers{db: deps.DB, logger: deps.Logger}
 
 	r.With(mw.RequireRole(viewers...)).Group(func(r chi.Router) {
 		r.Get("/vendors", v.list)
@@ -69,6 +70,8 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 		r.Get("/departments/{id}", d.show)
 		r.Get("/users", u.list)
 		r.Get("/users/{id}", u.show)
+		r.Get("/devices", dev.list)
+		r.Get("/devices/{id}", dev.show)
 	})
 	r.With(mw.RequireRole(editors...)).Group(func(r chi.Router) {
 		r.Get("/vendors/new", v.newForm)
@@ -95,5 +98,11 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 		r.Post("/users/{id}", u.update)
 		r.Post("/users/{id}/delete", u.delete)
 		r.Post("/users/{id}/restore", u.restore)
+		r.Get("/devices/new", dev.newForm)
+		r.Post("/devices", dev.create)
+		r.Get("/devices/{id}/edit", dev.editForm)
+		r.Post("/devices/{id}", dev.update)
+		r.Post("/devices/{id}/retire", dev.retire)
+		r.Post("/devices/{id}/restore", dev.restore)
 	})
 }

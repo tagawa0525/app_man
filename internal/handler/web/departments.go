@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -438,7 +437,7 @@ func decodeDepartmentForm(r *http.Request) (departmentview.FormInput, department
 		ValidFrom:   strings.TrimSpace(r.PostFormValue("valid_from")),
 	}
 	errs := map[string]string{}
-	if msg := validateDepartmentCode(in.Code); msg != "" {
+	if msg := validateASCIICode("部署コード", 64, in.Code); msg != "" {
 		errs["code"] = msg
 	}
 	if msg := validateDepartmentName(in.Name); msg != "" {
@@ -525,24 +524,6 @@ func lookupDepartment(r *http.Request, q *repository.Queries, id *int64) (*repos
 		return nil, err
 	}
 	return &d, nil
-}
-
-// deptCodeRe は部署コードの受け付け可能文字。要件書 §10 で AD 連携キーと
-// される code は基本的に英数 + 区切り記号で構成される想定。
-var deptCodeRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
-
-// validateDepartmentCode は code フィールドの検証。
-func validateDepartmentCode(s string) string {
-	if s == "" {
-		return "部署コードは必須です"
-	}
-	if utf8.RuneCountInString(s) > 64 {
-		return "部署コードは 64 文字以内で入力してください"
-	}
-	if !deptCodeRe.MatchString(s) {
-		return "部署コードは英数・ハイフン・アンダースコアで入力してください"
-	}
-	return ""
 }
 
 // validateDepartmentName は name フィールドの検証。
