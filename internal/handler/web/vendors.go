@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -275,6 +276,9 @@ func decodeVendorForm(r *http.Request) (vendorview.FormInput, map[string]string)
 	if in.Name == "" {
 		errs["name"] = "名前は必須です"
 	}
+	if msg := validateHTTPURL(in.URL); msg != "" {
+		errs["url"] = msg
+	}
 	return in, errs
 }
 
@@ -336,4 +340,27 @@ func nilIfEmpty(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// validateHTTPURL はユーザ入力 URL を検証し、エラーメッセージを返す。
+// 空文字 (省略) は許容して "" を返す。スキームが http / https 以外
+// (javascript: / data: / file: 等) は弾く — show templ で href に直接
+// 埋め込む箇所があり、`javascript:` を保存できると XSS になるため。
+// 相対 URL (host 無し) も弾く (リンク先として意味を成さない)。
+func validateHTTPURL(input string) string {
+	if input == "" {
+		return ""
+	}
+	u, err := url.Parse(input)
+	if err != nil {
+		return "URL の形式が不正です"
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return "URL は http:// または https:// で始めてください"
+	}
+	if u.Host == "" {
+		return "URL のホストが指定されていません"
+	}
+	return ""
 }

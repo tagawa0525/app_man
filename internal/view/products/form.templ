@@ -111,16 +111,25 @@ templ Form(role middleware.Role, props FormProps) {
 				<div class="field">
 					<label for="canonical_download_url">正規ダウンロード URL</label>
 					<input id="canonical_download_url" type="url" name="canonical_download_url" value={ props.Input.CanonicalDownloadURL }/>
+					if msg, ok := props.Errors["canonical_download_url"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
 				</div>
 
 				<div class="field">
 					<label for="service_admin_url">SaaS 管理画面 URL</label>
 					<input id="service_admin_url" type="url" name="service_admin_url" value={ props.Input.ServiceAdminURL }/>
+					if msg, ok := props.Errors["service_admin_url"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
 				</div>
 
 				<div class="field">
 					<label for="license_terms_url">ライセンス規約 URL</label>
 					<input id="license_terms_url" type="url" name="license_terms_url" value={ props.Input.LicenseTermsURL }/>
+					if msg, ok := props.Errors["license_terms_url"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
 				</div>
 
 				<div class="field">

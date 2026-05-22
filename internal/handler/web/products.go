@@ -464,6 +464,16 @@ func decodeProductForm(r *http.Request, vendors []repository.Vendor) (productInp
 		errs["license_required"] = "不正な値です"
 	}
 
+	if msg := validateHTTPURL(downloadURL); msg != "" {
+		errs["canonical_download_url"] = msg
+	}
+	if msg := validateHTTPURL(adminURL); msg != "" {
+		errs["service_admin_url"] = msg
+	}
+	if msg := validateHTTPURL(termsURL); msg != "" {
+		errs["license_terms_url"] = msg
+	}
+
 	in := productInput{
 		VendorID:              vendorID,
 		CanonicalName:         canonical,
