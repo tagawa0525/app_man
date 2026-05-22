@@ -1,0 +1,76 @@
+package vendors
+
+import (
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+// canEdit はテンプレ内で role を毎回見ないで済むようプリ計算する。
+// license_manager / department_security_admin / system_admin が編集可。
+func canEdit(role middleware.Role) bool {
+	switch role {
+	case middleware.RoleLicenseManager,
+		middleware.RoleDepartmentSecurityAdmin,
+		middleware.RoleSystemAdmin:
+		return true
+	}
+	return false
+}
+
+templ List(role middleware.Role, query string, items []repository.Vendor, truncated bool) {
+	@layout.Base(layout.BaseProps{
+		Title:     "ベンダー一覧",
+		Role:      role,
+		CSRFToken: middleware.DummyCSRFToken,
+	}) {
+		<section class="page-vendors-list">
+			<header class="page-header">
+				<h1>ベンダー</h1>
+				if canEdit(role) {
+					<a class="btn btn-primary" href="/vendors/new">新規ベンダー</a>
+				}
+			</header>
+
+			<form class="search-bar" method="get" action="/vendors">
+				<input type="search" name="q" value={ query } placeholder="ベンダー名で検索"/>
+				<button type="submit">検索</button>
+			</form>
+
+			if truncated {
+				<p class="warn">表示は最大 200 件で打ち切っています。検索で絞り込んでください。</p>
+			}
+
+			if len(items) == 0 {
+				<p class="empty">該当するベンダーはありません。</p>
+			} else {
+				<table class="data-table">
+					<thead>
+						<tr>
+							<th>名前</th>
+							<th>URL</th>
+							<th>メモ</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, v := range items {
+							<tr>
+								<td><a href={ templ.SafeURL("/vendors/" + itoa(v.ID)) }>{ v.Name }</a></td>
+								<td>
+									if v.Url != nil {
+										{ *v.Url }
+									}
+								</td>
+								<td>
+									if v.Note != nil {
+										{ *v.Note }
+									}
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			}
+		</section>
+	}
+}

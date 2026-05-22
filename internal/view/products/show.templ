@@ -1,0 +1,109 @@
+package products
+
+import (
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+// ShowProps は GET /products/:id の表示集約。
+type ShowProps struct {
+	Product repository.GetProductRow
+	Aliases []repository.ProductAlias
+	Flash   string
+}
+
+templ Show(role middleware.Role, props ShowProps) {
+	@layout.Base(layout.BaseProps{
+		Title:     props.Product.CanonicalName,
+		Role:      role,
+		Flash:     props.Flash,
+		CSRFToken: middleware.DummyCSRFToken,
+	}) {
+		<section class="page-products-show">
+			<header class="page-header">
+				<h1>
+					{ props.Product.CanonicalName }
+					if props.Product.Edition != nil && *props.Product.Edition != "" {
+						<small>{ " (" + *props.Product.Edition + ")" }</small>
+					}
+				</h1>
+				if canEdit(role) {
+					<div class="page-actions">
+						<a class="btn" href={ templ.SafeURL("/products/" + itoa(props.Product.ID) + "/edit") }>編集</a>
+						<form method="post" action={ templ.SafeURL("/products/" + itoa(props.Product.ID) + "/delete") }
+							onsubmit="return confirm('この製品を削除しますか?');" class="inline">
+							@layout.CSRFInput(middleware.DummyCSRFToken)
+							<button type="submit" class="btn btn-danger">削除</button>
+						</form>
+					</div>
+				}
+			</header>
+
+			<dl class="details">
+				<dt>ベンダー</dt>
+				<dd><a href={ templ.SafeURL("/vendors/" + itoa(props.Product.VendorID)) }>{ props.Product.VendorName }</a></dd>
+				<dt>種別</dt>
+				<dd>{ softwareTypeLabel(props.Product.SoftwareType) }</dd>
+				<dt>ライセンス要否</dt>
+				<dd>{ licenseRequiredLabel(props.Product.LicenseRequired) }</dd>
+				<dt>全社承認状態</dt>
+				<dd>{ approvalLabel(props.Product.DefaultApprovalStatus) }</dd>
+				<dt>正規ダウンロード URL</dt>
+				<dd>
+					if props.Product.CanonicalDownloadUrl != nil {
+						<a href={ templ.SafeURL(*props.Product.CanonicalDownloadUrl) } target="_blank" rel="noopener">{ *props.Product.CanonicalDownloadUrl }</a>
+					}
+				</dd>
+				<dt>SaaS 管理画面 URL</dt>
+				<dd>
+					if props.Product.ServiceAdminUrl != nil {
+						<a href={ templ.SafeURL(*props.Product.ServiceAdminUrl) } target="_blank" rel="noopener">{ *props.Product.ServiceAdminUrl }</a>
+					}
+				</dd>
+				<dt>ライセンス規約 URL</dt>
+				<dd>
+					if props.Product.LicenseTermsUrl != nil {
+						<a href={ templ.SafeURL(*props.Product.LicenseTermsUrl) } target="_blank" rel="noopener">{ *props.Product.LicenseTermsUrl }</a>
+					}
+				</dd>
+				<dt>メモ</dt>
+				<dd>
+					if props.Product.Note != nil {
+						{ *props.Product.Note }
+					}
+				</dd>
+			</dl>
+
+			<h2>エイリアス</h2>
+			if len(props.Aliases) == 0 {
+				<p class="empty">エイリアスは未登録です。</p>
+			} else {
+				<ul class="alias-list">
+					for _, a := range props.Aliases {
+						<li>
+							<span class="alias-name">{ a.AliasName }</span>
+							<span class="alias-source">({ a.Source })</span>
+							if canEdit(role) {
+								<form method="post" action={ templ.SafeURL("/products/" + itoa(props.Product.ID) + "/aliases/" + itoa(a.ID) + "/delete") }
+									onsubmit="return confirm('このエイリアスを削除しますか?');" class="inline">
+									@layout.CSRFInput(middleware.DummyCSRFToken)
+									<button type="submit" class="btn btn-xs btn-danger">削除</button>
+								</form>
+							}
+						</li>
+					}
+				</ul>
+			}
+
+			if canEdit(role) {
+				<form method="post" action={ templ.SafeURL("/products/" + itoa(props.Product.ID) + "/aliases") } class="alias-add">
+					@layout.CSRFInput(middleware.DummyCSRFToken)
+					<label for="alias_name">エイリアス追加</label>
+					<input id="alias_name" type="text" name="alias_name" placeholder="SKYSEA 上の名前など" required/>
+					<button type="submit" class="btn">追加</button>
+				</form>
+			}
+		</section>
+	}
+}

@@ -16,6 +16,7 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/handler/web"
 	"github.com/tagawa0525/app_man/internal/view/errors"
 )
 
@@ -44,6 +45,11 @@ func NewRouter(deps Deps) http.Handler {
 		fileServer := http.FileServer(http.FS(deps.StaticFS))
 		r.Handle("/static/*", http.StripPrefix("/static/", fileServer))
 	}
+
+	web.RegisterRoutes(r, web.Deps{
+		Logger: deps.Logger,
+		DB:     deps.DB,
+	})
 
 	r.NotFound(notFoundHandler)
 

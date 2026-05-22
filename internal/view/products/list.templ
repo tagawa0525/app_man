@@ -1,0 +1,74 @@
+package products
+
+import (
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+func canEdit(role middleware.Role) bool {
+	switch role {
+	case middleware.RoleLicenseManager,
+		middleware.RoleDepartmentSecurityAdmin,
+		middleware.RoleSystemAdmin:
+		return true
+	}
+	return false
+}
+
+templ List(role middleware.Role, query string, items []repository.ListProductsRow, truncated bool) {
+	@layout.Base(layout.BaseProps{
+		Title:     "製品一覧",
+		Role:      role,
+		CSRFToken: middleware.DummyCSRFToken,
+	}) {
+		<section class="page-products-list">
+			<header class="page-header">
+				<h1>製品</h1>
+				if canEdit(role) {
+					<a class="btn btn-primary" href="/products/new">新規製品</a>
+				}
+			</header>
+
+			<form class="search-bar" method="get" action="/products">
+				<input type="search" name="q" value={ query } placeholder="製品名 / ベンダー名 / エイリアスで検索"/>
+				<button type="submit">検索</button>
+			</form>
+
+			if truncated {
+				<p class="warn">表示は最大 200 件で打ち切っています。検索で絞り込んでください。</p>
+			}
+
+			if len(items) == 0 {
+				<p class="empty">該当する製品はありません。</p>
+			} else {
+				<table class="data-table">
+					<thead>
+						<tr>
+							<th>製品名</th>
+							<th>エディション</th>
+							<th>ベンダー</th>
+							<th>種別</th>
+							<th>承認</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, p := range items {
+							<tr>
+								<td><a href={ templ.SafeURL("/products/" + itoa(p.ID)) }>{ p.CanonicalName }</a></td>
+								<td>
+									if p.Edition != nil {
+										{ *p.Edition }
+									}
+								</td>
+								<td>{ p.VendorName }</td>
+								<td>{ softwareTypeLabel(p.SoftwareType) }</td>
+								<td>{ approvalLabel(p.DefaultApprovalStatus) }</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			}
+		</section>
+	}
+}
