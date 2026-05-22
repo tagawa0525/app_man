@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/tagawa0525/app_man/internal/handler/middleware"
@@ -87,6 +88,326 @@ func (h *productHandlers) renderForm(w http.ResponseWriter, r *http.Request, sta
 	if err := productview.Form(role, props).Render(r.Context(), w); err != nil {
 		h.logger.ErrorContext(r.Context(), "render products form", "err", err)
 	}
+}
+
+// editForm は GET /products/:id/edit。
+func (h *productHandlers) editForm(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseInt64Param(r, "id")
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	q := repository.New(h.db)
+	p, err := q.GetProduct(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		h.logger.ErrorContext(r.Context(), "get product for edit", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	vs, err := q.ListVendors(r.Context())
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "list vendors for edit", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	h.renderForm(w, r, http.StatusOK, productview.FormProps{
+		Action:  "/products/" + strconv.FormatInt(p.ID, 10),
+		Title:   "製品編集",
+		Submit:  "更新",
+		Vendors: vs,
+		Input:   productRowToInput(p),
+	})
+}
+
+// create は POST /products。
+func (h *productHandlers) create(w http.ResponseWriter, r *http.Request) {
+	q := repository.New(h.db)
+	vs, err := q.ListVendors(r.Context())
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "list vendors for create", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	input, errs := decodeProductForm(r, vs)
+	formProps := productview.FormProps{
+		Action:  "/products",
+		Title:   "製品新規作成",
+		Submit:  "作成",
+		Vendors: vs,
+		Input:   input.toViewInput(),
+		Errors:  errs,
+	}
+	if len(errs) > 0 {
+		h.renderForm(w, r, http.StatusBadRequest, formProps)
+		return
+	}
+
+	p, err := q.CreateProduct(r.Context(), input.toCreateParams())
+	if err != nil {
+		if isUniqueConstraintErr(err) {
+			formProps.Errors = map[string]string{
+				"canonical_name": "同じベンダー・名前・エディションの製品が既に存在します",
+			}
+			h.renderForm(w, r, http.StatusConflict, formProps)
+			return
+		}
+		h.logger.ErrorContext(r.Context(), "create product", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/products/"+strconv.FormatInt(p.ID, 10), http.StatusSeeOther)
+}
+
+// update は POST /products/:id。
+func (h *productHandlers) update(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseInt64Param(r, "id")
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	q := repository.New(h.db)
+	vs, err := q.ListVendors(r.Context())
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	input, errs := decodeProductForm(r, vs)
+	formProps := productview.FormProps{
+		Action:  "/products/" + strconv.FormatInt(id, 10),
+		Title:   "製品編集",
+		Submit:  "更新",
+		Vendors: vs,
+		Input:   input.toViewInput(),
+		Errors:  errs,
+	}
+	if len(errs) > 0 {
+		h.renderForm(w, r, http.StatusBadRequest, formProps)
+		return
+	}
+
+	if _, err := q.UpdateProduct(r.Context(), input.toUpdateParams(id)); err != nil {
+		if isUniqueConstraintErr(err) {
+			formProps.Errors = map[string]string{
+				"canonical_name": "同じベンダー・名前・エディションの製品が既に存在します",
+			}
+			h.renderForm(w, r, http.StatusConflict, formProps)
+			return
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		h.logger.ErrorContext(r.Context(), "update product", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/products/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+}
+
+// delete は POST /products/:id/delete。
+func (h *productHandlers) delete(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseInt64Param(r, "id")
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	q := repository.New(h.db)
+	if err := q.DeleteProduct(r.Context(), id); err != nil {
+		h.logger.ErrorContext(r.Context(), "delete product", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/products", http.StatusSeeOther)
+}
+
+// productInput は decodeProductForm が返すフォーム入力値 (view 用構造体と
+// CreateProductParams / UpdateProductParams の橋渡しを兼ねる)。
+type productInput struct {
+	VendorID              int64
+	CanonicalName         string
+	Edition               string
+	SoftwareType          string
+	LicenseRequired       *bool
+	DefaultApprovalStatus string
+	CanonicalDownloadURL  string
+	ServiceAdminURL       string
+	LicenseTermsURL       string
+	Note                  string
+}
+
+func (in productInput) toViewInput() productview.FormInput {
+	licReq := ""
+	if in.LicenseRequired != nil {
+		if *in.LicenseRequired {
+			licReq = "true"
+		} else {
+			licReq = "false"
+		}
+	}
+	vendorID := ""
+	if in.VendorID > 0 {
+		vendorID = strconv.FormatInt(in.VendorID, 10)
+	}
+	return productview.FormInput{
+		VendorID:              vendorID,
+		CanonicalName:         in.CanonicalName,
+		Edition:               in.Edition,
+		SoftwareType:          in.SoftwareType,
+		LicenseRequired:       licReq,
+		DefaultApprovalStatus: in.DefaultApprovalStatus,
+		CanonicalDownloadURL:  in.CanonicalDownloadURL,
+		ServiceAdminURL:       in.ServiceAdminURL,
+		LicenseTermsURL:       in.LicenseTermsURL,
+		Note:                  in.Note,
+	}
+}
+
+func (in productInput) toCreateParams() repository.CreateProductParams {
+	return repository.CreateProductParams{
+		VendorID:              in.VendorID,
+		CanonicalName:         in.CanonicalName,
+		Edition:               nilIfEmpty(in.Edition),
+		SoftwareType:          in.SoftwareType,
+		LicenseRequired:       in.LicenseRequired,
+		DefaultApprovalStatus: in.DefaultApprovalStatus,
+		CanonicalDownloadUrl:  nilIfEmpty(in.CanonicalDownloadURL),
+		ServiceAdminUrl:       nilIfEmpty(in.ServiceAdminURL),
+		LicenseTermsUrl:       nilIfEmpty(in.LicenseTermsURL),
+		Note:                  nilIfEmpty(in.Note),
+	}
+}
+
+func (in productInput) toUpdateParams(id int64) repository.UpdateProductParams {
+	return repository.UpdateProductParams{
+		VendorID:              in.VendorID,
+		CanonicalName:         in.CanonicalName,
+		Edition:               nilIfEmpty(in.Edition),
+		SoftwareType:          in.SoftwareType,
+		LicenseRequired:       in.LicenseRequired,
+		DefaultApprovalStatus: in.DefaultApprovalStatus,
+		CanonicalDownloadUrl:  nilIfEmpty(in.CanonicalDownloadURL),
+		ServiceAdminUrl:       nilIfEmpty(in.ServiceAdminURL),
+		LicenseTermsUrl:       nilIfEmpty(in.LicenseTermsURL),
+		Note:                  nilIfEmpty(in.Note),
+		ID:                    id,
+	}
+}
+
+// productRowToInput は GetProductRow から view 用 Input へ詰め替え。
+func productRowToInput(p repository.GetProductRow) productview.FormInput {
+	in := productInput{
+		VendorID:              p.VendorID,
+		CanonicalName:         p.CanonicalName,
+		Edition:               derefString(p.Edition),
+		SoftwareType:          p.SoftwareType,
+		LicenseRequired:       p.LicenseRequired,
+		DefaultApprovalStatus: p.DefaultApprovalStatus,
+		CanonicalDownloadURL:  derefString(p.CanonicalDownloadUrl),
+		ServiceAdminURL:       derefString(p.ServiceAdminUrl),
+		LicenseTermsURL:       derefString(p.LicenseTermsUrl),
+		Note:                  derefString(p.Note),
+	}
+	return in.toViewInput()
+}
+
+// decodeProductForm はフォーム入力を取り出し、enum 含めて検証する。
+func decodeProductForm(r *http.Request, vendors []repository.Vendor) (productInput, map[string]string) {
+	_ = r.ParseForm()
+	rawVendorID := strings.TrimSpace(r.PostFormValue("vendor_id"))
+	canonical := strings.TrimSpace(r.PostFormValue("canonical_name"))
+	edition := strings.TrimSpace(r.PostFormValue("edition"))
+	softwareType := strings.TrimSpace(r.PostFormValue("software_type"))
+	if softwareType == "" {
+		softwareType = "installed"
+	}
+	licReq := strings.TrimSpace(r.PostFormValue("license_required"))
+	approval := strings.TrimSpace(r.PostFormValue("default_approval_status"))
+	if approval == "" {
+		approval = "unknown"
+	}
+	downloadURL := strings.TrimSpace(r.PostFormValue("canonical_download_url"))
+	adminURL := strings.TrimSpace(r.PostFormValue("service_admin_url"))
+	termsURL := strings.TrimSpace(r.PostFormValue("license_terms_url"))
+	note := r.PostFormValue("note")
+
+	errs := map[string]string{}
+
+	var vendorID int64
+	if rawVendorID == "" {
+		errs["vendor_id"] = "ベンダーを選択してください"
+	} else {
+		parsed, err := strconv.ParseInt(rawVendorID, 10, 64)
+		if err != nil {
+			errs["vendor_id"] = "不正なベンダー ID です"
+		} else if !vendorExists(vendors, parsed) {
+			errs["vendor_id"] = "ベンダーが存在しません"
+		} else {
+			vendorID = parsed
+		}
+	}
+
+	if canonical == "" {
+		errs["canonical_name"] = "製品名は必須です"
+	}
+
+	switch softwareType {
+	case "installed", "saas", "both":
+	default:
+		errs["software_type"] = "不正な種別です"
+	}
+
+	switch approval {
+	case "globally_approved", "globally_prohibited", "department_discretion", "unknown":
+	default:
+		errs["default_approval_status"] = "不正な承認状態です"
+	}
+
+	var licReqPtr *bool
+	switch licReq {
+	case "":
+		// 未判定
+	case "true":
+		t := true
+		licReqPtr = &t
+	case "false":
+		f := false
+		licReqPtr = &f
+	default:
+		errs["license_required"] = "不正な値です"
+	}
+
+	in := productInput{
+		VendorID:              vendorID,
+		CanonicalName:         canonical,
+		Edition:               edition,
+		SoftwareType:          softwareType,
+		LicenseRequired:       licReqPtr,
+		DefaultApprovalStatus: approval,
+		CanonicalDownloadURL:  downloadURL,
+		ServiceAdminURL:       adminURL,
+		LicenseTermsURL:       termsURL,
+		Note:                  note,
+	}
+	return in, errs
+}
+
+func vendorExists(vs []repository.Vendor, id int64) bool {
+	for _, v := range vs {
+		if v.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // show は GET /products/:id。alias 一覧を併記。
