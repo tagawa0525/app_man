@@ -20,12 +20,13 @@ func okHandler(called *bool) http.Handler {
 func TestCSRFMiddleware_GET_PassThrough(t *testing.T) {
 	t.Parallel()
 
-	called := false
-	h := middleware.CSRFMiddleware(okHandler(&called))
-
 	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodOptions} {
 		t.Run(method, func(t *testing.T) {
-			called = false
+			t.Parallel()
+
+			called := false
+			h := middleware.CSRFMiddleware(okHandler(&called))
+
 			req := httptest.NewRequest(method, "/", nil)
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
