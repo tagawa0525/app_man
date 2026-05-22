@@ -42,6 +42,13 @@ var editors = []mw.Role{
 // RegisterRoutes は本パッケージのルートを r に登録する。
 // 呼び出し側 (handler.NewRouter) で DummyAuth / CSRF middleware を r に
 // 適用済みの前提。
-func RegisterRoutes(_ chi.Router, _ Deps) {
-	// 実装は後続コミットで追加する (vendors → products → alias)。
+func RegisterRoutes(r chi.Router, deps Deps) {
+	v := &vendorHandlers{db: deps.DB, logger: deps.Logger}
+
+	r.With(mw.RequireRole(viewers...)).Group(func(r chi.Router) {
+		r.Get("/vendors", v.list)
+	})
+	r.With(mw.RequireRole(editors...)).Group(func(r chi.Router) {
+		r.Get("/vendors/new", v.newForm)
+	})
 }
