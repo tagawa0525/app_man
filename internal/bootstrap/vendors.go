@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/url"
 	"strings"
@@ -23,16 +24,6 @@ func (VendorsImporter) HeaderColumns() []string { return []string{"name", "url",
 func (VendorsImporter) Validate(ctx context.Context, q *repository.Queries, rows []Row) []ValidationError {
 	var errs []ValidationError
 
-	// DB 既存の vendor name セット
-	existing := map[string]struct{}{}
-	vs, err := q.ListVendors(ctx)
-	if err != nil {
-		return []ValidationError{{Line: 0, Column: "", Message: "list vendors: " + err.Error()}}
-	}
-	for _, v := range vs {
-		existing[v.Name] = struct{}{}
-	}
-
 	// CSV 内重複検出
 	seen := map[string]int{}
 
@@ -41,8 +32,18 @@ func (VendorsImporter) Validate(ctx context.Context, q *repository.Queries, rows
 		if name == "" {
 			errs = append(errs, ValidationError{Line: r.Line, Column: "name", Message: "名前は必須です"})
 		}
-		if _, ok := existing[name]; name != "" && ok {
-			errs = append(errs, ValidationError{Line: r.Line, Column: "name", Message: "DB に既に登録されています: " + name})
+		// DB 既存重複は GetVendorByName で 1 件ずつ確認 (ListVendors は
+		// LIMIT 200 で 201 件目以降を取りこぼすため使えない)。
+		if name != "" {
+			_, err := q.GetVendorByName(ctx, name)
+			switch {
+			case err == nil:
+				errs = append(errs, ValidationError{Line: r.Line, Column: "name", Message: "DB に既に登録されています: " + name})
+			case errors.Is(err, sql.ErrNoRows):
+				// 未登録 — OK
+			default:
+				errs = append(errs, ValidationError{Line: r.Line, Column: "name", Message: "lookup error: " + err.Error()})
+			}
 		}
 		if prev, ok := seen[name]; name != "" && ok {
 			errs = append(errs, ValidationError{Line: r.Line, Column: "name", Message: "CSV 内で重複しています (line " + itoa(prev) + ")"})
