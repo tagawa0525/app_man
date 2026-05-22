@@ -1,0 +1,111 @@
+package users
+
+import (
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+// ShowProps は GET /users/:id 表示で必要な集約。
+type ShowProps struct {
+	User       repository.User
+	Department *repository.Department
+	Flash      string
+}
+
+templ Show(role middleware.Role, props ShowProps) {
+	@layout.Base(layout.BaseProps{
+		Title:     props.User.EmployeeCode + " / " + props.User.Name,
+		Role:      role,
+		Flash:     props.Flash,
+		CSRFToken: middleware.DummyCSRFToken,
+	}) {
+		<section class="page-users-show">
+			<header class="page-header">
+				<h1>
+					{ props.User.EmployeeCode } / { props.User.Name }
+					if props.User.DeactivatedAt != nil {
+						<span class="badge-inactive">退職 ({ formatDateTime(props.User.DeactivatedAt) })</span>
+					}
+				</h1>
+				if canEdit(role) {
+					<div class="page-actions">
+						<a class="btn" href={ templ.SafeURL("/users/" + itoa(props.User.ID) + "/edit") }>編集</a>
+						if props.User.DeactivatedAt == nil {
+							<form method="post" action={ templ.SafeURL("/users/" + itoa(props.User.ID) + "/delete") }
+								onsubmit="return confirm('このユーザを退職扱いにしますか?');" class="inline">
+								@layout.CSRFInput(middleware.DummyCSRFToken)
+								<button type="submit" class="btn btn-danger">退職</button>
+							</form>
+						} else {
+							<form method="post" action={ templ.SafeURL("/users/" + itoa(props.User.ID) + "/restore") }
+								onsubmit="return confirm('このユーザを復活しますか?');" class="inline">
+								@layout.CSRFInput(middleware.DummyCSRFToken)
+								<button type="submit" class="btn">復活</button>
+							</form>
+						}
+					</div>
+				}
+			</header>
+
+			<dl class="details">
+				<dt>従業員コード</dt>
+				<dd>{ props.User.EmployeeCode }</dd>
+
+				<dt>氏名</dt>
+				<dd>{ props.User.Name }</dd>
+
+				<dt>ログオン名</dt>
+				<dd>
+					if props.User.Username != nil && *props.User.Username != "" {
+						{ *props.User.Username }
+					} else {
+						<span class="empty">(なし)</span>
+					}
+				</dd>
+
+				<dt>メール</dt>
+				<dd>
+					if props.User.Email != nil && *props.User.Email != "" {
+						{ *props.User.Email }
+					} else {
+						<span class="empty">(なし)</span>
+					}
+				</dd>
+
+				<dt>所属部署</dt>
+				<dd>
+					if props.Department != nil {
+						<a href={ templ.SafeURL("/departments/" + itoa(props.Department.ID)) }>
+							{ departmentLabel(*props.Department) }
+						</a>
+					} else {
+						<span class="empty">(なし)</span>
+					}
+				</dd>
+
+				<dt>由来</dt>
+				<dd>{ sourceLabel(props.User.Source) }</dd>
+
+				<dt>状態</dt>
+				<dd>
+					if props.User.DeactivatedAt != nil {
+						<span class="badge-inactive">退職 ({ formatDateTime(props.User.DeactivatedAt) })</span>
+					} else {
+						<span class="badge-active">在籍</span>
+					}
+				</dd>
+
+				if props.User.SourceDn != nil && *props.User.SourceDn != "" {
+					<dt>AD DN</dt>
+					<dd>{ *props.User.SourceDn }</dd>
+				}
+
+				if props.User.LastSyncedAt != nil {
+					<dt>最終同期</dt>
+					<dd>{ formatDateTime(props.User.LastSyncedAt) }</dd>
+				}
+			</dl>
+		</section>
+	}
+}
