@@ -16,6 +16,7 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/view/errors"
 )
 
 // Deps は NewRouter が必要とする外部依存をまとめる。
@@ -44,10 +45,22 @@ func NewRouter(deps Deps) http.Handler {
 		r.Handle("/static/*", http.StripPrefix("/static/", fileServer))
 	}
 
+	r.NotFound(notFoundHandler)
+
 	return r
 }
 
 func healthHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok"))
+}
+
+func notFoundHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusNotFound)
+	role := middleware.RoleFrom(r.Context())
+	if err := errors.NotFound(role).Render(r.Context(), w); err != nil {
+		// レンダリング失敗時は素の 404 を返すしかない (status は既に書き込み済)。
+		_, _ = w.Write([]byte("404 not found"))
+	}
 }

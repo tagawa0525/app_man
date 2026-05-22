@@ -1,0 +1,57 @@
+package layout
+
+import "github.com/tagawa0525/app_man/internal/handler/middleware"
+
+// BaseProps は Base レイアウトの可変部。
+//
+// CSRFToken は固定値 (middleware.DummyCSRFToken) を渡す前提だが、
+// テンプレートに props として受け取らせる形にして、フェーズ 3 で
+// session-bound トークンに差し替える際にテンプレ本体を触らずに済むよう
+// インタフェースを切ってある。
+type BaseProps struct {
+	Title     string
+	Role      middleware.Role
+	Flash     string
+	CSRFToken string
+}
+
+templ Base(p BaseProps) {
+	<!DOCTYPE html>
+	<html lang="ja">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="csrf-token" content={ p.CSRFToken }/>
+			<title>{ p.Title } - 社内アプリ管理</title>
+			<link rel="stylesheet" href="/static/css/app.css"/>
+			<script src="/static/htmx.min.js"></script>
+		</head>
+		<body>
+			@Nav(p.Role)
+			<main>
+				if p.Flash != "" {
+					<div class="flash">{ p.Flash }</div>
+				}
+				{ children... }
+			</main>
+		</body>
+	</html>
+}
+
+// Nav は PR-A 時点では空のヘッダ + 現在ロール表示のみ。
+// PR-B 以降で /products / /departments 等のリンクを role ベースで
+// 出し分ける形に拡張する想定。
+templ Nav(role middleware.Role) {
+	<nav class="appbar">
+		<span class="brand">社内アプリ管理</span>
+		<span class="role">role: { string(role) }</span>
+	</nav>
+}
+
+// CSRFInput は <form> 内で利用する hidden input。
+// テンプレートから直接 DummyCSRFToken 定数を参照させず props 経由で
+// 受け取らせる方針のため、handler 側で BaseProps.CSRFToken と同じ値を
+// 渡す運用とする。
+templ CSRFInput(token string) {
+	<input type="hidden" name="_csrf" value={ token }/>
+}

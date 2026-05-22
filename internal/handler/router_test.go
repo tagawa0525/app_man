@@ -86,7 +86,7 @@ func TestRouter_StaticCSS_Served(t *testing.T) {
 	}
 }
 
-func TestRouter_Unknown_Returns404(t *testing.T) {
+func TestRouter_Unknown_Returns404_WithTemplate(t *testing.T) {
 	t.Parallel()
 
 	r := newTestRouter(t)
@@ -96,5 +96,12 @@ func TestRouter_Unknown_Returns404(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct == "" || !bytes.Contains([]byte(ct), []byte("text/html")) {
+		t.Fatalf("Content-Type = %q, want text/html", ct)
+	}
+	body := rec.Body.String()
+	if !bytes.Contains([]byte(body), []byte("404 Not Found")) {
+		t.Fatalf("body does not contain '404 Not Found':\n%s", body)
 	}
 }
