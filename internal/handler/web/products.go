@@ -214,6 +214,84 @@ func (h *productHandlers) update(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/products/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
 }
 
+// aliasCreate は POST /products/:id/aliases。
+func (h *productHandlers) aliasCreate(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseInt64Param(r, "id")
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	_ = r.ParseForm()
+	name := strings.TrimSpace(r.PostFormValue("alias_name"))
+	if name == "" {
+		http.Redirect(w, r, "/products/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+		return
+	}
+
+	q := repository.New(h.db)
+	if _, err := q.CreateAlias(r.Context(), repository.CreateAliasParams{
+		ProductID: id,
+		AliasName: name,
+	}); err != nil {
+		if isUniqueConstraintErr(err) {
+			// product_aliases.alias_name は GLOBAL UNIQUE。
+			// 既存があれば 409 + show 画面を flash 付きで再表示する。
+			h.showWithFlash(w, r, id, http.StatusConflict, "同じエイリアスが既に存在します。別の名前を使ってください。")
+			return
+		}
+		h.logger.ErrorContext(r.Context(), "create alias", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/products/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+}
+
+// aliasDelete は POST /products/:id/aliases/:aid/delete。
+func (h *productHandlers) aliasDelete(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseInt64Param(r, "id")
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	aid, ok := parseInt64Param(r, "aid")
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	q := repository.New(h.db)
+	if err := q.DeleteAlias(r.Context(), aid); err != nil {
+		h.logger.ErrorContext(r.Context(), "delete alias", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/products/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+}
+
+// showWithFlash は status を付けて show templ を再描画する (409 などで使う)。
+func (h *productHandlers) showWithFlash(w http.ResponseWriter, r *http.Request, id int64, status int, flash string) {
+	q := repository.New(h.db)
+	p, err := q.GetProduct(r.Context(), id)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	aliases, err := q.ListAliasesByProduct(r.Context(), p.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	role := middleware.RoleFrom(r.Context())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if err := productview.Show(role, productview.ShowProps{
+		Product: p,
+		Aliases: aliases,
+		Flash:   flash,
+	}).Render(r.Context(), w); err != nil {
+		h.logger.ErrorContext(r.Context(), "render product show on conflict", "err", err)
+	}
+}
+
 // delete は POST /products/:id/delete。
 func (h *productHandlers) delete(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseInt64Param(r, "id")
