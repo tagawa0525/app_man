@@ -71,6 +71,7 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 		r.Get("/users", u.list)
 		r.Get("/users/{id}", u.show)
 		r.Get("/devices", e.list)
+		r.Get("/devices/{id}", e.show)
 	})
 	r.With(mw.RequireRole(editors...)).Group(func(r chi.Router) {
 		r.Get("/vendors/new", v.newForm)
@@ -98,5 +99,8 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 		r.Post("/users/{id}/delete", u.delete)
 		r.Post("/users/{id}/restore", u.restore)
 		r.Get("/devices/new", e.newForm)
+		r.Post("/devices", e.create)
+		r.Get("/devices/{id}/edit", e.editForm)
+		r.Post("/devices/{id}", e.update)
 	})
 }

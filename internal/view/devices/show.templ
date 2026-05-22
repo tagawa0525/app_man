@@ -1,0 +1,107 @@
+package devices
+
+import (
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+// ShowProps は GET /devices/:id 表示で必要な集約。
+type ShowProps struct {
+	Device     repository.Device
+	User       *repository.User
+	Department *repository.Department
+	Flash      string
+}
+
+templ Show(role middleware.Role, props ShowProps) {
+	@layout.Base(layout.BaseProps{
+		Title:     props.Device.AssetCode,
+		Role:      role,
+		Flash:     props.Flash,
+		CSRFToken: middleware.DummyCSRFToken,
+	}) {
+		<section class="page-devices-show">
+			<header class="page-header">
+				<h1>
+					{ props.Device.AssetCode }
+					if props.Device.RetiredAt != nil {
+						<span class="badge-inactive">退役 ({ formatDateTime(props.Device.RetiredAt) })</span>
+					}
+				</h1>
+				if canEdit(role) {
+					<div class="page-actions">
+						<a class="btn" href={ templ.SafeURL("/devices/" + itoa(props.Device.ID) + "/edit") }>編集</a>
+						if props.Device.RetiredAt == nil {
+							<form method="post" action={ templ.SafeURL("/devices/" + itoa(props.Device.ID) + "/retire") }
+								onsubmit="return confirm('この端末を退役扱いにしますか?');" class="inline">
+								@layout.CSRFInput(middleware.DummyCSRFToken)
+								<button type="submit" class="btn btn-danger">退役</button>
+							</form>
+						} else {
+							<form method="post" action={ templ.SafeURL("/devices/" + itoa(props.Device.ID) + "/restore") }
+								onsubmit="return confirm('この端末を復活しますか?');" class="inline">
+								@layout.CSRFInput(middleware.DummyCSRFToken)
+								<button type="submit" class="btn">復活</button>
+							</form>
+						}
+					</div>
+				}
+			</header>
+
+			<dl class="details">
+				<dt>資産コード</dt>
+				<dd>{ props.Device.AssetCode }</dd>
+
+				<dt>ホスト名</dt>
+				<dd>
+					if props.Device.Hostname != nil && *props.Device.Hostname != "" {
+						{ *props.Device.Hostname }
+					} else {
+						<span class="empty">(なし)</span>
+					}
+				</dd>
+
+				<dt>主利用者</dt>
+				<dd>
+					if props.User != nil {
+						<a href={ templ.SafeURL("/users/" + itoa(props.User.ID)) }>
+							{ userLabel(*props.User) }
+						</a>
+					} else {
+						<span class="empty">(なし)</span>
+					}
+				</dd>
+
+				<dt>所属部署</dt>
+				<dd>
+					if props.Department != nil {
+						<a href={ templ.SafeURL("/departments/" + itoa(props.Department.ID)) }>
+							{ departmentLabel(*props.Department) }
+						</a>
+					} else {
+						<span class="empty">(なし)</span>
+					}
+				</dd>
+
+				<dt>状態</dt>
+				<dd>
+					if props.Device.RetiredAt != nil {
+						<span class="badge-inactive">退役 ({ formatDateTime(props.Device.RetiredAt) })</span>
+					} else {
+						<span class="badge-active">稼働</span>
+					}
+				</dd>
+
+				<dt>最終確認</dt>
+				<dd>
+					if props.Device.LastSeenAt != nil {
+						{ formatDateTime(props.Device.LastSeenAt) }
+					} else {
+						<span class="empty">(未確認)</span>
+					}
+				</dd>
+			</dl>
+		</section>
+	}
+}
