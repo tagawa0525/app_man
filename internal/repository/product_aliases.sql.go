@@ -60,6 +60,27 @@ func (q *Queries) DeleteAlias(ctx context.Context, arg DeleteAliasParams) (int64
 	return result.RowsAffected()
 }
 
+const getAliasByName = `-- name: GetAliasByName :one
+SELECT
+  id, product_id, alias_name, source, created_at
+FROM product_aliases
+WHERE alias_name = ?
+LIMIT 1
+`
+
+func (q *Queries) GetAliasByName(ctx context.Context, aliasName string) (ProductAlias, error) {
+	row := q.db.QueryRowContext(ctx, getAliasByName, aliasName)
+	var i ProductAlias
+	err := row.Scan(
+		&i.ID,
+		&i.ProductID,
+		&i.AliasName,
+		&i.Source,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const listAliasesByProduct = `-- name: ListAliasesByProduct :many
 SELECT
   id,

@@ -189,3 +189,12 @@ FROM users
 WHERE deactivated_at IS NULL
 ORDER BY employee_code
 LIMIT 200;
+
+-- name: GetUserByEmployeeCode :one
+SELECT
+  id, employee_code, username, name, email, department_id,
+  deactivated_at, source, source_dn, ad_modified_at, last_synced_at,
+  created_at, updated_at
+FROM users
+WHERE employee_code = ?
+LIMIT 1;

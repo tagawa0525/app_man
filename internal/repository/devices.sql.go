@@ -89,6 +89,32 @@ func (q *Queries) GetDevice(ctx context.Context, id int64) (Device, error) {
 	return i, err
 }
 
+const getDeviceByAssetCode = `-- name: GetDeviceByAssetCode :one
+SELECT
+  id, asset_code, hostname, primary_user_id, department_id,
+  retired_at, last_seen_at, created_at, updated_at
+FROM devices
+WHERE asset_code = ?
+LIMIT 1
+`
+
+func (q *Queries) GetDeviceByAssetCode(ctx context.Context, assetCode string) (Device, error) {
+	row := q.db.QueryRowContext(ctx, getDeviceByAssetCode, assetCode)
+	var i Device
+	err := row.Scan(
+		&i.ID,
+		&i.AssetCode,
+		&i.Hostname,
+		&i.PrimaryUserID,
+		&i.DepartmentID,
+		&i.RetiredAt,
+		&i.LastSeenAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listDevices = `-- name: ListDevices :many
 SELECT
   id,

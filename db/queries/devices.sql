@@ -127,3 +127,11 @@ SET
   retired_at = NULL,
   updated_at = CURRENT_TIMESTAMP
 WHERE id = ? AND retired_at IS NOT NULL;
+
+-- name: GetDeviceByAssetCode :one
+SELECT
+  id, asset_code, hostname, primary_user_id, department_id,
+  retired_at, last_seen_at, created_at, updated_at
+FROM devices
+WHERE asset_code = ?
+LIMIT 1;

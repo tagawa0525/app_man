@@ -23,7 +23,7 @@ export CGO_ENABLED := 0
 
 CONFIG ?= config.yml
 
-.PHONY: all build test lint run clean tidy migrate-up migrate-down generate
+.PHONY: all build test lint run clean tidy migrate-up migrate-down generate dev-seed
 
 all: build
 
@@ -76,3 +76,18 @@ migrate-down: $(BIN_DIR)/appmgr-migrate
 generate:
 	sqlc generate
 	templ generate
+
+# dev-seed は開発用テストデータを一発投入する。
+# 既存 DB を rm → migrate-up → import-bootstrap (6 kind) を順次 --commit。
+# 既存データを破壊するため、本番には使わない。
+dev-seed: $(BIN_DIR)/appmgr-migrate $(BIN_DIR)/appmgr-import-bootstrap
+	@echo "Removing existing DB..."
+	rm -f data/app.db
+	./$(BIN_DIR)/appmgr-migrate --config $(CONFIG) --direction up
+	./$(BIN_DIR)/appmgr-import-bootstrap --config $(CONFIG) --kind vendors         --file data/seeds/vendors.csv         --commit
+	./$(BIN_DIR)/appmgr-import-bootstrap --config $(CONFIG) --kind products        --file data/seeds/products.csv        --commit
+	./$(BIN_DIR)/appmgr-import-bootstrap --config $(CONFIG) --kind product_aliases --file data/seeds/product_aliases.csv --commit
+	./$(BIN_DIR)/appmgr-import-bootstrap --config $(CONFIG) --kind departments     --file data/seeds/departments.csv     --commit
+	./$(BIN_DIR)/appmgr-import-bootstrap --config $(CONFIG) --kind users           --file data/seeds/users.csv           --commit
+	./$(BIN_DIR)/appmgr-import-bootstrap --config $(CONFIG) --kind devices         --file data/seeds/devices.csv         --commit
+	@echo "dev-seed complete."

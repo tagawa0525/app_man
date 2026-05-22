@@ -1,0 +1,13 @@
+vendor_name,canonical_name,edition,software_type,license_required,default_approval_status,note
+Microsoft,Microsoft Office,Standard,installed,true,approved,
+Microsoft,Microsoft Office,Pro,installed,true,approved,
+Microsoft,Windows,11 Pro,installed,true,approved,
+Microsoft,Visual Studio Code,,installed,false,approved,OSS
+Adobe,Photoshop,,installed,true,approved,
+Adobe,Illustrator,,installed,true,approved,
+Adobe,Acrobat,Pro,installed,true,approved,
+Autodesk,AutoCAD,,installed,true,approved,
+Autodesk,Inventor,,installed,true,unknown,
+JetBrains,IntelliJ IDEA,Ultimate,installed,true,approved,
+JetBrains,GoLand,,installed,true,approved,
+Slack,Slack,Business+,saas,true,approved,

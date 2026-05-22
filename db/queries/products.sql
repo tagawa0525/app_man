@@ -150,3 +150,41 @@ RETURNING
 
 -- name: DeleteProduct :exec
 DELETE FROM products WHERE id = ?;
+
+-- name: GetProductByKeyWithEdition :one
+SELECT
+  id,
+  vendor_id,
+  canonical_name,
+  edition,
+  software_type,
+  license_required,
+  default_approval_status,
+  canonical_download_url,
+  service_admin_url,
+  license_terms_url,
+  note,
+  created_at,
+  updated_at
+FROM products
+WHERE vendor_id = ?1 AND canonical_name = ?2 AND edition = ?3
+LIMIT 1;
+
+-- name: GetProductByKeyWithoutEdition :one
+SELECT
+  id,
+  vendor_id,
+  canonical_name,
+  edition,
+  software_type,
+  license_required,
+  default_approval_status,
+  canonical_download_url,
+  service_admin_url,
+  license_terms_url,
+  note,
+  created_at,
+  updated_at
+FROM products
+WHERE vendor_id = ?1 AND canonical_name = ?2 AND edition IS NULL
+LIMIT 1;

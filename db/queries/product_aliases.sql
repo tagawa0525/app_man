@@ -26,3 +26,10 @@ RETURNING
 
 -- name: DeleteAlias :execrows
 DELETE FROM product_aliases WHERE id = ? AND product_id = ?;
+
+-- name: GetAliasByName :one
+SELECT
+  id, product_id, alias_name, source, created_at
+FROM product_aliases
+WHERE alias_name = ?
+LIMIT 1;
