@@ -15,8 +15,8 @@ import (
 //
 //   - code 必須・UNIQUE
 //   - name 必須
-//   - parent_code 任意。CSV 内で **前方参照** (前の行の code) または DB 既存
-//     を指す
+//   - parent_code 任意。CSV 内では **先行する行で登録済みの code** または
+//     DB 既存を指す (後続行の code は参照不可)
 //   - valid_from / valid_to は YYYY-MM-DD 形式、空欄可
 //   - source は 'manual' 固定 (DDL デフォルト)
 //   - successor_department_id は本 PR では未対応 (空欄、後続 PR で扱う)
@@ -30,18 +30,30 @@ func (DepartmentsImporter) HeaderColumns() []string {
 func (DepartmentsImporter) Validate(ctx context.Context, q *repository.Queries, rows []Row) []ValidationError {
 	var errs []ValidationError
 
-	// DB 既存 code
-	existing := map[string]struct{}{}
-	ds, err := q.ListDepartmentsIncludingInactive(ctx)
-	if err != nil {
-		return []ValidationError{{Line: 0, Column: "", Message: "list departments: " + err.Error()}}
-	}
-	for _, d := range ds {
-		existing[d.Code] = struct{}{}
-	}
-
-	// CSV 内 code (前方参照を許す)
+	// CSV 内 code (同行より前で登録された code の先行参照を許す)
 	seenInCSV := map[string]int{}
+
+	// DB 既存 code lookup の結果をキャッシュ (parent_code が同じ DB 既存を
+	// 何度も指す可能性に備えて。ListDepartments 全件取得は LIMIT 200 で
+	// 取りこぼすため使えず、1 件ずつ GetDepartmentByCode で確認する)。
+	dbCache := map[string]bool{} // value: 存在するか
+
+	existsInDB := func(code string) (bool, error) {
+		if v, ok := dbCache[code]; ok {
+			return v, nil
+		}
+		_, err := q.GetDepartmentByCode(ctx, code)
+		switch {
+		case err == nil:
+			dbCache[code] = true
+			return true, nil
+		case errors.Is(err, sql.ErrNoRows):
+			dbCache[code] = false
+			return false, nil
+		default:
+			return false, err
+		}
+	}
 
 	for _, r := range rows {
 		code := strings.TrimSpace(r.Fields["code"])
@@ -59,7 +71,10 @@ func (DepartmentsImporter) Validate(ctx context.Context, q *repository.Queries, 
 
 		// DB / CSV 内重複
 		if code != "" {
-			if _, ok := existing[code]; ok {
+			inDB, err := existsInDB(code)
+			if err != nil {
+				errs = append(errs, ValidationError{Line: r.Line, Column: "code", Message: "lookup error: " + err.Error()})
+			} else if inDB {
 				errs = append(errs, ValidationError{Line: r.Line, Column: "code", Message: "DB に既に登録されています: " + code})
 			}
 			if prev, ok := seenInCSV[code]; ok {
@@ -69,11 +84,13 @@ func (DepartmentsImporter) Validate(ctx context.Context, q *repository.Queries, 
 			}
 		}
 
-		// parent_code は CSV 内前方参照 or DB 既存
+		// parent_code は CSV 内で先行する行 or DB 既存を参照可能
 		if parent != "" {
 			_, inCSV := seenInCSV[parent]
-			_, inDB := existing[parent]
-			if !inCSV && !inDB {
+			inDB, lookupErr := existsInDB(parent)
+			if lookupErr != nil {
+				errs = append(errs, ValidationError{Line: r.Line, Column: "parent_code", Message: "lookup error: " + lookupErr.Error()})
+			} else if !inCSV && !inDB {
 				errs = append(errs, ValidationError{Line: r.Line, Column: "parent_code", Message: "親部署 '" + parent + "' が未登録です (CSV 内では同行より前に書くか、DB に既存である必要があります)"})
 			}
 			if parent == code {
