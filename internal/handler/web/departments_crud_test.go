@@ -517,6 +517,53 @@ func TestDepartments_Update_RejectsSelfAsSuccessor(t *testing.T) {
 	handlertest.AssertContains(t, rec, "自身を後継")
 }
 
+func TestDepartments_Update_DuplicateCode_KeepsPinnedParent(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	// 廃止 parent + その子 + 他の現役部署 (code 重複用) を用意。
+	parent, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
+		Code: "DEPT-PARENT",
+		Name: "親部署",
+	})
+	if err != nil {
+		t.Fatalf("seed parent: %v", err)
+	}
+	child, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
+		Code:     "DEPT-CHILD",
+		Name:     "子部署",
+		ParentID: &parent.ID,
+	})
+	if err != nil {
+		t.Fatalf("seed child: %v", err)
+	}
+	if _, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
+		Code: "DEPT-OTHER",
+		Name: "他部署",
+	}); err != nil {
+		t.Fatalf("seed other: %v", err)
+	}
+	if _, derr := q.SoftDeleteDepartment(context.Background(), parent.ID); derr != nil {
+		t.Fatalf("soft delete parent: %v", derr)
+	}
+
+	// child を DEPT-OTHER に rename しようとする → UNIQUE 違反 → 409。
+	// 再描画フォームに廃止 parent が「(廃止)」付きで残ること。
+	req := handlertest.PostForm(t, fmt.Sprintf("/departments/%d", child.ID), middleware.RoleLicenseManager, url.Values{
+		"code":      {"DEPT-OTHER"},
+		"name":      {"子部署"},
+		"parent_id": {strconv.FormatInt(parent.ID, 10)},
+	})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 (body: %s)", rec.Code, rec.Body.String())
+	}
+	handlertest.AssertContains(t, rec, "DEPT-PARENT")
+	handlertest.AssertContains(t, rec, "(廃止)")
+}
+
 func TestDepartments_EditForm_PinsInactiveParent(t *testing.T) {
 	t.Parallel()
 	r, q := newWebRouter(t)

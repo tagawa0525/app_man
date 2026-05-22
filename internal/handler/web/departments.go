@@ -292,13 +292,19 @@ func (h *departmentHandlers) update(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "internal error", http.StatusInternalServerError)
 				return
 			}
+			pinned, pperr := resolvePinnedDepartments(r, q, parents, parsed.ParentID, parsed.SuccessorID)
+			if pperr != nil {
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
 			h.renderForm(w, r, http.StatusConflict, departmentview.FormProps{
-				Action:  "/departments/" + strconv.FormatInt(id, 10),
-				Title:   "部署編集",
-				Submit:  "更新",
-				Input:   in,
-				Errors:  map[string]string{"code": "部署コードが重複しています"},
-				Parents: parents,
+				Action:        "/departments/" + strconv.FormatInt(id, 10),
+				Title:         "部署編集",
+				Submit:        "更新",
+				Input:         in,
+				Errors:        map[string]string{"code": "部署コードが重複しています"},
+				Parents:       parents,
+				PinnedOptions: pinned,
 			})
 			return
 		}
