@@ -6,7 +6,7 @@ import (
 	"github.com/tagawa0525/app_man/internal/view/layout"
 )
 
-templ List(role middleware.Role, query string, items []repository.Department, truncated bool) {
+templ List(role middleware.Role, query string, includeInactive bool, items []repository.Department, truncated bool) {
 	@layout.Base(layout.BaseProps{
 		Title:     "部署一覧",
 		Role:      role,
@@ -22,6 +22,14 @@ templ List(role middleware.Role, query string, items []repository.Department, tr
 
 			<form class="search-bar" method="get" action="/departments">
 				<input type="search" name="q" value={ query } placeholder="部署名 / コードで検索"/>
+				<label class="checkbox">
+					if includeInactive {
+						<input type="checkbox" name="include_inactive" value="1" checked/>
+					} else {
+						<input type="checkbox" name="include_inactive" value="1"/>
+					}
+					廃止済みも含める
+				</label>
 				<button type="submit">検索</button>
 			</form>
 
@@ -43,22 +51,32 @@ templ List(role middleware.Role, query string, items []repository.Department, tr
 					</thead>
 					<tbody>
 						for _, d := range items {
-							<tr>
-								<td><a href={ templ.SafeURL("/departments/" + itoa(d.ID)) }>{ d.Code }</a></td>
-								<td>{ d.Name }</td>
-								<td>{ sourceLabel(d.Source) }</td>
-								<td>
-									if d.ValidTo != nil {
-										<span class="badge-inactive">廃止 ({ formatDate(d.ValidTo) })</span>
-									} else {
-										<span class="badge-active">現役</span>
-									}
-								</td>
-							</tr>
+							if d.ValidTo != nil {
+								<tr class="row-inactive">
+									@departmentRow(d)
+								</tr>
+							} else {
+								<tr>
+									@departmentRow(d)
+								</tr>
+							}
 						}
 					</tbody>
 				</table>
 			}
 		</section>
 	}
+}
+
+templ departmentRow(d repository.Department) {
+	<td><a href={ templ.SafeURL("/departments/" + itoa(d.ID)) }>{ d.Code }</a></td>
+	<td>{ d.Name }</td>
+	<td>{ sourceLabel(d.Source) }</td>
+	<td>
+		if d.ValidTo != nil {
+			<span class="badge-inactive">廃止 ({ formatDate(d.ValidTo) })</span>
+		} else {
+			<span class="badge-active">現役</span>
+		}
+	</td>
 }

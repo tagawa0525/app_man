@@ -24,21 +24,26 @@ type departmentHandlers struct {
 }
 
 // list は GET /departments の一覧 + 検索を返す。検索は name / code への
-// 部分一致 (LIKE)。既定では現役部署 (valid_to IS NULL) のみを返し、
-// ?include_inactive=1 で廃止済みも含める (このコミットでは未実装、
-// 後続コミットで分岐を入れる)。
+// 部分一致 (LIKE)。既定では現役部署 (valid_to IS NULL) のみ。
+// ?include_inactive=1 で廃止済みも含める。検索 ?q= と組合せ可能。
 func (h *departmentHandlers) list(w http.ResponseWriter, r *http.Request) {
 	q := repository.New(h.db)
 	role := middleware.RoleFrom(r.Context())
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	includeInactive := r.URL.Query().Get("include_inactive") == "1"
 
 	var (
 		items []repository.Department
 		err   error
 	)
-	if query != "" {
+	switch {
+	case query != "" && includeInactive:
+		items, err = q.SearchDepartmentsIncludingInactive(r.Context(), likePattern(query))
+	case query != "":
 		items, err = q.SearchDepartments(r.Context(), likePattern(query))
-	} else {
+	case includeInactive:
+		items, err = q.ListDepartmentsIncludingInactive(r.Context())
+	default:
 		items, err = q.ListDepartments(r.Context())
 	}
 	if err != nil {
@@ -49,7 +54,7 @@ func (h *departmentHandlers) list(w http.ResponseWriter, r *http.Request) {
 
 	truncated := len(items) >= listLimit
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := departmentview.List(role, query, items, truncated).Render(r.Context(), w); err != nil {
+	if err := departmentview.List(role, query, includeInactive, items, truncated).Render(r.Context(), w); err != nil {
 		h.logger.ErrorContext(r.Context(), "render departments list", "err", err)
 	}
 }
