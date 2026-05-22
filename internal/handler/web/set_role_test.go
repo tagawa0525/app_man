@@ -88,6 +88,26 @@ func TestSetRole_RedirectsToRoot_WhenRefererIsExternal(t *testing.T) {
 	}
 }
 
+func TestSetRole_RedirectsToRoot_WhenRefererHasEmptyPath(t *testing.T) {
+	t.Parallel()
+	r, _ := newWebRouter(t)
+
+	req := handlertest.PostForm(t, "/__set_role", "", url.Values{
+		"role": {string(middleware.RoleViewer)},
+	})
+	req.Header.Set("Referer", "http://example.test")
+	req.Host = "example.test"
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/" {
+		t.Errorf("Location = %q, want / (empty path must fall back to /)", loc)
+	}
+}
+
 func TestSetRole_RejectsInvalidRole_400(t *testing.T) {
 	t.Parallel()
 	r, _ := newWebRouter(t)

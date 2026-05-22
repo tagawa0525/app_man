@@ -45,7 +45,8 @@ func (h *devHandlers) setRole(w http.ResponseWriter, r *http.Request) {
 
 // safeRedirect は Referer ヘッダが同一オリジンならその Path+Query を返し、
 // そうでなければ "/" を返す。オープンリダイレクト回避のため Host 比較で
-// 厳格に判定する。
+// 厳格に判定する。RequestURI() が空文字を返すケース (Path 空の絶対 URL 等)
+// では "/" にフォールバックして http.Redirect に空 Location を渡さない。
 func safeRedirect(r *http.Request) string {
 	ref := r.Header.Get("Referer")
 	if ref == "" {
@@ -55,5 +56,9 @@ func safeRedirect(r *http.Request) string {
 	if err != nil || u.Host != r.Host {
 		return "/"
 	}
-	return u.RequestURI()
+	loc := u.RequestURI()
+	if loc == "" {
+		return "/"
+	}
+	return loc
 }
