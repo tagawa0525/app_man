@@ -430,3 +430,181 @@ func TestDevices_Update_RejectsDuplicateAssetCode(t *testing.T) {
 	}
 	handlertest.AssertContains(t, rec, "資産コードが重複")
 }
+
+func TestDevices_Retire_SetsRetiredAt(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
+		AssetCode: "PC-001",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	req := handlertest.PostForm(t, fmt.Sprintf("/devices/%d/retire", d.ID), middleware.RoleLicenseManager, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code < 300 || rec.Code >= 400 {
+		t.Fatalf("status = %d, want 3xx (body: %s)", rec.Code, rec.Body.String())
+	}
+	wantLoc := fmt.Sprintf("/devices/%d", d.ID)
+	if got := rec.Header().Get("Location"); got != wantLoc {
+		t.Errorf("Location = %q, want %q", got, wantLoc)
+	}
+
+	got, err := q.GetDevice(context.Background(), d.ID)
+	if err != nil {
+		t.Fatalf("GetDevice after retire: %v", err)
+	}
+	if got.RetiredAt == nil {
+		t.Fatalf("RetiredAt = nil, want non-nil")
+	}
+}
+
+func TestDevices_Retire_HidesFromDefaultList(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
+		AssetCode: "PC-001",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	r.ServeHTTP(httptest.NewRecorder(),
+		handlertest.PostForm(t, fmt.Sprintf("/devices/%d/retire", d.ID), middleware.RoleLicenseManager, nil))
+
+	ds, err := q.ListDevices(context.Background())
+	if err != nil {
+		t.Fatalf("ListDevices: %v", err)
+	}
+	if len(ds) != 0 {
+		t.Errorf("expected no active devices after retire, got %d", len(ds))
+	}
+}
+
+func TestDevices_Retire_NotFound_404(t *testing.T) {
+	t.Parallel()
+	r, _ := newWebRouter(t)
+
+	req := handlertest.PostForm(t, "/devices/9999/retire", middleware.RoleLicenseManager, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusNotFound)
+}
+
+func TestDevices_Retire_AlreadyRetired_409(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
+		AssetCode: "PC-001",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	r.ServeHTTP(httptest.NewRecorder(),
+		handlertest.PostForm(t, fmt.Sprintf("/devices/%d/retire", d.ID), middleware.RoleLicenseManager, nil))
+
+	req2 := handlertest.PostForm(t, fmt.Sprintf("/devices/%d/retire", d.ID), middleware.RoleLicenseManager, nil)
+	rec2 := httptest.NewRecorder()
+	r.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 (body: %s)", rec2.Code, rec2.Body.String())
+	}
+	handlertest.AssertContains(t, rec2, "既に退役")
+}
+
+func TestDevices_Retire_GeneralUser_403(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
+		AssetCode: "PC-001",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	req := handlertest.PostForm(t, fmt.Sprintf("/devices/%d/retire", d.ID), middleware.RoleGeneralUser, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusForbidden)
+}
+
+func TestDevices_Restore_ClearsRetiredAt(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
+		AssetCode: "PC-001",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, derr := q.SoftDeleteDevice(context.Background(), d.ID); derr != nil {
+		t.Fatalf("soft delete: %v", derr)
+	}
+
+	req := handlertest.PostForm(t, fmt.Sprintf("/devices/%d/restore", d.ID), middleware.RoleLicenseManager, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code < 300 || rec.Code >= 400 {
+		t.Fatalf("status = %d, want 3xx (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	got, err := q.GetDevice(context.Background(), d.ID)
+	if err != nil {
+		t.Fatalf("GetDevice after restore: %v", err)
+	}
+	if got.RetiredAt != nil {
+		t.Errorf("RetiredAt = %v, want nil", got.RetiredAt)
+	}
+}
+
+func TestDevices_Restore_AlreadyActive_409(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
+		AssetCode: "PC-001",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	req := handlertest.PostForm(t, fmt.Sprintf("/devices/%d/restore", d.ID), middleware.RoleLicenseManager, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 (body: %s)", rec.Code, rec.Body.String())
+	}
+	handlertest.AssertContains(t, rec, "既に稼働")
+}
+
+func TestDevices_Restore_GeneralUser_403(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
+		AssetCode: "PC-001",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	req := handlertest.PostForm(t, fmt.Sprintf("/devices/%d/restore", d.ID), middleware.RoleGeneralUser, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusForbidden)
+}
