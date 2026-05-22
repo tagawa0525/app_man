@@ -39,11 +39,10 @@ templ Base(p BaseProps) {
 }
 
 // Nav は appbar の左端ブランド + 業務リンク + 右端 role 表示。
-// PR-B で /vendors と /products、PR-C で /departments、PR-D で /users を
-// 追加した。/departments / /users は要件書 §6.1 で viewer 以上、他は
-// general_user 以上で閲覧可能だが、Nav 側で出し分けはしない (押下時に
-// role middleware が 403 を返す)。PR-E 以降で /devices 等が増えるたびに
-// ここへリンクを足す。
+// PR-B で /vendors と /products、PR-C で /departments、PR-D で /users、
+// PR-E で /devices を追加した。/departments / /users / /devices は
+// 要件書 §6.1 で viewer 以上、他は general_user 以上で閲覧可能だが、
+// Nav 側で出し分けはしない (押下時に role middleware が 403 を返す)。
 templ Nav(role middleware.Role) {
 	<nav class="appbar">
 		<span class="brand">社内アプリ管理</span>
@@ -52,6 +51,7 @@ templ Nav(role middleware.Role) {
 			<li><a href="/vendors">ベンダー</a></li>
 			<li><a href="/departments">部署</a></li>
 			<li><a href="/users">ユーザ</a></li>
+			<li><a href="/devices">端末</a></li>
 		</ul>
 		<span class="role">role: { string(role) }</span>
 	</nav>
