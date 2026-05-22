@@ -1,0 +1,32 @@
+package errors
+
+import (
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+templ NotFound(role middleware.Role) {
+	@layout.Base(layout.BaseProps{
+		Title:     "ページが見つかりません",
+		Role:      role,
+		CSRFToken: middleware.DummyCSRFToken,
+	}) {
+		<div class="error">
+			<h1>404 Not Found</h1>
+			<p>指定されたページは存在しません。URL を再度ご確認ください。</p>
+		</div>
+	}
+}
+
+templ ServerError(role middleware.Role) {
+	@layout.Base(layout.BaseProps{
+		Title:     "サーバエラー",
+		Role:      role,
+		CSRFToken: middleware.DummyCSRFToken,
+	}) {
+		<div class="error">
+			<h1>500 Internal Server Error</h1>
+			<p>サーバ内部でエラーが発生しました。時間をおいて再度お試しください。</p>
+		</div>
+	}
+}

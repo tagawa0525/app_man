@@ -29,7 +29,7 @@ all: build
 
 build: $(addprefix $(BIN_DIR)/,$(BINARIES))
 
-$(BIN_DIR)/appmgr-server: $(shell find cmd/server internal db -type f \( -name '*.go' -o -name '*.sql' \)) go.mod go.sum
+$(BIN_DIR)/appmgr-server: $(shell find cmd/server internal db -type f \( -name '*.go' -o -name '*.sql' -o -name '*.templ' -o -name '*.css' -o -name '*.js' \)) go.mod go.sum
 	@mkdir -p $(BIN_DIR)
 	$(GO) build $(GOFLAGS_BUILD) -ldflags '$(LDFLAGS)' -o $@ ./cmd/server
 
@@ -71,5 +71,8 @@ migrate-up: $(BIN_DIR)/appmgr-migrate
 migrate-down: $(BIN_DIR)/appmgr-migrate
 	./$(BIN_DIR)/appmgr-migrate --config $(CONFIG) --direction down
 
+# sqlc / templ ともに生成物をコミットする運用 (CLAUDE.md「sqlc 生成物の扱い」参照)。
+# CI では走らせず、スキーマ・テンプレ変更時にローカルで再生成してから commit する。
 generate:
 	sqlc generate
+	templ generate
