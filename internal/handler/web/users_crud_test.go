@@ -584,6 +584,103 @@ func TestUsers_Restore_GeneralUser_403(t *testing.T) {
 	handlertest.AssertStatus(t, rec, http.StatusForbidden)
 }
 
+func TestUsers_EditForm_PinsInactiveDepartment(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	dept, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
+		Code: "DEPT-GONE",
+		Name: "旧資材部",
+	})
+	if err != nil {
+		t.Fatalf("seed dept: %v", err)
+	}
+	u, err := q.CreateUser(context.Background(), repository.CreateUserParams{
+		EmployeeCode: "E001",
+		Name:         "田川太郎",
+		DepartmentID: &dept.ID,
+	})
+	if err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if _, err := q.SoftDeleteDepartment(context.Background(), dept.ID); err != nil {
+		t.Fatalf("soft delete dept: %v", err)
+	}
+
+	req := handlertest.NewRequest(t, http.MethodGet, fmt.Sprintf("/users/%d/edit", u.ID), middleware.RoleLicenseManager, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusOK)
+	handlertest.AssertContains(t, rec, "DEPT-GONE")
+	handlertest.AssertContains(t, rec, "(〜")
+	// pinned option として selected で出ること
+	handlertest.AssertContains(t, rec, fmt.Sprintf(`value="%d" selected`, dept.ID))
+}
+
+func TestUsers_List_RetiredDepartmentLabel(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	dept, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
+		Code: "DEPT-GONE",
+		Name: "旧資材部",
+	})
+	if err != nil {
+		t.Fatalf("seed dept: %v", err)
+	}
+	if _, err := q.CreateUser(context.Background(), repository.CreateUserParams{
+		EmployeeCode: "E001",
+		Name:         "田川太郎",
+		DepartmentID: &dept.ID,
+	}); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if _, err := q.SoftDeleteDepartment(context.Background(), dept.ID); err != nil {
+		t.Fatalf("soft delete: %v", err)
+	}
+
+	req := handlertest.NewRequest(t, http.MethodGet, "/users", middleware.RoleViewer, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusOK)
+	handlertest.AssertContains(t, rec, "旧資材部")
+	handlertest.AssertContains(t, rec, "(〜")
+}
+
+func TestUsers_Show_RetiredDepartmentLabel(t *testing.T) {
+	t.Parallel()
+	r, q := newWebRouter(t)
+
+	dept, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
+		Code: "DEPT-GONE",
+		Name: "旧資材部",
+	})
+	if err != nil {
+		t.Fatalf("seed dept: %v", err)
+	}
+	u, err := q.CreateUser(context.Background(), repository.CreateUserParams{
+		EmployeeCode: "E001",
+		Name:         "田川太郎",
+		DepartmentID: &dept.ID,
+	})
+	if err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if _, err := q.SoftDeleteDepartment(context.Background(), dept.ID); err != nil {
+		t.Fatalf("soft delete: %v", err)
+	}
+
+	req := handlertest.NewRequest(t, http.MethodGet, fmt.Sprintf("/users/%d", u.ID), middleware.RoleViewer, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusOK)
+	handlertest.AssertContains(t, rec, "旧資材部")
+	handlertest.AssertContains(t, rec, "(〜")
+}
+
 func TestUsers_Update_RejectsDuplicateEmployeeCode(t *testing.T) {
 	t.Parallel()
 	r, q := newWebRouter(t)
