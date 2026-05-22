@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -242,7 +241,7 @@ func (h *deviceHandlers) editForm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	pinnedDept, err := resolvePinnedDepartmentForDevice(r, q, depts, d.DepartmentID)
+	pinnedDept, err := resolvePinnedDepartment(r, q, depts, d.DepartmentID)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "resolve pinned department", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -327,7 +326,7 @@ func (h *deviceHandlers) renderUpdateError(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	pinnedDept, err := resolvePinnedDepartmentForDevice(r, q, depts, parsed.DepartmentID)
+	pinnedDept, err := resolvePinnedDepartment(r, q, depts, parsed.DepartmentID)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -460,7 +459,7 @@ func decodeDeviceForm(r *http.Request) (deviceview.FormInput, deviceParsed, map[
 		DepartmentID:  strings.TrimSpace(r.PostFormValue("department_id")),
 	}
 	errs := map[string]string{}
-	if msg := validateAssetCode(in.AssetCode); msg != "" {
+	if msg := validateAsciiCode("資産コード", 64, in.AssetCode); msg != "" {
 		errs["asset_code"] = msg
 	}
 	if msg := validateHostname(in.Hostname); msg != "" {
@@ -522,28 +521,6 @@ func resolvePinnedUser(r *http.Request, q *repository.Queries, users []repositor
 	return &u, nil
 }
 
-// resolvePinnedDepartmentForDevice は users 側の resolvePinnedDepartmentForUser
-// と同型 (本 PR 末尾コミットで internal/handler/web/helpers.go の
-// resolvePinnedDepartment に統合される予定)。
-func resolvePinnedDepartmentForDevice(r *http.Request, q *repository.Queries, depts []repository.Department, id *int64) (*repository.Department, error) {
-	if id == nil {
-		return nil, nil
-	}
-	for _, d := range depts {
-		if d.ID == *id {
-			return nil, nil
-		}
-	}
-	d, err := q.GetDepartment(r.Context(), *id)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return &d, nil
-}
-
 // lookupUser は *int64 が nil なら nil を返し、そうでなければ id で fetch する。
 // sql.ErrNoRows は nil 扱い (整合性が崩れていても show 画面は描画したい)。
 func lookupUser(r *http.Request, q *repository.Queries, id *int64) (*repository.User, error) {
@@ -574,24 +551,6 @@ func lookupDepartmentForDevice(r *http.Request, q *repository.Queries, id *int64
 		return nil, err
 	}
 	return &d, nil
-}
-
-// assetCodeRe は資産コードの受け付け可能文字。employee_code / 部署 code と
-// 同じ書式 (本 PR 末尾コミットで validateAsciiCode に統合される予定)。
-var assetCodeRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
-
-// validateAssetCode は asset_code フィールドの検証。
-func validateAssetCode(s string) string {
-	if s == "" {
-		return "資産コードは必須です"
-	}
-	if utf8.RuneCountInString(s) > 64 {
-		return "資産コードは 64 文字以内で入力してください"
-	}
-	if !assetCodeRe.MatchString(s) {
-		return "資産コードは英数・ハイフン・アンダースコアで入力してください"
-	}
-	return ""
 }
 
 // validateHostname は hostname フィールドの検証 (任意、255 文字以内)。

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -228,7 +227,7 @@ func (h *userHandlers) editForm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	pinned, err := resolvePinnedDepartmentForUser(r, q, depts, u.DepartmentID)
+	pinned, err := resolvePinnedDepartment(r, q, depts, u.DepartmentID)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "resolve pinned department", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -262,7 +261,7 @@ func (h *userHandlers) update(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		pinned, pperr := resolvePinnedDepartmentForUser(r, q, depts, parsed.DepartmentID)
+		pinned, pperr := resolvePinnedDepartment(r, q, depts, parsed.DepartmentID)
 		if pperr != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
@@ -293,7 +292,7 @@ func (h *userHandlers) update(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "internal error", http.StatusInternalServerError)
 				return
 			}
-			pinned, pperr := resolvePinnedDepartmentForUser(r, q, depts, parsed.DepartmentID)
+			pinned, pperr := resolvePinnedDepartment(r, q, depts, parsed.DepartmentID)
 			if pperr != nil {
 				http.Error(w, "internal error", http.StatusInternalServerError)
 				return
@@ -434,7 +433,7 @@ func decodeUserForm(r *http.Request) (userview.FormInput, userParsed, map[string
 		DepartmentID: strings.TrimSpace(r.PostFormValue("department_id")),
 	}
 	errs := map[string]string{}
-	if msg := validateEmployeeCode(in.EmployeeCode); msg != "" {
+	if msg := validateAsciiCode("従業員コード", 64, in.EmployeeCode); msg != "" {
 		errs["employee_code"] = msg
 	}
 	if msg := validateUserName(in.Name); msg != "" {
@@ -477,31 +476,6 @@ func formInputFromUser(u repository.User) userview.FormInput {
 	return out
 }
 
-// resolvePinnedDepartmentForUser は depts (現役) に含まれていない参照先を
-// 1 件 fetch して返す。編集中ユーザが廃止済み部署を指している場合に、
-// その option を select に残すために使う。
-//
-// id が nil もしくは既に depts に含まれる場合は nil。
-// sql.ErrNoRows は nil 扱い (整合性崩れの保護)。
-func resolvePinnedDepartmentForUser(r *http.Request, q *repository.Queries, depts []repository.Department, id *int64) (*repository.Department, error) {
-	if id == nil {
-		return nil, nil
-	}
-	for _, d := range depts {
-		if d.ID == *id {
-			return nil, nil
-		}
-	}
-	d, err := q.GetDepartment(r.Context(), *id)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return &d, nil
-}
-
 // lookupDepartmentForUser は *int64 が nil なら nil を返し、そうでなければ
 // id で fetch する。sql.ErrNoRows は nil 扱い (整合性が崩れていても
 // show 画面は描画したい)。departments の lookupDepartment と同型を複製
@@ -518,24 +492,6 @@ func lookupDepartmentForUser(r *http.Request, q *repository.Queries, id *int64) 
 		return nil, err
 	}
 	return &d, nil
-}
-
-// employeeCodeRe は従業員コードの受け付け可能文字。AD 連携キーとなる
-// employee_code は基本的に英数 + 区切り記号で構成される想定。
-var employeeCodeRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
-
-// validateEmployeeCode は employee_code フィールドの検証。
-func validateEmployeeCode(s string) string {
-	if s == "" {
-		return "従業員コードは必須です"
-	}
-	if utf8.RuneCountInString(s) > 64 {
-		return "従業員コードは 64 文字以内で入力してください"
-	}
-	if !employeeCodeRe.MatchString(s) {
-		return "従業員コードは英数・ハイフン・アンダースコアで入力してください"
-	}
-	return ""
 }
 
 // validateUsername は username フィールドの検証 (任意、AD sAMAccountName 想定)。
