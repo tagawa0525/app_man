@@ -94,3 +94,22 @@ func (q *Queries) GetAppUserByUsername(ctx context.Context, username string) (Ap
 	)
 	return i, err
 }
+
+const updateAppUserPasswordHash = `-- name: UpdateAppUserPasswordHash :execrows
+UPDATE app_users
+SET password_hash = ?
+WHERE username = ?
+`
+
+type UpdateAppUserPasswordHashParams struct {
+	PasswordHash *string
+	Username     string
+}
+
+func (q *Queries) UpdateAppUserPasswordHash(ctx context.Context, arg UpdateAppUserPasswordHashParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateAppUserPasswordHash, arg.PasswordHash, arg.Username)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
