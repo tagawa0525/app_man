@@ -1,0 +1,7 @@
+code,name,parent_code,valid_from,valid_to,source_ou
+DEPT001,本社,,2020-04-01,,
+DEPT010,営業部,DEPT001,2020-04-01,,
+DEPT020,製造部,DEPT001,2020-04-01,,
+DEPT030,情報システム部,DEPT001,2020-04-01,,
+DEPT040,経理部,DEPT001,2020-04-01,,
+DEPT099,旧資材部,DEPT001,2018-04-01,,

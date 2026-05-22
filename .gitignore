@@ -43,8 +43,9 @@ go.work.sum
 # sqlc / 自動生成物（必要なら個別に許可）
 # internal/repository/*.sql.go は通常コミットするのでここでは除外しない
 
-# データ・ローカル成果物
-/data/
+# データ・ローカル成果物 (data/seeds/*.csv は開発用テストデータとして除外)
+/data/*
+!/data/seeds/
 /logs/
 /tmp/
 /config.yml
