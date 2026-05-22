@@ -99,6 +99,7 @@ func run(configPath string) error {
 		Logger:   logger,
 		DB:       sqlDB,
 		StaticFS: static.FS(),
+		DevMode:  os.Getenv("APP_MAN_DEV_MODE") == "1",
 	})
 
 	srv := &http.Server{

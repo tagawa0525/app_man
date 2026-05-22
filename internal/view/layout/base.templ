@@ -27,7 +27,7 @@ templ Base(p BaseProps) {
 			<script src="/static/htmx.min.js"></script>
 		</head>
 		<body hx-headers={ `{"X-CSRF-Token":"` + p.CSRFToken + `"}` }>
-			@Nav(p.Role)
+			@Nav(p.Role, p.CSRFToken)
 			<main>
 				if p.Flash != "" {
 					<div class="flash">{ p.Flash }</div>
@@ -38,12 +38,19 @@ templ Base(p BaseProps) {
 	</html>
 }
 
-// Nav は appbar の左端ブランド + 業務リンク + 右端 role 表示。
+// Nav は appbar の左端ブランド + 業務リンク + 右端 role 切替ドロップダウン。
 // PR-B で /vendors と /products、PR-C で /departments、PR-D で /users、
 // PR-E で /devices を追加した。/departments / /users / /devices は
 // 要件書 §6.1 で viewer 以上、他は general_user 以上で閲覧可能だが、
 // Nav 側で出し分けはしない (押下時に role middleware が 403 を返す)。
-templ Nav(role middleware.Role) {
+//
+// role 切替は dev 用のフォームで POST /__set_role に送る。フェーズ 3
+// 認証実装時に削除 / act-as へ転用のどちらかを再判断する。
+//
+// csrfToken は呼び出し側 (Base) から props として受け取る (DummyCSRFToken
+// を直接参照しない)。フェーズ 3 で session-bound トークンに差し替える際に
+// テンプレ本体を触らずに済むよう、Base 側の方針と揃える。
+templ Nav(role middleware.Role, csrfToken string) {
 	<nav class="appbar">
 		<span class="brand">社内アプリ管理</span>
 		<ul class="appbar-menu">
@@ -53,8 +60,27 @@ templ Nav(role middleware.Role) {
 			<li><a href="/users">ユーザ</a></li>
 			<li><a href="/devices">端末</a></li>
 		</ul>
-		<span class="role">role: { string(role) }</span>
+		<form class="role-switcher" method="post" action="/__set_role">
+			@CSRFInput(csrfToken)
+			<label for="role-select">role:</label>
+			<select id="role-select" name="role" onchange="this.form.submit()">
+				@roleOption(role, middleware.RoleSystemAdmin)
+				@roleOption(role, middleware.RoleDepartmentSecurityAdmin)
+				@roleOption(role, middleware.RoleLicenseManager)
+				@roleOption(role, middleware.RoleViewer)
+				@roleOption(role, middleware.RoleGeneralUser)
+			</select>
+			<noscript><button type="submit">切替</button></noscript>
+		</form>
 	</nav>
+}
+
+templ roleOption(current, target middleware.Role) {
+	if current == target {
+		<option value={ string(target) } selected>{ string(target) }</option>
+	} else {
+		<option value={ string(target) }>{ string(target) }</option>
+	}
 }
 
 // CSRFInput は <form> 内で利用する hidden input。

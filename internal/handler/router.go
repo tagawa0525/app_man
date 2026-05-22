@@ -26,6 +26,11 @@ type Deps struct {
 	Logger   *slog.Logger
 	DB       *sql.DB
 	StaticFS fs.FS
+	// DevMode は開発用エンドポイント (POST /__set_role 等) を有効化する
+	// フラグ。本番では false にして、外部から system_admin に自己昇格
+	// される経路を完全に塞ぐ。cmd/server/main.go で APP_MAN_DEV_MODE
+	// 環境変数から読む。
+	DevMode bool
 }
 
 // NewRouter は appmgr-server で使う http.Handler を組み立てる。
@@ -47,8 +52,9 @@ func NewRouter(deps Deps) http.Handler {
 	}
 
 	web.RegisterRoutes(r, web.Deps{
-		Logger: deps.Logger,
-		DB:     deps.DB,
+		Logger:  deps.Logger,
+		DB:      deps.DB,
+		DevMode: deps.DevMode,
 	})
 
 	r.NotFound(notFoundHandler)

@@ -21,6 +21,9 @@ import (
 type Deps struct {
 	Logger *slog.Logger
 	DB     *sql.DB
+	// DevMode が true のときのみ /__set_role 等の開発用エンドポイントを
+	// 登録する。本番デプロイ時は false にして攻撃経路を塞ぐ。
+	DevMode bool
 }
 
 // viewers は 「閲覧」権限ロール集合 (general_user 以上)。
@@ -58,6 +61,15 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 	d := &departmentHandlers{db: deps.DB, logger: deps.Logger}
 	u := &userHandlers{db: deps.DB, logger: deps.Logger}
 	dev := &deviceHandlers{db: deps.DB, logger: deps.Logger}
+
+	// dev 用ロール切替エンドポイントは DevMode 時のみ登録する。
+	// 本番では完全に消えるため、外部からの POST /__set_role は 404。
+	// CSRF middleware + 同一オリジンチェック (setRole 内) で保護する。
+	// フェーズ 3 認証実装時に削除 / act-as へ転用のどちらかを再判断。
+	if deps.DevMode {
+		devUI := &devHandlers{logger: deps.Logger}
+		r.Post("/__set_role", devUI.setRole)
+	}
 
 	r.With(mw.RequireRole(viewers...)).Group(func(r chi.Router) {
 		r.Get("/vendors", v.list)
