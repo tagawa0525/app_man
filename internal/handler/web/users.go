@@ -337,6 +337,82 @@ func (h *userHandlers) update(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/users/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
 }
 
+// delete は POST /users/:id/delete の論理削除 (deactivated_at を立てる)。
+// 既に退職扱いなら 409 + flash 付きで show を再描画する。
+func (h *userHandlers) delete(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseInt64Param(r, "id")
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	q := repository.New(h.db)
+	affected, err := q.SoftDeleteUser(r.Context(), id)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "soft delete user", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if affected == 0 {
+		if _, gerr := q.GetUser(r.Context(), id); errors.Is(gerr, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		h.showWithFlash(w, r, id, http.StatusConflict, "このユーザは既に退職扱いです。")
+		return
+	}
+	http.Redirect(w, r, "/users/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+}
+
+// restore は POST /users/:id/restore の論理削除取り消し
+// (deactivated_at を NULL に戻す)。既に在籍中なら 409 + flash 付き再描画。
+func (h *userHandlers) restore(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseInt64Param(r, "id")
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	q := repository.New(h.db)
+	affected, err := q.RestoreUser(r.Context(), id)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "restore user", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if affected == 0 {
+		if _, gerr := q.GetUser(r.Context(), id); errors.Is(gerr, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		h.showWithFlash(w, r, id, http.StatusConflict, "このユーザは既に在籍中です。")
+		return
+	}
+	http.Redirect(w, r, "/users/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+}
+
+// showWithFlash は status を付けて show templ を再描画する (409 用)。
+// エラーハンドリングは show ハンドラと同じレベルに揃える。
+func (h *userHandlers) showWithFlash(w http.ResponseWriter, r *http.Request, id int64, status int, flash string) {
+	q := repository.New(h.db)
+	u, err := q.GetUser(r.Context(), id)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "get user for flash", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	dept, perr := lookupDepartmentForUser(r, q, u.DepartmentID)
+	if perr != nil {
+		h.logger.ErrorContext(r.Context(), "lookup department for flash", "err", perr)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	role := middleware.RoleFrom(r.Context())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if err := userview.Show(role, userview.ShowProps{User: u, Department: dept, Flash: flash}).Render(r.Context(), w); err != nil {
+		h.logger.ErrorContext(r.Context(), "render user show on conflict", "err", err)
+	}
+}
+
 // userParsed は decodeUserForm がパースした sqlc 用パラメータ。
 type userParsed struct {
 	EmployeeCode string
