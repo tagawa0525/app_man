@@ -68,7 +68,7 @@ func TestSetRole_RedirectsToRoot_WhenNoReferer(t *testing.T) {
 	}
 }
 
-func TestSetRole_RedirectsToRoot_WhenRefererIsExternal(t *testing.T) {
+func TestSetRole_RejectsCrossOriginReferer_403(t *testing.T) {
 	t.Parallel()
 	r, _ := newWebRouter(t)
 
@@ -80,11 +80,42 @@ func TestSetRole_RedirectsToRoot_WhenRefererIsExternal(t *testing.T) {
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 (cross-origin referer must be rejected)", rec.Code)
+	}
+}
+
+func TestSetRole_RejectsCrossOriginOrigin_403(t *testing.T) {
+	t.Parallel()
+	r, _ := newWebRouter(t)
+
+	req := handlertest.PostForm(t, "/__set_role", "", url.Values{
+		"role": {string(middleware.RoleViewer)},
+	})
+	req.Header.Set("Origin", "https://evil.example")
+	req.Host = "example.test"
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 (cross-origin Origin header must be rejected)", rec.Code)
+	}
+}
+
+func TestSetRole_AcceptsSameOriginOrigin(t *testing.T) {
+	t.Parallel()
+	r, _ := newWebRouter(t)
+
+	req := handlertest.PostForm(t, "/__set_role", "", url.Values{
+		"role": {string(middleware.RoleViewer)},
+	})
+	req.Header.Set("Origin", "http://example.test")
+	req.Host = "example.test"
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, want 303", rec.Code)
-	}
-	if loc := rec.Header().Get("Location"); loc != "/" {
-		t.Errorf("Location = %q, want / (external referer must be rejected)", loc)
 	}
 }
 

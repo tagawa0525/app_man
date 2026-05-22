@@ -21,8 +21,16 @@ type devHandlers struct {
 
 // setRole は POST /__set_role を処理する。form 値 role を検証し、
 // app_man_role Cookie に書き込んで Referer (同一オリジン) にリダイレクト。
-// 認可はかけず、全 role が自由に切替可能。CSRF middleware が保護する。
+// 認可はかけず、全 role が自由に切替可能。
+//
+// CSRF middleware は固定トークン (DummyCSRFToken) で保護しているが、
+// 値が推測可能なため不十分。本ハンドラは追加で Origin/Referer の Host が
+// r.Host と一致することを確認し、悪意あるサイトからの POST を拒否する。
 func (h *devHandlers) setRole(w http.ResponseWriter, r *http.Request) {
+	if !isSameOriginRequest(r) {
+		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
@@ -41,6 +49,27 @@ func (h *devHandlers) setRole(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   roleCookieMaxAge,
 	})
 	http.Redirect(w, r, safeRedirect(r), http.StatusSeeOther)
+}
+
+// isSameOriginRequest は Origin / Referer ヘッダの Host が r.Host と一致するか
+// 確認する。現代のブラウザは cross-origin form POST に必ず Origin を付与する
+// ため、これで CSRF を弾ける (固定 CSRF トークンの推測可能性を補強)。
+//
+// 両方欠落の場合は curl 等の開発ツール想定で通す。攻撃者は同一 origin に
+// なれない以上、ブラウザ経由ではこの分岐に入らない。
+func isSameOriginRequest(r *http.Request) bool {
+	for _, h := range []string{"Origin", "Referer"} {
+		v := r.Header.Get(h)
+		if v == "" {
+			continue
+		}
+		u, err := url.Parse(v)
+		if err != nil {
+			return false
+		}
+		return u.Host == r.Host
+	}
+	return true
 }
 
 // safeRedirect は Referer ヘッダが同一オリジンならその Path+Query を返し、
