@@ -23,13 +23,13 @@ import (
 	"os/signal"
 	"syscall"
 
-	_ "modernc.org/sqlite"
-
 	"github.com/tagawa0525/app_man/internal/applog"
 	"github.com/tagawa0525/app_man/internal/bootstrap"
 	"github.com/tagawa0525/app_man/internal/config"
 	"github.com/tagawa0525/app_man/internal/db"
 	"github.com/tagawa0525/app_man/internal/lockfile"
+	// 注: sqlite driver の blank import は internal/db.Open 側で行うため
+	// 本ファイルでは不要 (登録は最初の import で一度だけ行われればよい)
 )
 
 const binaryName = "appmgr-import-bootstrap"
