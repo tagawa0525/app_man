@@ -207,6 +207,57 @@ func TestResolveDepartmentID_SystemAdmin_IgnoresCode(t *testing.T) {
 	}
 }
 
+// TestResetPassword_OverwritesHash は既存ユーザの password_hash を
+// resetPassword が上書きすることを確認する。
+func TestResetPassword_OverwritesHash(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := handlertest.NewTestDB(t)
+	ctx := context.Background()
+
+	// 既存ユーザを seed
+	opts := runOptions{
+		username: "admin",
+		role:     "system_admin",
+	}
+	if err := createUser(ctx, sqlDB, opts, "$2a$10$old.hash.value"); err != nil {
+		t.Fatalf("seed createUser: %v", err)
+	}
+
+	const newHash = "$2a$10$new.hash.value"
+	if err := resetPassword(ctx, sqlDB, "admin", newHash); err != nil {
+		t.Fatalf("resetPassword: %v", err)
+	}
+
+	user, err := repository.New(sqlDB).GetAppUserByUsername(ctx, "admin")
+	if err != nil {
+		t.Fatalf("GetAppUserByUsername: %v", err)
+	}
+	if user.PasswordHash == nil || *user.PasswordHash != newHash {
+		t.Errorf("password_hash: want %q, got %v", newHash, user.PasswordHash)
+	}
+
+	// roles は触らない
+	roles := loadRolesForUser(t, sqlDB, user.ID)
+	if len(roles) != 1 {
+		t.Errorf("roles after reset: want 1 (unchanged), got %d", len(roles))
+	}
+}
+
+// TestResetPassword_UserNotFound は存在しない username に対する reset が
+// エラーになることを確認する。
+func TestResetPassword_UserNotFound(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := handlertest.NewTestDB(t)
+	ctx := context.Background()
+
+	err := resetPassword(ctx, sqlDB, "nosuch", "$2a$10$whatever")
+	if err == nil {
+		t.Fatal("resetPassword for missing user: want error, got nil")
+	}
+}
+
 // seedDepartment は active な部署を 1 件挿入して id を返すテスト用 helper。
 func seedDepartment(t *testing.T, sqlDB *sql.DB, code, name string) int64 {
 	t.Helper()

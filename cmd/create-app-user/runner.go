@@ -99,6 +99,26 @@ func resolveDepartmentID(ctx context.Context, q *repository.Queries, role, code 
 	return &dept.ID, nil
 }
 
+// resetPassword は指定 username の password_hash を上書きする。
+// 対象ユーザが存在しなければエラー (UPDATE で 0 rows)。
+//
+// roles や notify_email など他フィールドは触らない。reset 専用。
+func resetPassword(ctx context.Context, sqlDB *sql.DB, username, passwordHash string) error {
+	q := repository.New(sqlDB)
+	hash := passwordHash
+	affected, err := q.UpdateAppUserPasswordHash(ctx, repository.UpdateAppUserPasswordHashParams{
+		PasswordHash: &hash,
+		Username:     username,
+	})
+	if err != nil {
+		return fmt.Errorf("update password_hash: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("user not found: %s", username)
+	}
+	return nil
+}
+
 // nullableString は空文字を NULL (= nil) として扱うヘルパ。
 // notify_email や department_code の「未指定」を sqlc の *string に
 // マッピングするときに使う。
