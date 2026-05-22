@@ -329,7 +329,9 @@ func isForeignKeyErr(err error) bool {
 }
 
 // parseInt64Param は chi の URLParam("id" 等) を int64 化する。
-// 失敗時は ok=false を返し、呼び出し元で 400 を出す。
+// パースに失敗 or 0 以下なら ok=false。呼び出し元は http.NotFound で
+// 404 を返す (URL に不正な ID が混入したケースは存在しないリソースと
+// 同じ扱い)。
 func parseInt64Param(r *http.Request, name string) (int64, bool) {
 	raw := chi.URLParam(r, name)
 	if raw == "" {
