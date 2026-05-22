@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 開発環境とコマンド
 
 ```sh
-nix develop                                # go, sqlc, go-migrate, templ, golangci-lint, air, sqlite
+nix develop                                # go, sqlc, templ, golangci-lint, air, sqlite
 make build                                 # bin/appmgr-server を生成（CGO_ENABLED=0 固定。バッチ系バイナリは後続フェーズで追加予定）
 make test                                  # go test ./...
 make lint                                  # golangci-lint run（v2 設定）

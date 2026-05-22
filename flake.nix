@@ -20,7 +20,6 @@
             go-tools
 
             sqlc
-            go-migrate
             templ
 
             golangci-lint
@@ -39,7 +38,6 @@
             echo "app-manager dev shell"
             echo "  go         : $(go version | awk '{print $3}')"
             echo "  sqlc       : $(sqlc version)"
-            echo "  migrate    : $(migrate -version 2>&1)"
             echo "  templ      : $(templ version 2>/dev/null || echo 'installed')"
           '';
         };
