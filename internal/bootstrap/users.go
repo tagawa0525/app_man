@@ -42,8 +42,14 @@ func (UsersImporter) Validate(ctx context.Context, q *repository.Queries, rows [
 
 		// DB 既存
 		if code != "" {
-			if _, err := q.GetUserByEmployeeCode(ctx, code); err == nil {
+			_, err := q.GetUserByEmployeeCode(ctx, code)
+			switch {
+			case err == nil:
 				errs = append(errs, ValidationError{Line: r.Line, Column: "employee_code", Message: "DB に既に登録されています: " + code})
+			case errors.Is(err, sql.ErrNoRows):
+				// 未登録 — OK
+			default:
+				errs = append(errs, ValidationError{Line: r.Line, Column: "employee_code", Message: "lookup error: " + err.Error()})
 			}
 			if prev, ok := seen[code]; ok {
 				errs = append(errs, ValidationError{Line: r.Line, Column: "employee_code", Message: "CSV 内で重複しています (line " + itoa(prev) + ")"})
