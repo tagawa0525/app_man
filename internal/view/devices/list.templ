@@ -1,0 +1,109 @@
+package devices
+
+import (
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+// ListItem は一覧 1 行に必要な情報。主利用者と所属部署は devices 取得後に
+// 別取得して解決するため、Device 単体ではなく User / Department を別フィールド
+// で持つ。
+type ListItem struct {
+	Device     repository.Device
+	User       *repository.User
+	Department *repository.Department
+}
+
+templ List(role middleware.Role, query string, includeInactive bool, items []ListItem, truncated bool) {
+	@layout.Base(layout.BaseProps{
+		Title:     "端末一覧",
+		Role:      role,
+		CSRFToken: middleware.DummyCSRFToken,
+	}) {
+		<section class="page-devices-list">
+			<header class="page-header">
+				<h1>端末</h1>
+				if canEdit(role) {
+					<a class="btn btn-primary" href="/devices/new">新規端末</a>
+				}
+			</header>
+
+			<form class="search-bar" method="get" action="/devices">
+				<input type="search" name="q" value={ query } placeholder="資産コード / ホスト名で検索"/>
+				<label class="checkbox">
+					if includeInactive {
+						<input type="checkbox" name="include_inactive" value="1" checked/>
+					} else {
+						<input type="checkbox" name="include_inactive" value="1"/>
+					}
+					退役端末も含める
+				</label>
+				<button type="submit">検索</button>
+			</form>
+
+			if truncated {
+				<p class="warn">表示は最大 200 件で打ち切っています。検索で絞り込んでください。</p>
+			}
+
+			if len(items) == 0 {
+				<p class="empty">該当する端末はありません。</p>
+			} else {
+				<table class="data-table">
+					<thead>
+						<tr>
+							<th>資産コード</th>
+							<th>ホスト名</th>
+							<th>主利用者</th>
+							<th>所属部署</th>
+							<th>状態</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, it := range items {
+							if it.Device.RetiredAt != nil {
+								<tr class="row-inactive">
+									@deviceRow(it)
+								</tr>
+							} else {
+								<tr>
+									@deviceRow(it)
+								</tr>
+							}
+						}
+					</tbody>
+				</table>
+			}
+		</section>
+	}
+}
+
+templ deviceRow(it ListItem) {
+	<td><a href={ templ.SafeURL("/devices/" + itoa(it.Device.ID)) }>{ it.Device.AssetCode }</a></td>
+	<td>{ derefString(it.Device.Hostname) }</td>
+	<td>
+		if it.User != nil {
+			<a href={ templ.SafeURL("/users/" + itoa(it.User.ID)) }>
+				{ userLabel(*it.User) }
+			</a>
+		} else {
+			<span class="empty">(なし)</span>
+		}
+	</td>
+	<td>
+		if it.Department != nil {
+			<a href={ templ.SafeURL("/departments/" + itoa(it.Department.ID)) }>
+				{ departmentLabel(*it.Department) }
+			</a>
+		} else {
+			<span class="empty">(なし)</span>
+		}
+	</td>
+	<td>
+		if it.Device.RetiredAt != nil {
+			<span class="badge-inactive">退役 ({ formatDateTime(it.Device.RetiredAt) })</span>
+		} else {
+			<span class="badge-active">稼働</span>
+		}
+	</td>
+}
