@@ -459,7 +459,7 @@ func decodeDeviceForm(r *http.Request) (deviceview.FormInput, deviceParsed, map[
 		DepartmentID:  strings.TrimSpace(r.PostFormValue("department_id")),
 	}
 	errs := map[string]string{}
-	if msg := validateAsciiCode("資産コード", 64, in.AssetCode); msg != "" {
+	if msg := validateASCIICode("資産コード", 64, in.AssetCode); msg != "" {
 		errs["asset_code"] = msg
 	}
 	if msg := validateHostname(in.Hostname); msg != "" {

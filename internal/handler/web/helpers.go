@@ -40,26 +40,26 @@ func resolvePinnedDepartment(r *http.Request, q *repository.Queries, depts []rep
 	return &d, nil
 }
 
-// asciiCodeRe はコード系フィールド (employee_code / 部署 code /
+// asciiCodeRE はコード系フィールド (employee_code / 部署 code /
 // asset_code 等) の受け付け可能文字。AD 連携キーや資産台帳キーとして
 // 利用される想定で、英数 + ハイフン + アンダースコアのみ。
-var asciiCodeRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+var asciiCodeRE = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
-// validateAsciiCode はコード系フィールドの共通検証。
-// 必須、1〜max 文字、^[A-Za-z0-9_-]+$。label は日本語のフィールド名
+// validateASCIICode はコード系フィールドの共通検証。
+// 必須、1〜maxLen 文字、^[A-Za-z0-9_-]+$。label は日本語のフィールド名
 // (例: "従業員コード" / "部署コード" / "資産コード") を渡し、メッセージに
 // 直接埋め込む。
 //
 // users・departments・devices で 3 度登場した時点で集約 (CLAUDE.md
 // 「3 回ルール」)。
-func validateAsciiCode(label string, max int, s string) string {
+func validateASCIICode(label string, maxLen int, s string) string {
 	if s == "" {
 		return label + "は必須です"
 	}
-	if utf8.RuneCountInString(s) > max {
-		return label + "は " + strconv.Itoa(max) + " 文字以内で入力してください"
+	if utf8.RuneCountInString(s) > maxLen {
+		return label + "は " + strconv.Itoa(maxLen) + " 文字以内で入力してください"
 	}
-	if !asciiCodeRe.MatchString(s) {
+	if !asciiCodeRE.MatchString(s) {
 		return label + "は英数・ハイフン・アンダースコアで入力してください"
 	}
 	return ""

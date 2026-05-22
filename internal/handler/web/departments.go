@@ -437,7 +437,7 @@ func decodeDepartmentForm(r *http.Request) (departmentview.FormInput, department
 		ValidFrom:   strings.TrimSpace(r.PostFormValue("valid_from")),
 	}
 	errs := map[string]string{}
-	if msg := validateAsciiCode("部署コード", 64, in.Code); msg != "" {
+	if msg := validateASCIICode("部署コード", 64, in.Code); msg != "" {
 		errs["code"] = msg
 	}
 	if msg := validateDepartmentName(in.Name); msg != "" {

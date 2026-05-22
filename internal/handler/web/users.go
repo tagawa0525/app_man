@@ -433,7 +433,7 @@ func decodeUserForm(r *http.Request) (userview.FormInput, userParsed, map[string
 		DepartmentID: strings.TrimSpace(r.PostFormValue("department_id")),
 	}
 	errs := map[string]string{}
-	if msg := validateAsciiCode("従業員コード", 64, in.EmployeeCode); msg != "" {
+	if msg := validateASCIICode("従業員コード", 64, in.EmployeeCode); msg != "" {
 		errs["employee_code"] = msg
 	}
 	if msg := validateUserName(in.Name); msg != "" {
