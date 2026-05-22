@@ -1,0 +1,103 @@
+package users
+
+import (
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+// ListItem は一覧 1 行に必要な情報。所属部署は users 取得後に別取得して
+// 解決するため、User 単体ではなく Department を別フィールドで持つ。
+type ListItem struct {
+	User       repository.User
+	Department *repository.Department
+}
+
+templ List(role middleware.Role, query string, includeInactive bool, items []ListItem, truncated bool) {
+	@layout.Base(layout.BaseProps{
+		Title:     "ユーザ一覧",
+		Role:      role,
+		CSRFToken: middleware.DummyCSRFToken,
+	}) {
+		<section class="page-users-list">
+			<header class="page-header">
+				<h1>ユーザ</h1>
+				if canEdit(role) {
+					<a class="btn btn-primary" href="/users/new">新規ユーザ</a>
+				}
+			</header>
+
+			<form class="search-bar" method="get" action="/users">
+				<input type="search" name="q" value={ query } placeholder="従業員コード / 氏名 / メール等で検索"/>
+				<label class="checkbox">
+					if includeInactive {
+						<input type="checkbox" name="include_inactive" value="1" checked/>
+					} else {
+						<input type="checkbox" name="include_inactive" value="1"/>
+					}
+					退職者も含める
+				</label>
+				<button type="submit">検索</button>
+			</form>
+
+			if truncated {
+				<p class="warn">表示は最大 200 件で打ち切っています。検索で絞り込んでください。</p>
+			}
+
+			if len(items) == 0 {
+				<p class="empty">該当するユーザはありません。</p>
+			} else {
+				<table class="data-table">
+					<thead>
+						<tr>
+							<th>従業員コード</th>
+							<th>氏名</th>
+							<th>ログオン名</th>
+							<th>メール</th>
+							<th>所属部署</th>
+							<th>由来</th>
+							<th>状態</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, it := range items {
+							if it.User.DeactivatedAt != nil {
+								<tr class="row-inactive">
+									@userRow(it)
+								</tr>
+							} else {
+								<tr>
+									@userRow(it)
+								</tr>
+							}
+						}
+					</tbody>
+				</table>
+			}
+		</section>
+	}
+}
+
+templ userRow(it ListItem) {
+	<td><a href={ templ.SafeURL("/users/" + itoa(it.User.ID)) }>{ it.User.EmployeeCode }</a></td>
+	<td>{ it.User.Name }</td>
+	<td>{ derefString(it.User.Username) }</td>
+	<td>{ derefString(it.User.Email) }</td>
+	<td>
+		if it.Department != nil {
+			<a href={ templ.SafeURL("/departments/" + itoa(it.Department.ID)) }>
+				{ departmentLabel(*it.Department) }
+			</a>
+		} else {
+			<span class="empty">(なし)</span>
+		}
+	</td>
+	<td>{ sourceLabel(it.User.Source) }</td>
+	<td>
+		if it.User.DeactivatedAt != nil {
+			<span class="badge-inactive">退職 ({ formatDateTime(it.User.DeactivatedAt) })</span>
+		} else {
+			<span class="badge-active">在籍</span>
+		}
+	</td>
+}

@@ -1,0 +1,108 @@
+package users
+
+import (
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+// FormInput は new / edit 兼用フォームの入力値。バリデーション失敗時の
+// 再表示用に生の文字列で保持する。
+type FormInput struct {
+	EmployeeCode string
+	Username     string
+	Name         string
+	Email        string
+	DepartmentID string
+}
+
+// FormProps は new / edit 兼用フォームに渡す描画引数。
+//
+//   - Departments  : department_id select の現役選択肢
+//   - PinnedOption : 編集中レコードが廃止部署を指している場合、その 1 件
+//     だけ「(〜YYYY-MM-DD)」付きで残すため。departments の複数 ID 版とは
+//     違い、users は単一 FK のため *Department で持つ
+type FormProps struct {
+	Action       string
+	Title        string
+	Submit       string
+	Input        FormInput
+	Errors       map[string]string
+	Departments  []repository.Department
+	PinnedOption *repository.Department
+}
+
+templ Form(role middleware.Role, props FormProps) {
+	@layout.Base(layout.BaseProps{
+		Title:     props.Title,
+		Role:      role,
+		CSRFToken: middleware.DummyCSRFToken,
+	}) {
+		<section class="page-users-form">
+			<header class="page-header">
+				<h1>{ props.Title }</h1>
+			</header>
+
+			<form method="post" action={ templ.SafeURL(props.Action) } class="vform">
+				@layout.CSRFInput(middleware.DummyCSRFToken)
+
+				<div class="field">
+					<label for="employee_code">従業員コード <span class="required">*</span></label>
+					<input id="employee_code" type="text" name="employee_code" value={ props.Input.EmployeeCode } required/>
+					if msg, ok := props.Errors["employee_code"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
+				</div>
+
+				<div class="field">
+					<label for="name">氏名 <span class="required">*</span></label>
+					<input id="name" type="text" name="name" value={ props.Input.Name } required/>
+					if msg, ok := props.Errors["name"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
+				</div>
+
+				<div class="field">
+					<label for="username">ログオン名</label>
+					<input id="username" type="text" name="username" value={ props.Input.Username }/>
+					if msg, ok := props.Errors["username"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
+				</div>
+
+				<div class="field">
+					<label for="email">メール</label>
+					<input id="email" type="email" name="email" value={ props.Input.Email }/>
+					if msg, ok := props.Errors["email"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
+				</div>
+
+				<div class="field">
+					<label for="department_id">所属部署</label>
+					<select id="department_id" name="department_id">
+						<option value="">(なし)</option>
+						for _, d := range props.Departments {
+							if itoa(d.ID) == props.Input.DepartmentID {
+								<option value={ itoa(d.ID) } selected>{ d.Code } / { departmentLabel(d) }</option>
+							} else {
+								<option value={ itoa(d.ID) }>{ d.Code } / { departmentLabel(d) }</option>
+							}
+						}
+						if props.PinnedOption != nil && itoa(props.PinnedOption.ID) == props.Input.DepartmentID {
+							<option value={ itoa(props.PinnedOption.ID) } selected>{ props.PinnedOption.Code } / { departmentLabel(*props.PinnedOption) }</option>
+						}
+					</select>
+					if msg, ok := props.Errors["department_id"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
+				</div>
+
+				<div class="form-actions">
+					<button type="submit" class="btn btn-primary">{ props.Submit }</button>
+					<a class="btn" href="/users">キャンセル</a>
+				</div>
+			</form>
+		</section>
+	}
+}
