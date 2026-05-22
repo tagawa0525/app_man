@@ -127,11 +127,11 @@ func Base(p BaseProps) templ.Component {
 }
 
 // Nav は appbar の左端ブランド + 業務リンク + 右端 role 表示。
-// PR-B で /vendors と /products、PR-C で /departments を追加した。
-// /departments は要件書 §11 で viewer 以上、他は general_user 以上で
-// 閲覧可能だが、Nav 側で出し分けはしない (押下時に role middleware が
-// 403 を返す。リンクが見えていれば「機能の存在」自体は誰でも把握できる)。
-// PR-D 以降で /users / /devices が増えるたびにここへリンクを足す。
+// PR-B で /vendors と /products、PR-C で /departments、PR-D で /users を
+// 追加した。/departments / /users は要件書 §6.1 で viewer 以上、他は
+// general_user 以上で閲覧可能だが、Nav 側で出し分けはしない (押下時に
+// role middleware が 403 を返す)。PR-E 以降で /devices 等が増えるたびに
+// ここへリンクを足す。
 func Nav(role middleware.Role) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -153,14 +153,14 @@ func Nav(role middleware.Role) templ.Component {
 			templ_7745c5c3_Var6 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<nav class=\"appbar\"><span class=\"brand\">社内アプリ管理</span><ul class=\"appbar-menu\"><li><a href=\"/products\">製品</a></li><li><a href=\"/vendors\">ベンダー</a></li><li><a href=\"/departments\">部署</a></li></ul><span class=\"role\">role: ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<nav class=\"appbar\"><span class=\"brand\">社内アプリ管理</span><ul class=\"appbar-menu\"><li><a href=\"/products\">製品</a></li><li><a href=\"/vendors\">ベンダー</a></li><li><a href=\"/departments\">部署</a></li><li><a href=\"/users\">ユーザ</a></li></ul><span class=\"role\">role: ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(string(role))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/layout/base.templ`, Line: 55, Col: 41}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/layout/base.templ`, Line: 56, Col: 41}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
@@ -206,7 +206,7 @@ func CSRFInput(token string) templ.Component {
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(token)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/layout/base.templ`, Line: 64, Col: 48}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/layout/base.templ`, Line: 65, Col: 48}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 		if templ_7745c5c3_Err != nil {
