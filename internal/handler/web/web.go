@@ -58,6 +58,11 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 	d := &departmentHandlers{db: deps.DB, logger: deps.Logger}
 	u := &userHandlers{db: deps.DB, logger: deps.Logger}
 	dev := &deviceHandlers{db: deps.DB, logger: deps.Logger}
+	devUI := &devHandlers{logger: deps.Logger}
+
+	// dev 用ロール切替エンドポイント。CSRF middleware のみで保護し、認可なし。
+	// フェーズ 3 認証実装時に削除 / act-as へ転用のどちらかを再判断する。
+	r.Post("/__set_role", devUI.setRole)
 
 	r.With(mw.RequireRole(viewers...)).Group(func(r chi.Router) {
 		r.Get("/vendors", v.list)
