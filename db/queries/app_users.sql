@@ -33,3 +33,8 @@ RETURNING
   disabled_at,
   last_login_at,
   created_at;
+
+-- name: UpdateAppUserPasswordHash :execrows
+UPDATE app_users
+SET password_hash = ?
+WHERE username = ?;
