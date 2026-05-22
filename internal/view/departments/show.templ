@@ -1,0 +1,118 @@
+package departments
+
+import (
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+// ShowProps は GET /departments/:id 表示で必要な集約。
+type ShowProps struct {
+	Department repository.Department
+	Parent     *repository.Department
+	Successor  *repository.Department
+	Children   []repository.Department
+	Flash      string
+}
+
+templ Show(role middleware.Role, props ShowProps) {
+	@layout.Base(layout.BaseProps{
+		Title:     props.Department.Code + " / " + props.Department.Name,
+		Role:      role,
+		Flash:     props.Flash,
+		CSRFToken: middleware.DummyCSRFToken,
+	}) {
+		<section class="page-departments-show">
+			<header class="page-header">
+				<h1>
+					{ props.Department.Code } / { props.Department.Name }
+					if props.Department.ValidTo != nil {
+						<span class="badge-inactive">廃止 ({ formatDate(props.Department.ValidTo) })</span>
+					}
+				</h1>
+				if canEdit(role) {
+					<div class="page-actions">
+						<a class="btn" href={ templ.SafeURL("/departments/" + itoa(props.Department.ID) + "/edit") }>編集</a>
+						if props.Department.ValidTo == nil {
+							<form method="post" action={ templ.SafeURL("/departments/" + itoa(props.Department.ID) + "/delete") }
+								onsubmit="return confirm('この部署を廃止しますか?');" class="inline">
+								@layout.CSRFInput(middleware.DummyCSRFToken)
+								<button type="submit" class="btn btn-danger">廃止</button>
+							</form>
+						} else {
+							<form method="post" action={ templ.SafeURL("/departments/" + itoa(props.Department.ID) + "/restore") }
+								onsubmit="return confirm('この部署を復活しますか?');" class="inline">
+								@layout.CSRFInput(middleware.DummyCSRFToken)
+								<button type="submit" class="btn">復活</button>
+							</form>
+						}
+					</div>
+				}
+			</header>
+
+			<dl class="details">
+				<dt>由来</dt>
+				<dd>{ sourceLabel(props.Department.Source) }</dd>
+
+				<dt>親部署</dt>
+				<dd>
+					if props.Parent != nil {
+						<a href={ templ.SafeURL("/departments/" + itoa(props.Parent.ID)) }>
+							{ props.Parent.Code } / { props.Parent.Name }
+						</a>
+					} else {
+						<span class="empty">(なし)</span>
+					}
+				</dd>
+
+				<dt>後継部署</dt>
+				<dd>
+					if props.Successor != nil {
+						<a href={ templ.SafeURL("/departments/" + itoa(props.Successor.ID)) }>
+							{ props.Successor.Code } / { props.Successor.Name }
+						</a>
+					} else {
+						<span class="empty">(なし)</span>
+					}
+				</dd>
+
+				<dt>有効開始日</dt>
+				<dd>{ formatDate(props.Department.ValidFrom) }</dd>
+
+				<dt>状態</dt>
+				<dd>
+					if props.Department.ValidTo != nil {
+						<span class="badge-inactive">廃止 ({ formatDate(props.Department.ValidTo) })</span>
+					} else {
+						<span class="badge-active">現役</span>
+					}
+				</dd>
+
+				if props.Department.SourceOu != nil && *props.Department.SourceOu != "" {
+					<dt>OU パス</dt>
+					<dd>{ *props.Department.SourceOu }</dd>
+				}
+
+				if props.Department.LastSyncedAt != nil {
+					<dt>最終同期</dt>
+					<dd>{ props.Department.LastSyncedAt.Format("2006-01-02 15:04") }</dd>
+				}
+			</dl>
+
+			<h2>子部署</h2>
+			if len(props.Children) == 0 {
+				<p class="empty">子部署はありません。</p>
+			} else {
+				<ul class="department-children">
+					for _, c := range props.Children {
+						<li>
+							<a href={ templ.SafeURL("/departments/" + itoa(c.ID)) }>
+								{ c.Code } / { c.Name }
+							</a>
+						</li>
+					}
+				</ul>
+			}
+		</section>
+	}
+}

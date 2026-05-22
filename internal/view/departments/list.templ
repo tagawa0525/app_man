@@ -1,0 +1,82 @@
+package departments
+
+import (
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+templ List(role middleware.Role, query string, includeInactive bool, items []repository.Department, truncated bool) {
+	@layout.Base(layout.BaseProps{
+		Title:     "部署一覧",
+		Role:      role,
+		CSRFToken: middleware.DummyCSRFToken,
+	}) {
+		<section class="page-departments-list">
+			<header class="page-header">
+				<h1>部署</h1>
+				if canEdit(role) {
+					<a class="btn btn-primary" href="/departments/new">新規部署</a>
+				}
+			</header>
+
+			<form class="search-bar" method="get" action="/departments">
+				<input type="search" name="q" value={ query } placeholder="部署名 / コードで検索"/>
+				<label class="checkbox">
+					if includeInactive {
+						<input type="checkbox" name="include_inactive" value="1" checked/>
+					} else {
+						<input type="checkbox" name="include_inactive" value="1"/>
+					}
+					廃止済みも含める
+				</label>
+				<button type="submit">検索</button>
+			</form>
+
+			if truncated {
+				<p class="warn">表示は最大 200 件で打ち切っています。検索で絞り込んでください。</p>
+			}
+
+			if len(items) == 0 {
+				<p class="empty">該当する部署はありません。</p>
+			} else {
+				<table class="data-table">
+					<thead>
+						<tr>
+							<th>コード</th>
+							<th>名称</th>
+							<th>由来</th>
+							<th>状態</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, d := range items {
+							if d.ValidTo != nil {
+								<tr class="row-inactive">
+									@departmentRow(d)
+								</tr>
+							} else {
+								<tr>
+									@departmentRow(d)
+								</tr>
+							}
+						}
+					</tbody>
+				</table>
+			}
+		</section>
+	}
+}
+
+templ departmentRow(d repository.Department) {
+	<td><a href={ templ.SafeURL("/departments/" + itoa(d.ID)) }>{ d.Code }</a></td>
+	<td>{ d.Name }</td>
+	<td>{ sourceLabel(d.Source) }</td>
+	<td>
+		if d.ValidTo != nil {
+			<span class="badge-inactive">廃止 ({ formatDate(d.ValidTo) })</span>
+		} else {
+			<span class="badge-active">現役</span>
+		}
+	</td>
+}

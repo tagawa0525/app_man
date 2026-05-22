@@ -39,18 +39,33 @@ var editors = []mw.Role{
 	mw.RoleSystemAdmin,
 }
 
+// departmentViewers は /departments 系の閲覧権限。要件書 §11 で
+// 「viewer 以上」と規定されており、general_user は除外する
+// (vendors / products の viewers より厳しい)。
+var departmentViewers = []mw.Role{
+	mw.RoleViewer,
+	mw.RoleLicenseManager,
+	mw.RoleDepartmentSecurityAdmin,
+	mw.RoleSystemAdmin,
+}
+
 // RegisterRoutes は本パッケージのルートを r に登録する。
 // 呼び出し側 (handler.NewRouter) で DummyAuth / CSRF middleware を r に
 // 適用済みの前提。
 func RegisterRoutes(r chi.Router, deps Deps) {
 	v := &vendorHandlers{db: deps.DB, logger: deps.Logger}
 	p := &productHandlers{db: deps.DB, logger: deps.Logger}
+	d := &departmentHandlers{db: deps.DB, logger: deps.Logger}
 
 	r.With(mw.RequireRole(viewers...)).Group(func(r chi.Router) {
 		r.Get("/vendors", v.list)
 		r.Get("/vendors/{id}", v.show)
 		r.Get("/products", p.list)
 		r.Get("/products/{id}", p.show)
+	})
+	r.With(mw.RequireRole(departmentViewers...)).Group(func(r chi.Router) {
+		r.Get("/departments", d.list)
+		r.Get("/departments/{id}", d.show)
 	})
 	r.With(mw.RequireRole(editors...)).Group(func(r chi.Router) {
 		r.Get("/vendors/new", v.newForm)
@@ -65,5 +80,11 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 		r.Post("/products/{id}/delete", p.delete)
 		r.Post("/products/{id}/aliases", p.aliasCreate)
 		r.Post("/products/{id}/aliases/{aid}/delete", p.aliasDelete)
+		r.Get("/departments/new", d.newForm)
+		r.Post("/departments", d.create)
+		r.Get("/departments/{id}/edit", d.editForm)
+		r.Post("/departments/{id}", d.update)
+		r.Post("/departments/{id}/delete", d.delete)
+		r.Post("/departments/{id}/restore", d.restore)
 	})
 }
