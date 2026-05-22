@@ -374,24 +374,40 @@ func (h *departmentHandlers) restore(w http.ResponseWriter, r *http.Request) {
 }
 
 // showWithFlash は status を付けて show templ を再描画する (409 用)。
+// エラーハンドリングは show ハンドラと同じレベルに揃える (全エラーを
+// ErrorContext でログし、lookupDepartment 失敗は 500 で抜ける)。
 func (h *departmentHandlers) showWithFlash(w http.ResponseWriter, r *http.Request, id int64, status int, flash string) {
 	q := repository.New(h.db)
 	d, err := q.GetDepartment(r.Context(), id)
 	if err != nil {
+		h.logger.ErrorContext(r.Context(), "get department for flash", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	children, err := q.ListChildDepartments(r.Context(), &id)
 	if err != nil {
+		h.logger.ErrorContext(r.Context(), "list child departments for flash", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	props := departmentview.ShowProps{Department: d, Children: children, Flash: flash}
-	if parent, perr := lookupDepartment(r, q, d.ParentID); perr == nil {
-		props.Parent = parent
+	parent, perr := lookupDepartment(r, q, d.ParentID)
+	if perr != nil {
+		h.logger.ErrorContext(r.Context(), "lookup parent department for flash", "err", perr)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
 	}
-	if successor, serr := lookupDepartment(r, q, d.SuccessorDepartmentID); serr == nil {
-		props.Successor = successor
+	successor, serr := lookupDepartment(r, q, d.SuccessorDepartmentID)
+	if serr != nil {
+		h.logger.ErrorContext(r.Context(), "lookup successor department for flash", "err", serr)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	props := departmentview.ShowProps{
+		Department: d,
+		Children:   children,
+		Parent:     parent,
+		Successor:  successor,
+		Flash:      flash,
 	}
 	role := middleware.RoleFrom(r.Context())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
