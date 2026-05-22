@@ -38,6 +38,33 @@ func (ProductsImporter) Validate(ctx context.Context, q *repository.Queries, row
 	type key struct{ vendor, name, edition string }
 	seen := map[key]int{}
 
+	// vendor lookup 結果のキャッシュ。同じ vendor_name を持つ行が複数あっても
+	// GetVendorByName の呼び出しを 1 回に抑える。found=false は「DB に存在
+	// しない」状態。lookupErr が non-nil なら lookup 自体が失敗。
+	type vendorCacheEntry struct {
+		found     bool
+		vendor    repository.Vendor
+		lookupErr error
+	}
+	vendorCache := map[string]vendorCacheEntry{}
+	lookupVendor := func(name string) vendorCacheEntry {
+		if v, ok := vendorCache[name]; ok {
+			return v
+		}
+		v, err := q.GetVendorByName(ctx, name)
+		var entry vendorCacheEntry
+		switch {
+		case err == nil:
+			entry = vendorCacheEntry{found: true, vendor: v}
+		case errors.Is(err, sql.ErrNoRows):
+			entry = vendorCacheEntry{found: false}
+		default:
+			entry = vendorCacheEntry{lookupErr: err}
+		}
+		vendorCache[name] = entry
+		return entry
+	}
+
 	for _, r := range rows {
 		vendor := strings.TrimSpace(r.Fields["vendor_name"])
 		name := strings.TrimSpace(r.Fields["canonical_name"])
@@ -45,23 +72,24 @@ func (ProductsImporter) Validate(ctx context.Context, q *repository.Queries, row
 
 		if vendor == "" {
 			errs = append(errs, ValidationError{Line: r.Line, Column: "vendor_name", Message: "ベンダー名は必須です"})
-		} else if _, err := q.GetVendorByName(ctx, vendor); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				errs = append(errs, ValidationError{Line: r.Line, Column: "vendor_name", Message: "ベンダー '" + vendor + "' が見つかりません"})
-			} else {
-				errs = append(errs, ValidationError{Line: r.Line, Column: "vendor_name", Message: "lookup error: " + err.Error()})
-			}
 		}
 		if name == "" {
 			errs = append(errs, ValidationError{Line: r.Line, Column: "canonical_name", Message: "製品名は必須です"})
 		}
 
-		// DB 既存重複
-		if vendor != "" && name != "" {
-			v, err := q.GetVendorByName(ctx, vendor)
-			if err == nil {
-				if _, derr := getProductByKeyForBootstrap(ctx, q, v.ID, name, edition); derr == nil {
+		// vendor lookup + DB 既存重複
+		if vendor != "" {
+			entry := lookupVendor(vendor)
+			switch {
+			case entry.lookupErr != nil:
+				errs = append(errs, ValidationError{Line: r.Line, Column: "vendor_name", Message: "lookup error: " + entry.lookupErr.Error()})
+			case !entry.found:
+				errs = append(errs, ValidationError{Line: r.Line, Column: "vendor_name", Message: "ベンダー '" + vendor + "' が見つかりません"})
+			case name != "":
+				if _, derr := getProductByKeyForBootstrap(ctx, q, entry.vendor.ID, name, edition); derr == nil {
 					errs = append(errs, ValidationError{Line: r.Line, Column: "canonical_name", Message: "DB に既に登録されています"})
+				} else if !errors.Is(derr, sql.ErrNoRows) {
+					errs = append(errs, ValidationError{Line: r.Line, Column: "canonical_name", Message: "lookup error: " + derr.Error()})
 				}
 			}
 		}
