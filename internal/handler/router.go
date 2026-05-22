@@ -35,6 +35,7 @@ func NewRouter(deps Deps) http.Handler {
 	r.Use(chimw.RequestID)
 	r.Use(chimw.Recoverer)
 	r.Use(middleware.DummyAuthMiddleware)
+	r.Use(middleware.CSRFMiddleware)
 
 	r.Get("/healthz", healthHandler)
 
