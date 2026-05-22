@@ -345,6 +345,88 @@ func (h *deviceHandlers) renderUpdateError(w http.ResponseWriter, r *http.Reques
 	})
 }
 
+// retire は POST /devices/:id/retire の論理削除 (retired_at を立てる)。
+// 既に退役済みなら 409 + flash 付きで show を再描画する。
+func (h *deviceHandlers) retire(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseInt64Param(r, "id")
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	q := repository.New(h.db)
+	affected, err := q.SoftDeleteDevice(r.Context(), id)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "soft delete device", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if affected == 0 {
+		if _, gerr := q.GetDevice(r.Context(), id); errors.Is(gerr, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		h.showWithFlash(w, r, id, http.StatusConflict, "この端末は既に退役済みです。")
+		return
+	}
+	http.Redirect(w, r, "/devices/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+}
+
+// restore は POST /devices/:id/restore の論理削除取り消し
+// (retired_at を NULL に戻す)。既に稼働中なら 409 + flash 付き再描画。
+func (h *deviceHandlers) restore(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseInt64Param(r, "id")
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	q := repository.New(h.db)
+	affected, err := q.RestoreDevice(r.Context(), id)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "restore device", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if affected == 0 {
+		if _, gerr := q.GetDevice(r.Context(), id); errors.Is(gerr, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		h.showWithFlash(w, r, id, http.StatusConflict, "この端末は既に稼働中です。")
+		return
+	}
+	http.Redirect(w, r, "/devices/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+}
+
+// showWithFlash は status を付けて show templ を再描画する (409 用)。
+// エラーハンドリングは show ハンドラと同じレベルに揃える。
+func (h *deviceHandlers) showWithFlash(w http.ResponseWriter, r *http.Request, id int64, status int, flash string) {
+	q := repository.New(h.db)
+	d, err := q.GetDevice(r.Context(), id)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "get device for flash", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	user, perr := lookupUser(r, q, d.PrimaryUserID)
+	if perr != nil {
+		h.logger.ErrorContext(r.Context(), "lookup user for flash", "err", perr)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	dept, perr := lookupDepartmentForDevice(r, q, d.DepartmentID)
+	if perr != nil {
+		h.logger.ErrorContext(r.Context(), "lookup department for flash", "err", perr)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	role := middleware.RoleFrom(r.Context())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if err := deviceview.Show(role, deviceview.ShowProps{Device: d, User: user, Department: dept, Flash: flash}).Render(r.Context(), w); err != nil {
+		h.logger.ErrorContext(r.Context(), "render device show on conflict", "err", err)
+	}
+}
+
 // fkErrorFields は parsed の FK 値から、どちらの FK が未存在かを推定して
 // エラーマップを返す。両方指定されていた場合は両方にメッセージを乗せる。
 // (実環境では片方が NULL のケースが多く、メッセージ重複は気にしない)

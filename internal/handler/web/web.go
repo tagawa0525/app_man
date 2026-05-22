@@ -102,5 +102,7 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 		r.Post("/devices", e.create)
 		r.Get("/devices/{id}/edit", e.editForm)
 		r.Post("/devices/{id}", e.update)
+		r.Post("/devices/{id}/retire", e.retire)
+		r.Post("/devices/{id}/restore", e.restore)
 	})
 }
