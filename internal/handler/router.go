@@ -14,6 +14,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
 )
 
 // Deps は NewRouter が必要とする外部依存をまとめる。
@@ -32,6 +34,7 @@ func NewRouter(deps Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
 	r.Use(chimw.Recoverer)
+	r.Use(middleware.DummyAuthMiddleware)
 
 	r.Get("/healthz", healthHandler)
 

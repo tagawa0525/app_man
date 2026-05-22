@@ -39,27 +39,47 @@ var validRoles = map[Role]struct{}{
 //
 // フェーズ 3 では本物のセッションから role を引いてくる middleware に
 // 差し替える。handler 側は RoleFrom で取り出すため変更不要。
-func DummyAuthMiddleware(_ http.Handler) http.Handler {
-	// stub: 次コミットで実装
-	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
+func DummyAuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw := r.Header.Get("X-User-Role")
+		role := Role(raw)
+		switch {
+		case raw == "":
+			role = RoleGeneralUser
+		default:
+			if _, ok := validRoles[role]; !ok {
+				http.Error(w, "unknown role", http.StatusForbidden)
+				return
+			}
+		}
+		ctx := context.WithValue(r.Context(), roleKey{}, role)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
 // RoleFrom は context から role を取り出す。未設定なら RoleGeneralUser。
-func RoleFrom(_ context.Context) Role {
-	// stub: 次コミットで実装
-	return ""
+func RoleFrom(ctx context.Context) Role {
+	if v, ok := ctx.Value(roleKey{}).(Role); ok {
+		return v
+	}
+	return RoleGeneralUser
 }
 
 // RequireRole は許可リストに含まれる role でのみ next を呼ぶハンドララッパ。
 // 後続 PR で r.With(RequireRole(RoleSystemAdmin, RoleLicenseManager)).Get(...)
 // の形で利用する。
-func RequireRole(_ ...Role) func(http.Handler) http.Handler {
-	// stub: 次コミットで実装
-	return func(_ http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
+func RequireRole(allowed ...Role) func(http.Handler) http.Handler {
+	allowedSet := make(map[Role]struct{}, len(allowed))
+	for _, role := range allowed {
+		allowedSet[role] = struct{}{}
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, ok := allowedSet[RoleFrom(r.Context())]; !ok {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
 		})
 	}
 }
