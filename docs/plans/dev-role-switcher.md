@@ -2,7 +2,7 @@
 
 ## Context
 
-現在の `DummyAuthMiddleware` (`internal/handler/middleware/auth.go:42-58`) は `X-User-Role` HTTP ヘッダから role を取り出すのみで、ブラウザから画面確認するには ModHeader 等の拡張機能が必須となっており、手数が増えて検証が滞る状態。フェーズ 2 で 6 マスタの CRUD が揃ったため、画面ベースでの全体動作確認を行いたいが、その障壁を取り除く必要がある。
+現在の `DummyAuthMiddleware` (`internal/handler/middleware/auth.go` の `DummyAuthMiddleware`) は `X-User-Role` HTTP ヘッダから role を取り出すのみで、ブラウザから画面確認するには ModHeader 等の拡張機能が必須となっており、手数が増えて検証が滞る状態。フェーズ 2 で 6 マスタの CRUD が揃ったため、画面ベースでの全体動作確認を行いたいが、その障壁を取り除く必要がある。
 
 要件書 §7.1 のロール 5 種 (system_admin / department_security_admin / license_manager / viewer / general_user) を Nav 右端のドロップダウンから即時切替できるようにし、Cookie に保存して以降のリクエストに反映する。**ヘッダー方式は既存テストとの互換性のために残し、Cookie はそのフォールバックとして動かす** (ヘッダ > Cookie > general_user)。
 
@@ -21,7 +21,7 @@
 | Cookie 属性                | `HttpOnly` / `SameSite=Lax` / `Path=/`。`Secure` は本番 (TLS) で別途付与する設定だが、本 PR では未対応 (dev 用途のため)            |
 | Cookie 寿命                | 30 日 (ブラウザ閉じても保持。dev で何度も切り替えるたびに失われると面倒)                                                          |
 | 優先順位                   | `X-User-Role` ヘッダ > `app_man_role` Cookie > `general_user` (既存テスト 100 本超を破壊しないため)                                |
-| ヘッダ / Cookie 値の検証   | 未知の role 値は **400 Bad Request** (ヘッダの場合は従来通り 403、Cookie の場合は 400 して Cookie を消す。整合性保護)             |
+| ヘッダ / Cookie 値の検証   | ヘッダの未知値は従来通り **403 Forbidden** で next 中断。Cookie の未知値は **寛容に `general_user` フォールバック + Set-Cookie で削除** (Cookie 起源の壊れた状態でも画面が動くようにする)              |
 | 設定エンドポイント         | `POST /__set_role`、`role=viewer` の form データ。CSRF トークン必須 (`_csrf=dummy-csrf-token`)。成功時 303 で Referer に戻る       |
 | Referer がない / 別オリジン | `/` に戻す (オープンリダイレクト回避)                                                                                            |
 | Nav UI                     | `internal/view/layout/base.templ` の Nav 右端 `role: ...` 表示を `<form>` + `<select>` + `<button>` に置換。即時 POST           |
@@ -160,22 +160,22 @@ r.Post("/__set_role", d.setRole)
 
 ```templ
 <form class="role-switcher" method="post" action="/__set_role">
-    @CSRFInput(middleware.DummyCSRFToken)
+    @CSRFInput(csrfToken)
     <label for="role-select">role:</label>
     <select id="role-select" name="role" onchange="this.form.submit()">
-        @roleOption(role, middleware.RoleSystemAdmin, "system_admin")
-        @roleOption(role, middleware.RoleDepartmentSecurityAdmin, "department_security_admin")
-        @roleOption(role, middleware.RoleLicenseManager, "license_manager")
-        @roleOption(role, middleware.RoleViewer, "viewer")
-        @roleOption(role, middleware.RoleGeneralUser, "general_user")
+        @roleOption(role, middleware.RoleSystemAdmin)
+        @roleOption(role, middleware.RoleDepartmentSecurityAdmin)
+        @roleOption(role, middleware.RoleLicenseManager)
+        @roleOption(role, middleware.RoleViewer)
+        @roleOption(role, middleware.RoleGeneralUser)
     </select>
 </form>
 
-templ roleOption(current, target middleware.Role, label string) {
+templ roleOption(current, target middleware.Role) {
     if current == target {
-        <option value={ string(target) } selected>{ label }</option>
+        <option value={ string(target) } selected>{ string(target) }</option>
     } else {
-        <option value={ string(target) }>{ label }</option>
+        <option value={ string(target) }>{ string(target) }</option>
     }
 }
 ```
