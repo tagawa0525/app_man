@@ -209,3 +209,12 @@ SET
   valid_to = NULL,
   updated_at = CURRENT_TIMESTAMP
 WHERE id = ? AND valid_to IS NOT NULL;
+
+-- name: GetDepartmentByCode :one
+SELECT
+  id, code, name, parent_id, successor_department_id,
+  valid_from, valid_to, source, source_ou, last_synced_at,
+  created_at, updated_at
+FROM departments
+WHERE code = ?
+LIMIT 1;

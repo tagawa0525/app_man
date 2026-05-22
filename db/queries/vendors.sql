@@ -74,3 +74,15 @@ DELETE FROM vendors WHERE id = ?;
 SELECT COUNT(*) AS count
 FROM products
 WHERE vendor_id = ?;
+
+-- name: GetVendorByName :one
+SELECT
+  id,
+  name,
+  url,
+  note,
+  created_at,
+  updated_at
+FROM vendors
+WHERE name = ?
+LIMIT 1;

@@ -156,6 +156,99 @@ func (q *Queries) GetProduct(ctx context.Context, id int64) (GetProductRow, erro
 	return i, err
 }
 
+const getProductByKeyWithEdition = `-- name: GetProductByKeyWithEdition :one
+SELECT
+  id,
+  vendor_id,
+  canonical_name,
+  edition,
+  software_type,
+  license_required,
+  default_approval_status,
+  canonical_download_url,
+  service_admin_url,
+  license_terms_url,
+  note,
+  created_at,
+  updated_at
+FROM products
+WHERE vendor_id = ?1 AND canonical_name = ?2 AND edition = ?3
+LIMIT 1
+`
+
+type GetProductByKeyWithEditionParams struct {
+	VendorID      int64
+	CanonicalName string
+	Edition       *string
+}
+
+func (q *Queries) GetProductByKeyWithEdition(ctx context.Context, arg GetProductByKeyWithEditionParams) (Product, error) {
+	row := q.db.QueryRowContext(ctx, getProductByKeyWithEdition, arg.VendorID, arg.CanonicalName, arg.Edition)
+	var i Product
+	err := row.Scan(
+		&i.ID,
+		&i.VendorID,
+		&i.CanonicalName,
+		&i.Edition,
+		&i.SoftwareType,
+		&i.LicenseRequired,
+		&i.DefaultApprovalStatus,
+		&i.CanonicalDownloadUrl,
+		&i.ServiceAdminUrl,
+		&i.LicenseTermsUrl,
+		&i.Note,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getProductByKeyWithoutEdition = `-- name: GetProductByKeyWithoutEdition :one
+SELECT
+  id,
+  vendor_id,
+  canonical_name,
+  edition,
+  software_type,
+  license_required,
+  default_approval_status,
+  canonical_download_url,
+  service_admin_url,
+  license_terms_url,
+  note,
+  created_at,
+  updated_at
+FROM products
+WHERE vendor_id = ?1 AND canonical_name = ?2 AND edition IS NULL
+LIMIT 1
+`
+
+type GetProductByKeyWithoutEditionParams struct {
+	VendorID      int64
+	CanonicalName string
+}
+
+func (q *Queries) GetProductByKeyWithoutEdition(ctx context.Context, arg GetProductByKeyWithoutEditionParams) (Product, error) {
+	row := q.db.QueryRowContext(ctx, getProductByKeyWithoutEdition, arg.VendorID, arg.CanonicalName)
+	var i Product
+	err := row.Scan(
+		&i.ID,
+		&i.VendorID,
+		&i.CanonicalName,
+		&i.Edition,
+		&i.SoftwareType,
+		&i.LicenseRequired,
+		&i.DefaultApprovalStatus,
+		&i.CanonicalDownloadUrl,
+		&i.ServiceAdminUrl,
+		&i.LicenseTermsUrl,
+		&i.Note,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listProducts = `-- name: ListProducts :many
 SELECT
   p.id,

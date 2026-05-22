@@ -112,6 +112,37 @@ func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
 	return i, err
 }
 
+const getUserByEmployeeCode = `-- name: GetUserByEmployeeCode :one
+SELECT
+  id, employee_code, username, name, email, department_id,
+  deactivated_at, source, source_dn, ad_modified_at, last_synced_at,
+  created_at, updated_at
+FROM users
+WHERE employee_code = ?
+LIMIT 1
+`
+
+func (q *Queries) GetUserByEmployeeCode(ctx context.Context, employeeCode string) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByEmployeeCode, employeeCode)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.EmployeeCode,
+		&i.Username,
+		&i.Name,
+		&i.Email,
+		&i.DepartmentID,
+		&i.DeactivatedAt,
+		&i.Source,
+		&i.SourceDn,
+		&i.AdModifiedAt,
+		&i.LastSyncedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listActiveUsers = `-- name: ListActiveUsers :many
 SELECT
   id,

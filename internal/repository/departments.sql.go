@@ -109,6 +109,36 @@ func (q *Queries) GetDepartment(ctx context.Context, id int64) (Department, erro
 	return i, err
 }
 
+const getDepartmentByCode = `-- name: GetDepartmentByCode :one
+SELECT
+  id, code, name, parent_id, successor_department_id,
+  valid_from, valid_to, source, source_ou, last_synced_at,
+  created_at, updated_at
+FROM departments
+WHERE code = ?
+LIMIT 1
+`
+
+func (q *Queries) GetDepartmentByCode(ctx context.Context, code string) (Department, error) {
+	row := q.db.QueryRowContext(ctx, getDepartmentByCode, code)
+	var i Department
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.ParentID,
+		&i.SuccessorDepartmentID,
+		&i.ValidFrom,
+		&i.ValidTo,
+		&i.Source,
+		&i.SourceOu,
+		&i.LastSyncedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listActiveDepartments = `-- name: ListActiveDepartments :many
 SELECT
   id,

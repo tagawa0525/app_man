@@ -95,6 +95,33 @@ func (q *Queries) GetVendor(ctx context.Context, id int64) (Vendor, error) {
 	return i, err
 }
 
+const getVendorByName = `-- name: GetVendorByName :one
+SELECT
+  id,
+  name,
+  url,
+  note,
+  created_at,
+  updated_at
+FROM vendors
+WHERE name = ?
+LIMIT 1
+`
+
+func (q *Queries) GetVendorByName(ctx context.Context, name string) (Vendor, error) {
+	row := q.db.QueryRowContext(ctx, getVendorByName, name)
+	var i Vendor
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Url,
+		&i.Note,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listVendors = `-- name: ListVendors :many
 SELECT
   id,
