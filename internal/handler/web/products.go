@@ -522,4 +522,3 @@ func (h *productHandlers) show(w http.ResponseWriter, r *http.Request) {
 		h.logger.ErrorContext(r.Context(), "render product show", "err", err)
 	}
 }
-
