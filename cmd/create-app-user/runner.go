@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"golang.org/x/term"
@@ -207,7 +208,7 @@ func validateFlags(opts runOptions) error {
 		return errors.New("--role is required (create mode)")
 	}
 	if !middleware.IsValidRole(middleware.Role(opts.role)) {
-		return fmt.Errorf("invalid --role: %q (allowed: system_admin / department_security_admin / license_manager / viewer / general_user)", opts.role)
+		return fmt.Errorf("invalid --role: %q (allowed: %s)", opts.role, joinRoles(middleware.AllRoles()))
 	}
 	if opts.role != "system_admin" && opts.departmentCode == "" {
 		return fmt.Errorf("--department-code is required for role %q", opts.role)
@@ -401,6 +402,16 @@ func finalizePassword(first, second string) (string, error) {
 		return "", auth.ErrPasswordTooShort
 	}
 	return first, nil
+}
+
+// joinRoles は []middleware.Role を " / " 区切りの文字列に整形する。
+// CLI のエラーメッセージで「許可されたロール」を提示する用途。
+func joinRoles(roles []middleware.Role) string {
+	parts := make([]string, len(roles))
+	for i, r := range roles {
+		parts[i] = string(r)
+	}
+	return strings.Join(parts, " / ")
 }
 
 // nullableString は空文字を NULL (= nil) として扱うヘルパ。
