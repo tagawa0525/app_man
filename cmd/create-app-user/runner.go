@@ -137,6 +137,19 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 		return exitHandlerError
 	}
 
+	// create モード: 部署解決を password 入力より前に実行する。flag ミス
+	// (存在しない部署 / 廃止済み部署) は config エラー (exit 3) として
+	// 扱い、ユーザに無駄なパスワード入力をさせない。INSERT 中の DB エラー
+	// は handler error (exit 1)。
+	var departmentID *int64
+	if !opts.resetPassword {
+		departmentID, err = resolveDepartmentID(ctx, q, opts.role, opts.departmentCode)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "%s: %v\n", binaryName, err)
+			return exitConfigInvalid
+		}
+	}
+
 	plaintext, err := readPassword(stdin, stdout, getenv)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: %v\n", binaryName, err)
@@ -157,15 +170,6 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 		_, _ = fmt.Fprintf(stdout, "reset password for username=%s\n", opts.username)
 		logger.Info("password reset done", slog.String("username", opts.username))
 		return exitOK
-	}
-
-	// create モード: 部署解決を先に行い、ユーザ flag ミス (存在しない部署 /
-	// 廃止済み部署) を config エラー (exit 3) として扱う。INSERT 中の
-	// DB エラーは handler error (exit 1)。
-	departmentID, err := resolveDepartmentID(ctx, q, opts.role, opts.departmentCode)
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", binaryName, err)
-		return exitConfigInvalid
 	}
 
 	if err := createUser(ctx, sqlDB, opts, passwordHash, departmentID); err != nil {
