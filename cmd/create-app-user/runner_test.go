@@ -330,6 +330,51 @@ func TestCreateUser_DuplicateUsername(t *testing.T) {
 	}
 }
 
+// TestCreateUser_SecondInsertFailureRollsBack は createUser のトランザクション
+// 境界の検証として、2 つ目の INSERT (user_department_roles) が FK 違反で
+// 失敗した場合に 1 つ目の INSERT (app_users) も rollback されることを確認する。
+//
+// FK 違反は存在しない department_id を渡すことで意図的に発生させる。
+// (resolveDepartmentID を経由しない直接呼び出しなのでテストでだけ可能)
+func TestCreateUser_SecondInsertFailureRollsBack(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := handlertest.NewTestDB(t)
+	ctx := context.Background()
+
+	opts := runOptions{
+		username: "tx_test",
+		role:     "license_manager", // department_id != NULL を要求
+	}
+	nonexistent := int64(99999) // departments テーブルには無い id
+
+	err := createUser(ctx, sqlDB, opts, "$2a$10$dummy", &nonexistent)
+	if err == nil {
+		t.Fatal("createUser with bad department_id: want FK error, got nil")
+	}
+
+	// app_users にも user_department_roles にも残っていないこと
+	var userCount int
+	row := sqlDB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM app_users WHERE username = 'tx_test'`)
+	if err := row.Scan(&userCount); err != nil {
+		t.Fatalf("count users: %v", err)
+	}
+	if userCount != 0 {
+		t.Errorf("app_users after rollback: want 0, got %d", userCount)
+	}
+
+	var roleCount int
+	row = sqlDB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM user_department_roles WHERE department_id = ?`, nonexistent)
+	if err := row.Scan(&roleCount); err != nil {
+		t.Fatalf("count roles: %v", err)
+	}
+	if roleCount != 0 {
+		t.Errorf("user_department_roles after rollback: want 0, got %d", roleCount)
+	}
+}
+
 func TestValidateFlags(t *testing.T) {
 	t.Parallel()
 
