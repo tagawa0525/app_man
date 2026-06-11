@@ -41,6 +41,20 @@ func IsValidRole(role Role) bool {
 	return ok
 }
 
+// AllRoles は要件書 §7.1 で定義された 5 ロールの一覧を順序付きで返す。
+// IsValidRole と同じ集合 (validRoles) と一致するが、ユーザに「許可ロール」を
+// 提示する用途 (CLI のエラーメッセージ、UI のセレクトボックス等) で
+// 順序を保ちたいときに使う。順序は仕様書 §7.1 の記載順 (権限が広い順)。
+func AllRoles() []Role {
+	return []Role{
+		RoleSystemAdmin,
+		RoleDepartmentSecurityAdmin,
+		RoleLicenseManager,
+		RoleViewer,
+		RoleGeneralUser,
+	}
+}
+
 // DummyAuthMiddleware は HTTP ヘッダ X-User-Role から role を取り出し、
 // context に詰めるダミー認可ミドルウェア (PR-A 用)。
 //

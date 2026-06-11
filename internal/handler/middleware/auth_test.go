@@ -155,6 +155,28 @@ func TestDummyAuthMiddleware_InvalidCookieClearsCookieAndFallsBackToGeneral(t *t
 	}
 }
 
+func TestAllRoles_MatchesValidRoles(t *testing.T) {
+	t.Parallel()
+
+	all := middleware.AllRoles()
+	if len(all) != 5 {
+		t.Fatalf("AllRoles length: want 5, got %d", len(all))
+	}
+	for _, r := range all {
+		if !middleware.IsValidRole(r) {
+			t.Errorf("AllRoles contains role %q that IsValidRole rejects", r)
+		}
+	}
+	// 重複なし
+	seen := make(map[middleware.Role]bool, len(all))
+	for _, r := range all {
+		if seen[r] {
+			t.Errorf("AllRoles contains duplicate: %q", r)
+		}
+		seen[r] = true
+	}
+}
+
 func TestRoleFrom_EmptyContext_DefaultsToGeneralUser(t *testing.T) {
 	t.Parallel()
 
