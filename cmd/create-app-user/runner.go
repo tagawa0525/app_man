@@ -131,7 +131,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 			_, _ = fmt.Fprintf(stderr, "%s: user %q already exists\n", binaryName, opts.username)
 			return exitHandlerError
 		}
-		_ = existing // reset モードはこれが正常
+		_ = existing // auth_type 検証は resetPassword 関数内で実施
 	default:
 		logger.Error("lookup app_user", slog.Any("error", err))
 		return exitHandlerError
@@ -286,11 +286,26 @@ func resolveDepartmentID(ctx context.Context, q *repository.Queries, role, code 
 }
 
 // resetPassword は指定 username の password_hash を上書きする。
-// 対象ユーザが存在しなければエラー (UPDATE で 0 rows)。
+//
+// 仕様書 §7.3 / §4.2 のとおり、ローカル認証 (auth_type='local') ユーザ
+// 専用。AD パススルー認証 (auth_type='ad') のユーザはパスワードを AD で
+// 管理しており、こちら側で password_hash を持つことは無いため、
+// auth_type が 'local' 以外なら拒否する (誤って AD ユーザの app_users 行に
+// ハッシュを書き込むのを防ぐ防御層)。
 //
 // roles や notify_email など他フィールドは触らない。reset 専用。
 func resetPassword(ctx context.Context, sqlDB *sql.DB, username, passwordHash string) error {
 	q := repository.New(sqlDB)
+	existing, err := q.GetAppUserByUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("user not found: %s", username)
+		}
+		return fmt.Errorf("lookup app_user: %w", err)
+	}
+	if existing.AuthType != "local" {
+		return fmt.Errorf("cannot reset password for user %q: auth_type=%q (password is managed by AD; reset on the AD side)", username, existing.AuthType)
+	}
 	hash := passwordHash
 	affected, err := q.UpdateAppUserPasswordHash(ctx, repository.UpdateAppUserPasswordHashParams{
 		PasswordHash: &hash,

@@ -248,6 +248,43 @@ func TestResetPassword_OverwritesHash(t *testing.T) {
 	}
 }
 
+// TestResetPassword_RejectsADUser は auth_type='ad' のユーザに対する
+// reset が拒否されることを確認する。仕様書 §7.3 / §4.2 のとおり AD ユーザの
+// パスワードは AD 側管理で、app_users.password_hash は NULL に維持する。
+func TestResetPassword_RejectsADUser(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := handlertest.NewTestDB(t)
+	ctx := context.Background()
+
+	// AD 同期相当の app_users 行を直接 INSERT (auth_type='ad', password_hash=NULL)
+	_, err := sqlDB.ExecContext(ctx,
+		`INSERT INTO app_users (username, password_hash, linked_user_id, notify_email, auth_type)
+		 VALUES ('ad_user', NULL, NULL, NULL, 'ad')`)
+	if err != nil {
+		t.Fatalf("seed ad user: %v", err)
+	}
+
+	err = resetPassword(ctx, sqlDB, "ad_user", "$2a$10$forbidden.hash")
+	if err == nil {
+		t.Fatal("resetPassword for ad user: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "auth_type") {
+		t.Errorf("error should mention auth_type, got: %v", err)
+	}
+
+	// password_hash が NULL のままであることを確認
+	var hash sql.NullString
+	row := sqlDB.QueryRowContext(ctx,
+		`SELECT password_hash FROM app_users WHERE username = 'ad_user'`)
+	if err := row.Scan(&hash); err != nil {
+		t.Fatalf("scan password_hash: %v", err)
+	}
+	if hash.Valid {
+		t.Errorf("password_hash: want NULL (unchanged), got %q", hash.String)
+	}
+}
+
 // TestResetPassword_UserNotFound は存在しない username に対する reset が
 // エラーになることを確認する。
 func TestResetPassword_UserNotFound(t *testing.T) {
