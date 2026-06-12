@@ -93,40 +93,47 @@ func loadOrCreateSession(ctx context.Context, cfg SessionConfig, now time.Time, 
 		}
 	}
 
-	created, err := createAnonymousSession(ctx, cfg.Store, now, cfg.MaxAge)
-	if err != nil {
-		// crypto/rand or DB INSERT 失敗。ハンドラに nil を渡せないので、
-		// 永続化されない一時セッションを返してログだけ残す。
-		cfg.Logger.Error("create anonymous session failed", "err", err)
-		return &session.Session{
-			CreatedAt:  now,
-			LastSeenAt: now,
-			ExpiresAt:  now,
-		}, false
-	}
-	return created, true
-}
-
-func createAnonymousSession(ctx context.Context, store session.Store, now time.Time, maxAge time.Duration) (*session.Session, error) {
+	// ID / CSRF token を先に生成してから永続化を試みる。Create が失敗しても
+	// このリクエストで使える ID / CSRF token は手元にあるので、Set-Cookie で
+	// クライアントに返し、ハンドラには有効な session を渡す (fresh=true)。
+	// 次リクエストの Cookie 値は DB に無いため、また loadOrCreateSession で
+	// 新規発行され、通常フローに合流する。
 	id, err := session.NewID()
 	if err != nil {
-		return nil, err
+		cfg.Logger.Error("generate session ID failed", "err", err)
+		return ephemeralSession(now), false
 	}
 	tok, err := session.NewCSRFToken()
 	if err != nil {
-		return nil, err
+		cfg.Logger.Error("generate CSRF token failed", "err", err)
+		return ephemeralSession(now), false
 	}
 	s := &session.Session{
 		ID:         id,
 		CSRFToken:  tok,
 		CreatedAt:  now,
 		LastSeenAt: now,
-		ExpiresAt:  now.Add(maxAge),
+		ExpiresAt:  now.Add(cfg.MaxAge),
 	}
-	if err := store.Create(ctx, *s); err != nil {
-		return nil, err
+	if err := cfg.Store.Create(ctx, *s); err != nil {
+		// 永続化失敗。ID / CSRF token はこのリクエスト内で有効なので fresh=true
+		// で返し、Cookie 発行 + ハンドラ続行は行う。リクエスト跨ぎで session が
+		// 続かない点はクライアントから見ると「次のリクエストでログイン情報が
+		// 切れた」と同じ挙動になる。
+		cfg.Logger.Error("persist anonymous session failed (using ephemeral session for this request)", "err", err, "session_id", maskID(s.ID))
 	}
-	return s, nil
+	return s, true
+}
+
+// ephemeralSession は ID / CSRF 生成すらできなかった極端なケースで返す。
+// 下流ハンドラが CSRFToken を使うと空文字検証になり 403 で弾かれるが、
+// 実害は「このリクエストが 403 になる」のみで、サーバプロセスは生き残る。
+func ephemeralSession(now time.Time) *session.Session {
+	return &session.Session{
+		CreatedAt:  now,
+		LastSeenAt: now,
+		ExpiresAt:  now,
+	}
 }
 
 // maskID はログに ID 全文を出さないための短縮形を返す (先頭 8 文字)。
