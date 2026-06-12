@@ -10,10 +10,13 @@ package web
 import (
 	"database/sql"
 	"log/slog"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/tagawa0525/app_man/internal/auth"
 	mw "github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/session"
 )
 
 // Deps は web ハンドラが必要とする外部依存。internal/handler の Deps と
@@ -24,6 +27,15 @@ type Deps struct {
 	// DevMode が true のときのみ /__set_role 等の開発用エンドポイントを
 	// 登録する。本番デプロイ時は false にして攻撃経路を塞ぐ。
 	DevMode bool
+	// Authenticator はログインフロー (POST /login) が利用する。
+	// 本 PR では LocalAuthenticator が直接渡る。
+	Authenticator auth.Authenticator
+	// SessionStore はログアウト時の session 削除 / login 後のクエリ等で使う。
+	SessionStore session.Store
+	// CookieSecure はログイン後の Cookie 再発行 / ログアウト時の Cookie 消去に使う。
+	CookieSecure bool
+	// SessionMaxAge はログイン後に session ID を Rotate した際の Cookie MaxAge。
+	SessionMaxAge time.Duration
 }
 
 // viewers は 「閲覧」権限ロール集合 (general_user 以上)。
@@ -69,6 +81,23 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 	if deps.DevMode {
 		devUI := &devHandlers{logger: deps.Logger}
 		r.Post("/__set_role", devUI.setRole)
+	}
+
+	// /login / /logout は role 不問。Authenticator / SessionStore が注入
+	// されている場合のみ登録する (テストで nil を渡したときに panic
+	// しないように)。
+	if deps.Authenticator != nil && deps.SessionStore != nil {
+		a := &authHandlers{
+			authenticator: deps.Authenticator,
+			sessionStore:  deps.SessionStore,
+			db:            deps.DB,
+			cookieSecure:  deps.CookieSecure,
+			sessionMaxAge: deps.SessionMaxAge,
+			logger:        deps.Logger,
+		}
+		r.Get("/login", a.loginGet)
+		r.Post("/login", a.loginPost)
+		r.Post("/logout", a.logoutPost)
 	}
 
 	r.With(mw.RequireRole(viewers...)).Group(func(r chi.Router) {
