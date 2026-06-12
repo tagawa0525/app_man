@@ -8,6 +8,7 @@ server:
   listen: 0.0.0.0:8180
   base_url: http://localhost:8180
   # session_secret_env: SESSION_SECRET    # PR2 以降で利用
+  cookie_secure: false        # 本番 HTTPS では true。開発 HTTP では false
 
 database:
   path: ./data/app.db
@@ -20,3 +21,6 @@ logging:
   level: info                 # debug / info / warn / error
   base_dir: ./logs
   format: json                # json / text
+
+auth:
+  session_max_age_hours: 8    # セッション Cookie / DB の有効期間 (時間)
