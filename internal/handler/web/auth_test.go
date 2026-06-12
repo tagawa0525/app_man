@@ -82,6 +82,24 @@ func TestLogin_Get_ReturnsForm(t *testing.T) {
 	handlertest.AssertContains(t, rec, middleware.DummyCSRFToken)
 }
 
+func TestLogin_Get_NextWithQuery_EncodedInFormAction(t *testing.T) {
+	t.Parallel()
+	r, _, _ := newAuthRouter(t)
+
+	// next にクエリ文字列を含めて GET。フォームの action がクエリパラメータを
+	// 取り違えないよう URL エンコードされていることを確認する。
+	rawNext := "/products?tab=all&sort=asc"
+	req := httptest.NewRequest(http.MethodGet, "/login?next="+url.QueryEscape(rawNext), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusOK)
+	// form の action 属性に encoded 値が現れること。素のままだと "&sort=asc" が
+	// /login のクエリと解釈されてしまう。
+	wantAction := `action="/login?next=` + url.QueryEscape(rawNext) + `"`
+	handlertest.AssertContains(t, rec, wantAction)
+}
+
 func TestLogin_Get_AlreadyAuthenticated_RedirectsToRoot(t *testing.T) {
 	t.Parallel()
 	r, store, db := newAuthRouter(t)
