@@ -11,6 +11,9 @@ import (
 	"github.com/tagawa0525/app_man/internal/repository"
 )
 
+// defaultLoginURL は AuthConfig.LoginURL のデフォルト値。
+const defaultLoginURL = "/login"
+
 // AuthConfig は AuthMiddleware の依存。
 //
 //   - DB: user_department_roles 引き用 (必須)
@@ -43,10 +46,16 @@ func AuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 		cfg.Logger = slog.Default()
 	}
 	if cfg.LoginURL == "" {
-		cfg.LoginURL = "/login"
+		cfg.LoginURL = defaultLoginURL
 	}
 	if cfg.PublicPathPrefixes == nil {
-		cfg.PublicPathPrefixes = []string{"/login", "/static/", "/healthz"}
+		cfg.PublicPathPrefixes = []string{"/static/", "/healthz"}
+	}
+	// LoginURL の path 部を必ず公開リストに含める。LoginURL を /auth 等に
+	// 変更したときに、未認証アクセスがログインページ自体に redirect されて
+	// 無限ループになるのを防ぐ。
+	if loginPath := extractPath(cfg.LoginURL); loginPath != "" && !isPublicPath(loginPath, cfg.PublicPathPrefixes) {
+		cfg.PublicPathPrefixes = append(cfg.PublicPathPrefixes, loginPath)
 	}
 
 	q := repository.New(cfg.DB)
@@ -121,6 +130,16 @@ func originalURI(r *http.Request) string {
 		return r.URL.Path
 	}
 	return r.URL.Path + "?" + r.URL.RawQuery
+}
+
+// extractPath は LoginURL の path 部を返す。url.Parse 失敗時や Path が空なら
+// "" を返す (呼び出し側で「補完しない」を選ぶ)。
+func extractPath(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	return u.Path
 }
 
 // pickHighestRole は rows の中で AllRoles() 順最初に出現する Role を返す。

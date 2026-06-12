@@ -275,6 +275,27 @@ func TestAuthMiddleware_CustomPublicPrefix(t *testing.T) {
 	}
 }
 
+func TestAuthMiddleware_CustomLoginURL_AutoIncludedInPublicList(t *testing.T) {
+	t.Parallel()
+	cfg := defaultAuthConfig(t)
+	cfg.LoginURL = "/auth/signin"
+	// PublicPathPrefixes は明示指定しない → デフォルト補完 + LoginURL の path 部が併合
+
+	chain, _ := newAuthChain(t, cfg, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// LoginURL のパスが public 扱いになっていなければ /auth/signin を未認証で
+	// 開いた時に自身に redirect されて無限ループ。本実装では path 部が
+	// 自動補完される。
+	rec := httptest.NewRecorder()
+	chain.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/auth/signin", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/auth/signin: status = %d, want 200 (LoginURL path must be auto-included as public)", rec.Code)
+	}
+}
+
 func TestAuthMiddleware_PublicPath_NotPrefixOnSingleEntry(t *testing.T) {
 	t.Parallel()
 	cfg := defaultAuthConfig(t)
