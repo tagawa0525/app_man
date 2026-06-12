@@ -15,8 +15,8 @@ jobs:
     env:
       CGO_ENABLED: "0"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
@@ -29,8 +29,8 @@ jobs:
     env:
       CGO_ENABLED: "0"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
@@ -44,8 +44,8 @@ jobs:
     env:
       CGO_ENABLED: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
@@ -56,14 +56,14 @@ jobs:
     name: golangci-lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
       # golangci-lint v2 を使うには action も v7 以上が必須
-      # （v6 は v1 系のみサポート）。
-      - uses: golangci/golangci-lint-action@v7
+      # （v6 は v1 系のみサポート）。v8 以降は golangci-lint v2.1.0+ が前提。
+      - uses: golangci/golangci-lint-action@v9
         with:
           # 再現性のためバージョン固定。更新は別 PR で意図的に上げる
           # （`gh api repos/golangci/golangci-lint/releases/latest` で最新確認）。
