@@ -40,6 +40,15 @@ type SessionConfig struct {
 // 認証は別 PR (LocalAuthenticator) が POST /login で session.AppUserID を
 // 埋める形になる。本ミドルウェアは認証情報を一切扱わない。
 func SessionMiddleware(cfg SessionConfig) func(http.Handler) http.Handler {
+	// 呼び出し側のミスを起動時に発見できるよう fail-fast する。
+	// 実行時 (リクエスト処理中) に nil store で panic させるより、
+	// router 組立時に setup ミスとして死んだ方が原因究明が早い。
+	if cfg.Store == nil {
+		panic("middleware.SessionMiddleware: Store is required")
+	}
+	if cfg.MaxAge <= 0 {
+		panic("middleware.SessionMiddleware: MaxAge must be > 0")
+	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}

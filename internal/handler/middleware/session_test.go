@@ -180,6 +180,34 @@ func TestSessionFrom_EmptyContext_ReturnsNil(t *testing.T) {
 	}
 }
 
+func TestSessionMiddleware_Panics_WhenStoreNil(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic when Store is nil")
+		}
+	}()
+	middleware.SessionMiddleware(middleware.SessionConfig{
+		Store:  nil,
+		MaxAge: time.Hour,
+	})
+}
+
+func TestSessionMiddleware_Panics_WhenMaxAgeZero(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic when MaxAge <= 0")
+		}
+	}()
+	middleware.SessionMiddleware(middleware.SessionConfig{
+		Store:  session.NewSQLiteStore(handlertest.NewTestDB(t)),
+		MaxAge: 0,
+	})
+}
+
 // sql.ErrNoRows ハンドリングが GetByID 内で透過していることの保険
 func TestSQLiteStore_GetByID_NotFound_FromMiddlewareLayer(t *testing.T) {
 	t.Parallel()
