@@ -40,7 +40,7 @@ func TestRoleFrom_EmptyContext_DefaultsToGeneralUser(t *testing.T) {
 }
 
 // withRole は context に role を詰めたリクエストを返す (ヘルパ)。
-// 旧 DummyAuthMiddleware の代替として RequireRole 単体テストで使う。
+// AuthMiddleware を経由しない RequireRole 単体テスト用。
 func withRole(req *http.Request, role middleware.Role) *http.Request {
 	return req.WithContext(middleware.WithRole(req.Context(), role))
 }
