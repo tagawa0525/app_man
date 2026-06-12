@@ -43,6 +43,10 @@ logging:
 			BaseDir: "./logs",
 			Format:  "json",
 		},
+		Auth: config.AuthConfig{
+			// 未指定 (= 0) → validate で 8h デフォルトに補完される
+			SessionMaxAgeHours: 8,
+		},
 	}
 
 	tests := []struct {
@@ -239,5 +243,78 @@ logging:
 	_, err := config.Load(path)
 	if err == nil {
 		t.Fatal("Load() expected error when env var is unset for *_env key, got nil")
+	}
+}
+
+func TestLoad_authSessionMaxAge_explicit(t *testing.T) {
+	yamlBody := `server:
+  listen: 0.0.0.0:8180
+  base_url: http://localhost:8180
+  cookie_secure: true
+
+database:
+  path: ./data/app.db
+  wal: true
+
+locks:
+  base_dir: ./data/locks
+
+logging:
+  level: info
+  base_dir: ./logs
+  format: json
+
+auth:
+  session_max_age_hours: 24
+`
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(path, []byte(yamlBody), 0o644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	got, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+	if got.Auth.SessionMaxAgeHours != 24 {
+		t.Errorf("Auth.SessionMaxAgeHours = %d, want 24 (from YAML)", got.Auth.SessionMaxAgeHours)
+	}
+	if !got.Server.CookieSecure {
+		t.Error("Server.CookieSecure = false, want true (from YAML)")
+	}
+}
+
+func TestLoad_authSessionMaxAge_negativeRejected(t *testing.T) {
+	yamlBody := `server:
+  listen: 0.0.0.0:8180
+  base_url: http://localhost:8180
+
+database:
+  path: ./data/app.db
+  wal: true
+
+locks:
+  base_dir: ./data/locks
+
+logging:
+  level: info
+  base_dir: ./logs
+  format: json
+
+auth:
+  session_max_age_hours: -1
+`
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(path, []byte(yamlBody), 0o644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	_, err := config.Load(path)
+	if err == nil {
+		t.Fatal("Load() expected error for negative auth.session_max_age_hours, got nil")
 	}
 }
