@@ -15,11 +15,11 @@ import (
 
 func TestAliases_Create_AppearsOnShow(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 	v := seedVendor(t, q, "Adobe")
 	p := seedProduct(t, q, v.ID, "Acrobat")
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/products/%d/aliases", p.ID), middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/products/%d/aliases", p.ID), middleware.RoleLicenseManager, url.Values{
 		"alias_name": {"Acrobat DC"},
 	})
 	rec := httptest.NewRecorder()
@@ -43,9 +43,9 @@ func TestAliases_Create_AppearsOnShow(t *testing.T) {
 
 func TestAliases_Create_404OnUnknownProduct(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
-	req := handlertest.PostForm(t, "/products/9999/aliases", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/products/9999/aliases", middleware.RoleLicenseManager, url.Values{
 		"alias_name": {"X"},
 	})
 	rec := httptest.NewRecorder()
@@ -64,7 +64,7 @@ func TestAliases_Create_404OnUnknownProduct(t *testing.T) {
 
 func TestAliases_Create_RejectsDuplicate(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 	v := seedVendor(t, q, "Adobe")
 	p := seedProduct(t, q, v.ID, "Acrobat")
 	if _, err := q.CreateAlias(context.Background(), repository.CreateAliasParams{
@@ -74,7 +74,7 @@ func TestAliases_Create_RejectsDuplicate(t *testing.T) {
 		t.Fatalf("seed CreateAlias: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/products/%d/aliases", p.ID), middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/products/%d/aliases", p.ID), middleware.RoleLicenseManager, url.Values{
 		"alias_name": {"Acrobat DC"},
 	})
 	rec := httptest.NewRecorder()
@@ -88,11 +88,11 @@ func TestAliases_Create_RejectsDuplicate(t *testing.T) {
 
 func TestAliases_Create_GeneralUser_403(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 	v := seedVendor(t, q, "Adobe")
 	p := seedProduct(t, q, v.ID, "Acrobat")
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/products/%d/aliases", p.ID), middleware.RoleGeneralUser, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/products/%d/aliases", p.ID), middleware.RoleGeneralUser, url.Values{
 		"alias_name": {"Foo"},
 	})
 	rec := httptest.NewRecorder()
@@ -105,7 +105,7 @@ func TestAliases_Create_GeneralUser_403(t *testing.T) {
 // に POST しても 404 になり削除されないこと。
 func TestAliases_Delete_BlocksCrossProduct(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 	v := seedVendor(t, q, "Adobe")
 	p1 := seedProduct(t, q, v.ID, "Acrobat")
 	p2 := seedProduct(t, q, v.ID, "Photoshop")
@@ -118,7 +118,7 @@ func TestAliases_Delete_BlocksCrossProduct(t *testing.T) {
 	}
 
 	// p2 の URL に p1 配下の alias ID を渡してみる。
-	req := handlertest.PostForm(t, fmt.Sprintf("/products/%d/aliases/%d/delete", p2.ID, a.ID), middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/products/%d/aliases/%d/delete", p2.ID, a.ID), middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -135,7 +135,7 @@ func TestAliases_Delete_BlocksCrossProduct(t *testing.T) {
 
 func TestAliases_Delete_RemovesRow(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 	v := seedVendor(t, q, "Adobe")
 	p := seedProduct(t, q, v.ID, "Acrobat")
 	a, err := q.CreateAlias(context.Background(), repository.CreateAliasParams{
@@ -146,7 +146,7 @@ func TestAliases_Delete_RemovesRow(t *testing.T) {
 		t.Fatalf("seed CreateAlias: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/products/%d/aliases/%d/delete", p.ID, a.ID), middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/products/%d/aliases/%d/delete", p.ID, a.ID), middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 

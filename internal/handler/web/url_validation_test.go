@@ -17,9 +17,9 @@ import (
 // (XSS 防御 — 保存時に弾く)
 func TestVendors_Create_RejectsJavaScriptURL(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
-	req := handlertest.PostForm(t, "/vendors", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/vendors", middleware.RoleLicenseManager, url.Values{
 		"name": {"BadVendor"},
 		"url":  {"javascript:alert(1)"},
 	})
@@ -42,9 +42,9 @@ func TestVendors_Create_RejectsJavaScriptURL(t *testing.T) {
 
 func TestVendors_Create_AcceptsHTTPSURL(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
-	req := handlertest.PostForm(t, "/vendors", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/vendors", middleware.RoleLicenseManager, url.Values{
 		"name": {"Good"},
 		"url":  {"https://example.com"},
 	})
@@ -62,10 +62,10 @@ func TestVendors_Create_AcceptsHTTPSURL(t *testing.T) {
 
 func TestProducts_Create_RejectsJavaScriptURL(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 	v := seedVendor(t, q, "Adobe")
 
-	req := handlertest.PostForm(t, "/products", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/products", middleware.RoleLicenseManager, url.Values{
 		"vendor_id":              {fmt.Sprintf("%d", v.ID)},
 		"canonical_name":         {"Bad"},
 		"canonical_download_url": {"javascript:alert(1)"},
@@ -89,13 +89,13 @@ func TestProducts_Create_RejectsJavaScriptURL(t *testing.T) {
 
 func TestProducts_Create_RejectsJavaScriptURL_InAllURLFields(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
 	for _, field := range []string{"canonical_download_url", "service_admin_url", "license_terms_url"} {
 		field := field
 		t.Run(field, func(t *testing.T) {
 			t.Parallel()
-			req := handlertest.PostForm(t, "/products", middleware.RoleLicenseManager, url.Values{
+			req := handlertest.AuthenticatedPostForm(t, db, store, "/products", middleware.RoleLicenseManager, url.Values{
 				"vendor_id":      {"1"},
 				"canonical_name": {"Bad"},
 				field:            {"javascript:alert(1)"},
@@ -113,13 +113,13 @@ func TestProducts_Create_RejectsJavaScriptURL_InAllURLFields(t *testing.T) {
 // vendor の url を javascript: にしたまま update もできないこと。
 func TestVendors_Update_RejectsJavaScriptURL(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 	v, err := q.CreateVendor(context.Background(), repository.CreateVendorParams{Name: "Vendor1"})
 	if err != nil {
 		t.Fatalf("seed CreateVendor: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/vendors/%d", v.ID), middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/vendors/%d", v.ID), middleware.RoleLicenseManager, url.Values{
 		"name": {"Vendor1"},
 		"url":  {"javascript:alert(1)"},
 	})

@@ -2,10 +2,12 @@ package web_test
 
 import (
 	"context"
+	"database/sql"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -13,31 +15,45 @@ import (
 	"github.com/tagawa0525/app_man/internal/handler/middleware"
 	"github.com/tagawa0525/app_man/internal/handler/web"
 	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/session"
 )
 
 // newWebRouter は本 PR の handler/web を実環境に近い形でマウントした
-// chi.Router を返す。各テストはこれを叩いて HTTP → templ → DB の往復を
-// 通しで検証する。
-func newWebRouter(t *testing.T) (http.Handler, *repository.Queries) {
+// chi.Router を返す。SessionMiddleware → AuthMiddleware → CSRFMiddleware の
+// チェーンで、handlertest.AuthenticatedRequest / AuthenticatedPostForm から
+// session Cookie 付きのリクエストを投げると role が context に詰まる。
+//
+// 戻り値の db / store はテストから直接 INSERT したり session を seed したり
+// する用途。
+func newWebRouter(t *testing.T) (http.Handler, *sql.DB, session.Store, *repository.Queries) {
 	t.Helper()
 	sqlDB := handlertest.NewTestDB(t)
+	store := session.NewSQLiteStore(sqlDB)
 
 	r := chi.NewRouter()
-	r.Use(middleware.DummyAuthMiddleware)
+	r.Use(middleware.SessionMiddleware(middleware.SessionConfig{
+		Store:  store,
+		MaxAge: time.Hour,
+		Logger: slog.New(slog.DiscardHandler),
+	}))
+	r.Use(middleware.AuthMiddleware(middleware.AuthConfig{
+		DB:     sqlDB,
+		Logger: slog.New(slog.DiscardHandler),
+	}))
 	r.Use(middleware.CSRFMiddleware)
 	web.RegisterRoutes(r, web.Deps{
 		Logger:  slog.New(slog.DiscardHandler),
 		DB:      sqlDB,
 		DevMode: true,
 	})
-	return r, repository.New(sqlDB)
+	return r, sqlDB, store, repository.New(sqlDB)
 }
 
 func TestVendors_List_GeneralUser_200(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/vendors", middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/vendors", middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -47,7 +63,7 @@ func TestVendors_List_GeneralUser_200(t *testing.T) {
 
 func TestVendors_List_ShowsExistingVendors(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	if _, err := q.CreateVendor(context.Background(), repository.CreateVendorParams{
 		Name: "Adobe",
@@ -60,7 +76,7 @@ func TestVendors_List_ShowsExistingVendors(t *testing.T) {
 		t.Fatalf("seed CreateVendor: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/vendors", middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/vendors", middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -71,9 +87,9 @@ func TestVendors_List_ShowsExistingVendors(t *testing.T) {
 
 func TestVendors_List_HidesNewButton_ForGeneralUser(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/vendors", middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/vendors", middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -85,9 +101,9 @@ func TestVendors_List_HidesNewButton_ForGeneralUser(t *testing.T) {
 
 func TestVendors_List_ShowsNewButton_ForLicenseManager(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/vendors", middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/vendors", middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -97,9 +113,9 @@ func TestVendors_List_ShowsNewButton_ForLicenseManager(t *testing.T) {
 
 func TestVendors_NewForm_LicenseManager_200(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/vendors/new", middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/vendors/new", middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -109,9 +125,9 @@ func TestVendors_NewForm_LicenseManager_200(t *testing.T) {
 
 func TestVendors_NewForm_GeneralUser_403(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/vendors/new", middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/vendors/new", middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 

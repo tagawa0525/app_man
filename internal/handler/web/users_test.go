@@ -19,9 +19,9 @@ import (
 
 func TestUsers_List_GeneralUser_403(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/users", middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/users", middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -30,9 +30,9 @@ func TestUsers_List_GeneralUser_403(t *testing.T) {
 
 func TestUsers_List_Viewer_200(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/users", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/users", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -42,7 +42,7 @@ func TestUsers_List_Viewer_200(t *testing.T) {
 
 func TestUsers_List_ShowsExistingUsers(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	if _, err := q.CreateUser(context.Background(), repository.CreateUserParams{
 		EmployeeCode: "E001",
@@ -57,7 +57,7 @@ func TestUsers_List_ShowsExistingUsers(t *testing.T) {
 		t.Fatalf("seed CreateUser: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/users", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/users", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -70,9 +70,9 @@ func TestUsers_List_ShowsExistingUsers(t *testing.T) {
 
 func TestUsers_List_HidesNewButton_ForViewer(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/users", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/users", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -84,9 +84,9 @@ func TestUsers_List_HidesNewButton_ForViewer(t *testing.T) {
 
 func TestUsers_List_ShowsNewButton_ForLicenseManager(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/users", middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/users", middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -96,9 +96,9 @@ func TestUsers_List_ShowsNewButton_ForLicenseManager(t *testing.T) {
 
 func TestUsers_NewForm_GeneralUser_403(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/users/new", middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/users/new", middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -107,9 +107,9 @@ func TestUsers_NewForm_GeneralUser_403(t *testing.T) {
 
 func TestUsers_NewForm_LicenseManager_200(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/users/new", middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/users/new", middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -123,7 +123,7 @@ func TestUsers_NewForm_LicenseManager_200(t *testing.T) {
 
 func TestUsers_Search_MatchesEmployeeCode(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	if _, err := q.CreateUser(context.Background(), repository.CreateUserParams{
 		EmployeeCode: "E001",
@@ -138,7 +138,7 @@ func TestUsers_Search_MatchesEmployeeCode(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/users?q=E001", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/users?q=E001", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -151,7 +151,7 @@ func TestUsers_Search_MatchesEmployeeCode(t *testing.T) {
 
 func TestUsers_List_ExcludesInactive_ByDefault(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	if _, err := q.CreateUser(context.Background(), repository.CreateUserParams{
 		EmployeeCode: "E001",
@@ -170,7 +170,7 @@ func TestUsers_List_ExcludesInactive_ByDefault(t *testing.T) {
 		t.Fatalf("soft delete: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/users", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/users", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -183,7 +183,7 @@ func TestUsers_List_ExcludesInactive_ByDefault(t *testing.T) {
 
 func TestUsers_List_IncludesInactive_WithQueryParam(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	if _, err := q.CreateUser(context.Background(), repository.CreateUserParams{
 		EmployeeCode: "E001",
@@ -202,7 +202,7 @@ func TestUsers_List_IncludesInactive_WithQueryParam(t *testing.T) {
 		t.Fatalf("soft delete: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/users?include_inactive=1", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/users?include_inactive=1", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -215,9 +215,9 @@ func TestUsers_List_IncludesInactive_WithQueryParam(t *testing.T) {
 
 func TestUsers_List_IncludeInactiveCheckbox_Rendered(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/users", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/users", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -227,7 +227,7 @@ func TestUsers_List_IncludeInactiveCheckbox_Rendered(t *testing.T) {
 
 func TestUsers_Search_ExcludesInactive_ByDefault(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	if _, err := q.CreateUser(context.Background(), repository.CreateUserParams{
 		EmployeeCode: "E001",
@@ -246,7 +246,7 @@ func TestUsers_Search_ExcludesInactive_ByDefault(t *testing.T) {
 		t.Fatalf("soft delete: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/users?q=E0", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/users?q=E0", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -259,7 +259,7 @@ func TestUsers_Search_ExcludesInactive_ByDefault(t *testing.T) {
 
 func TestUsers_Search_IncludesInactive_WithQueryParam(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	retired, err := q.CreateUser(context.Background(), repository.CreateUserParams{
 		EmployeeCode: "E002",
@@ -272,7 +272,7 @@ func TestUsers_Search_IncludesInactive_WithQueryParam(t *testing.T) {
 		t.Fatalf("soft delete: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/users?q=E002&include_inactive=1", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/users?q=E002&include_inactive=1", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -282,7 +282,7 @@ func TestUsers_Search_IncludesInactive_WithQueryParam(t *testing.T) {
 
 func TestUsers_Show_RetiredBadgeShown(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	u, err := q.CreateUser(context.Background(), repository.CreateUserParams{
 		EmployeeCode: "E001",
@@ -295,7 +295,7 @@ func TestUsers_Show_RetiredBadgeShown(t *testing.T) {
 		t.Fatalf("soft delete: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/users/"+strconv.FormatInt(u.ID, 10), middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/users/"+strconv.FormatInt(u.ID, 10), middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -305,7 +305,7 @@ func TestUsers_Show_RetiredBadgeShown(t *testing.T) {
 
 func TestUsers_Search_MatchesEmail(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	email1 := "tagawa@example.com"
 	email2 := "other@example.com"
@@ -324,7 +324,7 @@ func TestUsers_Search_MatchesEmail(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/users?q=tagawa", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/users?q=tagawa", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 

@@ -17,9 +17,9 @@ import (
 
 func TestDepartments_List_GeneralUser_403(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/departments", middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/departments", middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -28,9 +28,9 @@ func TestDepartments_List_GeneralUser_403(t *testing.T) {
 
 func TestDepartments_List_Viewer_200(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/departments", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/departments", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -40,7 +40,7 @@ func TestDepartments_List_Viewer_200(t *testing.T) {
 
 func TestDepartments_List_ShowsExistingDepartments(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	if _, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -55,7 +55,7 @@ func TestDepartments_List_ShowsExistingDepartments(t *testing.T) {
 		t.Fatalf("seed CreateDepartment: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/departments", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/departments", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -68,9 +68,9 @@ func TestDepartments_List_ShowsExistingDepartments(t *testing.T) {
 
 func TestDepartments_List_HidesNewButton_ForViewer(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/departments", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/departments", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -82,9 +82,9 @@ func TestDepartments_List_HidesNewButton_ForViewer(t *testing.T) {
 
 func TestDepartments_List_ShowsNewButton_ForLicenseManager(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/departments", middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/departments", middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -94,9 +94,9 @@ func TestDepartments_List_ShowsNewButton_ForLicenseManager(t *testing.T) {
 
 func TestDepartments_NewForm_LicenseManager_200(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/departments/new", middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/departments/new", middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -107,7 +107,7 @@ func TestDepartments_NewForm_LicenseManager_200(t *testing.T) {
 
 func TestDepartments_List_ExcludesInactive_ByDefault(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	active, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -128,7 +128,7 @@ func TestDepartments_List_ExcludesInactive_ByDefault(t *testing.T) {
 	}
 	_ = active
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/departments", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/departments", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -141,7 +141,7 @@ func TestDepartments_List_ExcludesInactive_ByDefault(t *testing.T) {
 
 func TestDepartments_List_IncludesInactive_WithQueryParam(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	if _, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -160,7 +160,7 @@ func TestDepartments_List_IncludesInactive_WithQueryParam(t *testing.T) {
 		t.Fatalf("soft delete: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/departments?include_inactive=1", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/departments?include_inactive=1", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -172,9 +172,9 @@ func TestDepartments_List_IncludesInactive_WithQueryParam(t *testing.T) {
 
 func TestDepartments_List_IncludeInactiveCheckbox_Rendered(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/departments", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/departments", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -184,7 +184,7 @@ func TestDepartments_List_IncludeInactiveCheckbox_Rendered(t *testing.T) {
 
 func TestDepartments_Search_ExcludesInactive_ByDefault(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	if _, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -203,7 +203,7 @@ func TestDepartments_Search_ExcludesInactive_ByDefault(t *testing.T) {
 		t.Fatalf("soft delete: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/departments?q=DEPT", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/departments?q=DEPT", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -216,7 +216,7 @@ func TestDepartments_Search_ExcludesInactive_ByDefault(t *testing.T) {
 
 func TestDepartments_Search_IncludesInactive_WithQueryParam(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	inactive, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT002",
@@ -229,7 +229,7 @@ func TestDepartments_Search_IncludesInactive_WithQueryParam(t *testing.T) {
 		t.Fatalf("soft delete: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/departments?q=DEPT&include_inactive=1", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/departments?q=DEPT&include_inactive=1", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -239,9 +239,9 @@ func TestDepartments_Search_IncludesInactive_WithQueryParam(t *testing.T) {
 
 func TestDepartments_NewForm_GeneralUser_403(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/departments/new", middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/departments/new", middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 

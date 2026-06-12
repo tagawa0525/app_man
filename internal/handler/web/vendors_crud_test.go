@@ -22,9 +22,9 @@ func strReadCloser(s string) io.ReadCloser {
 
 func TestVendors_Create_RedirectsToShow(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
-	req := handlertest.PostForm(t, "/vendors", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/vendors", middleware.RoleLicenseManager, url.Values{
 		"name": {"Acme"},
 		"url":  {"https://acme.example.com"},
 		"note": {"検証用"},
@@ -50,9 +50,9 @@ func TestVendors_Create_RedirectsToShow(t *testing.T) {
 
 func TestVendors_Create_RejectsEmptyName(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
-	req := handlertest.PostForm(t, "/vendors", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/vendors", middleware.RoleLicenseManager, url.Values{
 		"name": {""},
 		"url":  {"https://x.example.com"},
 	})
@@ -75,13 +75,13 @@ func TestVendors_Create_RejectsEmptyName(t *testing.T) {
 
 func TestVendors_Create_RejectsDuplicateName(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	if _, err := q.CreateVendor(context.Background(), repository.CreateVendorParams{Name: "Adobe"}); err != nil {
 		t.Fatalf("seed CreateVendor: %v", err)
 	}
 
-	req := handlertest.PostForm(t, "/vendors", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/vendors", middleware.RoleLicenseManager, url.Values{
 		"name": {"Adobe"},
 	})
 	rec := httptest.NewRecorder()
@@ -95,9 +95,9 @@ func TestVendors_Create_RejectsDuplicateName(t *testing.T) {
 
 func TestVendors_Create_GeneralUser_403(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.PostForm(t, "/vendors", middleware.RoleGeneralUser, url.Values{"name": {"Acme"}})
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/vendors", middleware.RoleGeneralUser, url.Values{"name": {"Acme"}})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -106,7 +106,7 @@ func TestVendors_Create_GeneralUser_403(t *testing.T) {
 
 func TestVendors_Show_ListsChildProducts(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	v, err := q.CreateVendor(context.Background(), repository.CreateVendorParams{Name: "Adobe"})
 	if err != nil {
@@ -121,7 +121,7 @@ func TestVendors_Show_ListsChildProducts(t *testing.T) {
 		t.Fatalf("seed CreateProduct: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, fmt.Sprintf("/vendors/%d", v.ID), middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, fmt.Sprintf("/vendors/%d", v.ID), middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -132,9 +132,9 @@ func TestVendors_Show_ListsChildProducts(t *testing.T) {
 
 func TestVendors_Show_404OnUnknownID(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/vendors/9999", middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/vendors/9999", middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -143,14 +143,14 @@ func TestVendors_Show_404OnUnknownID(t *testing.T) {
 
 func TestVendors_Update_RewritesFields(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	v, err := q.CreateVendor(context.Background(), repository.CreateVendorParams{Name: "Adobe"})
 	if err != nil {
 		t.Fatalf("seed CreateVendor: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/vendors/%d", v.ID), middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/vendors/%d", v.ID), middleware.RoleLicenseManager, url.Values{
 		"name": {"Adobe Inc."},
 		"url":  {"https://adobe.com"},
 	})
@@ -175,14 +175,14 @@ func TestVendors_Update_RewritesFields(t *testing.T) {
 
 func TestVendors_Delete_RemovesRow(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	v, err := q.CreateVendor(context.Background(), repository.CreateVendorParams{Name: "Acme"})
 	if err != nil {
 		t.Fatalf("seed CreateVendor: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/vendors/%d/delete", v.ID), middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/vendors/%d/delete", v.ID), middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -201,7 +201,7 @@ func TestVendors_Delete_RemovesRow(t *testing.T) {
 
 func TestVendors_Delete_BlockedByChildProduct_409(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	v, err := q.CreateVendor(context.Background(), repository.CreateVendorParams{Name: "Adobe"})
 	if err != nil {
@@ -216,7 +216,7 @@ func TestVendors_Delete_BlockedByChildProduct_409(t *testing.T) {
 		t.Fatalf("seed CreateProduct: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/vendors/%d/delete", v.ID), middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/vendors/%d/delete", v.ID), middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -236,11 +236,11 @@ func TestVendors_Delete_BlockedByChildProduct_409(t *testing.T) {
 
 func TestVendors_CSRFTokenMissing_403(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
 	// PostForm を使わず直接組み立てて _csrf を含めない。
 	body := url.Values{"name": {"NoCSRF"}}.Encode()
-	req := handlertest.NewRequest(t, http.MethodPost, "/vendors", middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodPost, "/vendors", middleware.RoleLicenseManager, nil)
 	req.Body = http.NoBody
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.ContentLength = int64(len(body))

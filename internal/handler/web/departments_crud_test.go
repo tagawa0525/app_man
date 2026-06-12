@@ -16,9 +16,9 @@ import (
 
 func TestDepartments_Create_RedirectsToShow(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
-	req := handlertest.PostForm(t, "/departments", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/departments", middleware.RoleLicenseManager, url.Values{
 		"code": {"DEPT001"},
 		"name": {"営業本部"},
 	})
@@ -46,9 +46,9 @@ func TestDepartments_Create_RedirectsToShow(t *testing.T) {
 
 func TestDepartments_Create_RejectsEmptyCode(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
-	req := handlertest.PostForm(t, "/departments", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/departments", middleware.RoleLicenseManager, url.Values{
 		"code": {""},
 		"name": {"営業本部"},
 	})
@@ -71,9 +71,9 @@ func TestDepartments_Create_RejectsEmptyCode(t *testing.T) {
 
 func TestDepartments_Create_RejectsEmptyName(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.PostForm(t, "/departments", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/departments", middleware.RoleLicenseManager, url.Values{
 		"code": {"DEPT001"},
 		"name": {""},
 	})
@@ -88,10 +88,10 @@ func TestDepartments_Create_RejectsEmptyName(t *testing.T) {
 
 func TestDepartments_Create_RejectsInvalidCodeFormat(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
 	// 部署コードは ASCII 英数 + ハイフン/アンダースコアのみ許可。
-	req := handlertest.PostForm(t, "/departments", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/departments", middleware.RoleLicenseManager, url.Values{
 		"code": {"営業部"},
 		"name": {"営業本部"},
 	})
@@ -106,7 +106,7 @@ func TestDepartments_Create_RejectsInvalidCodeFormat(t *testing.T) {
 
 func TestDepartments_Create_RejectsDuplicateCode(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	if _, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -115,7 +115,7 @@ func TestDepartments_Create_RejectsDuplicateCode(t *testing.T) {
 		t.Fatalf("seed CreateDepartment: %v", err)
 	}
 
-	req := handlertest.PostForm(t, "/departments", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/departments", middleware.RoleLicenseManager, url.Values{
 		"code": {"DEPT001"},
 		"name": {"製造本部"},
 	})
@@ -130,9 +130,9 @@ func TestDepartments_Create_RejectsDuplicateCode(t *testing.T) {
 
 func TestDepartments_Create_GeneralUser_403(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.PostForm(t, "/departments", middleware.RoleGeneralUser, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/departments", middleware.RoleGeneralUser, url.Values{
 		"code": {"DEPT001"},
 		"name": {"営業本部"},
 	})
@@ -144,7 +144,7 @@ func TestDepartments_Create_GeneralUser_403(t *testing.T) {
 
 func TestDepartments_Show_RendersDetail(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -154,7 +154,7 @@ func TestDepartments_Show_RendersDetail(t *testing.T) {
 		t.Fatalf("seed CreateDepartment: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, fmt.Sprintf("/departments/%d", d.ID), middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, fmt.Sprintf("/departments/%d", d.ID), middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -165,9 +165,9 @@ func TestDepartments_Show_RendersDetail(t *testing.T) {
 
 func TestDepartments_Show_404OnUnknownID(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/departments/9999", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/departments/9999", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -176,7 +176,7 @@ func TestDepartments_Show_404OnUnknownID(t *testing.T) {
 
 func TestDepartments_Show_ListsChildDepartments(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	parent, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -193,7 +193,7 @@ func TestDepartments_Show_ListsChildDepartments(t *testing.T) {
 		t.Fatalf("seed child: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, fmt.Sprintf("/departments/%d", parent.ID), middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, fmt.Sprintf("/departments/%d", parent.ID), middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -204,7 +204,7 @@ func TestDepartments_Show_ListsChildDepartments(t *testing.T) {
 
 func TestDepartments_EditForm_LicenseManager_200(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -214,7 +214,7 @@ func TestDepartments_EditForm_LicenseManager_200(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, fmt.Sprintf("/departments/%d/edit", d.ID), middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, fmt.Sprintf("/departments/%d/edit", d.ID), middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -225,7 +225,7 @@ func TestDepartments_EditForm_LicenseManager_200(t *testing.T) {
 
 func TestDepartments_EditForm_GeneralUser_403(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -235,7 +235,7 @@ func TestDepartments_EditForm_GeneralUser_403(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, fmt.Sprintf("/departments/%d/edit", d.ID), middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, fmt.Sprintf("/departments/%d/edit", d.ID), middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -244,7 +244,7 @@ func TestDepartments_EditForm_GeneralUser_403(t *testing.T) {
 
 func TestDepartments_Update_RewritesFields(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -254,7 +254,7 @@ func TestDepartments_Update_RewritesFields(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/departments/%d", d.ID), middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/departments/%d", d.ID), middleware.RoleLicenseManager, url.Values{
 		"code": {"DEPT001"},
 		"name": {"営業統括本部"},
 	})
@@ -276,7 +276,7 @@ func TestDepartments_Update_RewritesFields(t *testing.T) {
 
 func TestDepartments_Delete_SetsValidTo(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -286,7 +286,7 @@ func TestDepartments_Delete_SetsValidTo(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/departments/%d/delete", d.ID), middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/departments/%d/delete", d.ID), middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -309,7 +309,7 @@ func TestDepartments_Delete_SetsValidTo(t *testing.T) {
 
 func TestDepartments_Delete_HidesFromDefaultList(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -319,7 +319,7 @@ func TestDepartments_Delete_HidesFromDefaultList(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	delReq := handlertest.PostForm(t, fmt.Sprintf("/departments/%d/delete", d.ID), middleware.RoleLicenseManager, nil)
+	delReq := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/departments/%d/delete", d.ID), middleware.RoleLicenseManager, nil)
 	delRec := httptest.NewRecorder()
 	r.ServeHTTP(delRec, delReq)
 
@@ -335,9 +335,9 @@ func TestDepartments_Delete_HidesFromDefaultList(t *testing.T) {
 
 func TestDepartments_Delete_NotFound_404(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.PostForm(t, "/departments/9999/delete", middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/departments/9999/delete", middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -346,7 +346,7 @@ func TestDepartments_Delete_NotFound_404(t *testing.T) {
 
 func TestDepartments_Delete_AlreadyDeleted_409(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -358,10 +358,10 @@ func TestDepartments_Delete_AlreadyDeleted_409(t *testing.T) {
 
 	// 1 回目: 成功
 	r.ServeHTTP(httptest.NewRecorder(),
-		handlertest.PostForm(t, fmt.Sprintf("/departments/%d/delete", d.ID), middleware.RoleLicenseManager, nil))
+		handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/departments/%d/delete", d.ID), middleware.RoleLicenseManager, nil))
 
 	// 2 回目: 409
-	req2 := handlertest.PostForm(t, fmt.Sprintf("/departments/%d/delete", d.ID), middleware.RoleLicenseManager, nil)
+	req2 := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/departments/%d/delete", d.ID), middleware.RoleLicenseManager, nil)
 	rec2 := httptest.NewRecorder()
 	r.ServeHTTP(rec2, req2)
 
@@ -373,7 +373,7 @@ func TestDepartments_Delete_AlreadyDeleted_409(t *testing.T) {
 
 func TestDepartments_Delete_GeneralUser_403(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -383,7 +383,7 @@ func TestDepartments_Delete_GeneralUser_403(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/departments/%d/delete", d.ID), middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/departments/%d/delete", d.ID), middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -392,7 +392,7 @@ func TestDepartments_Delete_GeneralUser_403(t *testing.T) {
 
 func TestDepartments_Restore_ClearsValidTo(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -407,7 +407,7 @@ func TestDepartments_Restore_ClearsValidTo(t *testing.T) {
 		t.Fatalf("soft delete: %v", derr)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/departments/%d/restore", d.ID), middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/departments/%d/restore", d.ID), middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -426,7 +426,7 @@ func TestDepartments_Restore_ClearsValidTo(t *testing.T) {
 
 func TestDepartments_Restore_AlreadyActive_409(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -436,7 +436,7 @@ func TestDepartments_Restore_AlreadyActive_409(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/departments/%d/restore", d.ID), middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/departments/%d/restore", d.ID), middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -448,7 +448,7 @@ func TestDepartments_Restore_AlreadyActive_409(t *testing.T) {
 
 func TestDepartments_Restore_GeneralUser_403(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -458,7 +458,7 @@ func TestDepartments_Restore_GeneralUser_403(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/departments/%d/restore", d.ID), middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/departments/%d/restore", d.ID), middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -467,7 +467,7 @@ func TestDepartments_Restore_GeneralUser_403(t *testing.T) {
 
 func TestDepartments_Update_RejectsSelfAsParent(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -477,7 +477,7 @@ func TestDepartments_Update_RejectsSelfAsParent(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/departments/%d", d.ID), middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/departments/%d", d.ID), middleware.RoleLicenseManager, url.Values{
 		"code":      {d.Code},
 		"name":      {d.Name},
 		"parent_id": {strconv.FormatInt(d.ID, 10)},
@@ -493,7 +493,7 @@ func TestDepartments_Update_RejectsSelfAsParent(t *testing.T) {
 
 func TestDepartments_Update_RejectsSelfAsSuccessor(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -503,7 +503,7 @@ func TestDepartments_Update_RejectsSelfAsSuccessor(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/departments/%d", d.ID), middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/departments/%d", d.ID), middleware.RoleLicenseManager, url.Values{
 		"code":                    {d.Code},
 		"name":                    {d.Name},
 		"successor_department_id": {strconv.FormatInt(d.ID, 10)},
@@ -519,7 +519,7 @@ func TestDepartments_Update_RejectsSelfAsSuccessor(t *testing.T) {
 
 func TestDepartments_Update_DuplicateCode_KeepsPinnedParent(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	// 廃止 parent + その子 + 他の現役部署 (code 重複用) を用意。
 	parent, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
@@ -549,7 +549,7 @@ func TestDepartments_Update_DuplicateCode_KeepsPinnedParent(t *testing.T) {
 
 	// child を DEPT-OTHER に rename しようとする → UNIQUE 違反 → 409。
 	// 再描画フォームに廃止 parent が「(廃止)」付きで残ること。
-	req := handlertest.PostForm(t, fmt.Sprintf("/departments/%d", child.ID), middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/departments/%d", child.ID), middleware.RoleLicenseManager, url.Values{
 		"code":      {"DEPT-OTHER"},
 		"name":      {"子部署"},
 		"parent_id": {strconv.FormatInt(parent.ID, 10)},
@@ -566,7 +566,7 @@ func TestDepartments_Update_DuplicateCode_KeepsPinnedParent(t *testing.T) {
 
 func TestDepartments_EditForm_PinsInactiveParent(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	parent, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT-PARENT",
@@ -588,7 +588,7 @@ func TestDepartments_EditForm_PinsInactiveParent(t *testing.T) {
 		t.Fatalf("soft delete parent: %v", derr)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, fmt.Sprintf("/departments/%d/edit", child.ID), middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, fmt.Sprintf("/departments/%d/edit", child.ID), middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -600,7 +600,7 @@ func TestDepartments_EditForm_PinsInactiveParent(t *testing.T) {
 
 func TestDepartments_Update_RejectsDuplicateCode(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	if _, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -616,7 +616,7 @@ func TestDepartments_Update_RejectsDuplicateCode(t *testing.T) {
 		t.Fatalf("seed2: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/departments/%d", d2.ID), middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/departments/%d", d2.ID), middleware.RoleLicenseManager, url.Values{
 		"code": {"DEPT001"},
 		"name": {"製造本部"},
 	})

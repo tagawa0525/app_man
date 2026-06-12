@@ -17,9 +17,9 @@ import (
 
 func TestDevices_Create_RedirectsToShow(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
-	req := handlertest.PostForm(t, "/devices", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/devices", middleware.RoleLicenseManager, url.Values{
 		"asset_code": {"PC-001"},
 	})
 	rec := httptest.NewRecorder()
@@ -43,7 +43,7 @@ func TestDevices_Create_RedirectsToShow(t *testing.T) {
 
 func TestDevices_Create_StoresOptionalFields(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	dept, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -60,7 +60,7 @@ func TestDevices_Create_StoresOptionalFields(t *testing.T) {
 		t.Fatalf("seed user: %v", err)
 	}
 
-	req := handlertest.PostForm(t, "/devices", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/devices", middleware.RoleLicenseManager, url.Values{
 		"asset_code":      {"PC-001"},
 		"hostname":        {"tagawa-pc"},
 		"primary_user_id": {strconv.FormatInt(user.ID, 10)},
@@ -93,9 +93,9 @@ func TestDevices_Create_StoresOptionalFields(t *testing.T) {
 
 func TestDevices_Create_RejectsEmptyAssetCode(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
-	req := handlertest.PostForm(t, "/devices", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/devices", middleware.RoleLicenseManager, url.Values{
 		"asset_code": {""},
 	})
 	rec := httptest.NewRecorder()
@@ -117,9 +117,9 @@ func TestDevices_Create_RejectsEmptyAssetCode(t *testing.T) {
 
 func TestDevices_Create_RejectsInvalidAssetCodeFormat(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.PostForm(t, "/devices", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/devices", middleware.RoleLicenseManager, url.Values{
 		"asset_code": {"PC 001"}, // 空白は許可されない
 	})
 	rec := httptest.NewRecorder()
@@ -133,9 +133,9 @@ func TestDevices_Create_RejectsInvalidAssetCodeFormat(t *testing.T) {
 
 func TestDevices_Create_RejectsTooLongHostname(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.PostForm(t, "/devices", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/devices", middleware.RoleLicenseManager, url.Values{
 		"asset_code": {"PC-001"},
 		"hostname":   {strings.Repeat("a", 256)},
 	})
@@ -150,7 +150,7 @@ func TestDevices_Create_RejectsTooLongHostname(t *testing.T) {
 
 func TestDevices_Create_RejectsDuplicateAssetCode(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	if _, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
 		AssetCode: "PC-001",
@@ -158,7 +158,7 @@ func TestDevices_Create_RejectsDuplicateAssetCode(t *testing.T) {
 		t.Fatalf("seed CreateDevice: %v", err)
 	}
 
-	req := handlertest.PostForm(t, "/devices", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/devices", middleware.RoleLicenseManager, url.Values{
 		"asset_code": {"PC-001"},
 	})
 	rec := httptest.NewRecorder()
@@ -172,9 +172,9 @@ func TestDevices_Create_RejectsDuplicateAssetCode(t *testing.T) {
 
 func TestDevices_Create_RejectsNonExistentPrimaryUserID(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.PostForm(t, "/devices", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/devices", middleware.RoleLicenseManager, url.Values{
 		"asset_code":      {"PC-001"},
 		"primary_user_id": {"9999"},
 	})
@@ -189,9 +189,9 @@ func TestDevices_Create_RejectsNonExistentPrimaryUserID(t *testing.T) {
 
 func TestDevices_Create_RejectsNonExistentDepartmentID(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.PostForm(t, "/devices", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/devices", middleware.RoleLicenseManager, url.Values{
 		"asset_code":    {"PC-001"},
 		"department_id": {"9999"},
 	})
@@ -206,9 +206,9 @@ func TestDevices_Create_RejectsNonExistentDepartmentID(t *testing.T) {
 
 func TestDevices_Create_GeneralUser_403(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.PostForm(t, "/devices", middleware.RoleGeneralUser, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/devices", middleware.RoleGeneralUser, url.Values{
 		"asset_code": {"PC-001"},
 	})
 	rec := httptest.NewRecorder()
@@ -219,7 +219,7 @@ func TestDevices_Create_GeneralUser_403(t *testing.T) {
 
 func TestDevices_Show_RendersDetail(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
 		AssetCode: "PC-001",
@@ -228,7 +228,7 @@ func TestDevices_Show_RendersDetail(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, fmt.Sprintf("/devices/%d", d.ID), middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, fmt.Sprintf("/devices/%d", d.ID), middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -238,9 +238,9 @@ func TestDevices_Show_RendersDetail(t *testing.T) {
 
 func TestDevices_Show_404OnUnknownID(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/devices/9999", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/devices/9999", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -249,7 +249,7 @@ func TestDevices_Show_404OnUnknownID(t *testing.T) {
 
 func TestDevices_Show_LinksToPrimaryUser(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	user, err := q.CreateUser(context.Background(), repository.CreateUserParams{
 		EmployeeCode: "E001",
@@ -266,7 +266,7 @@ func TestDevices_Show_LinksToPrimaryUser(t *testing.T) {
 		t.Fatalf("seed device: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, fmt.Sprintf("/devices/%d", d.ID), middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, fmt.Sprintf("/devices/%d", d.ID), middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -277,7 +277,7 @@ func TestDevices_Show_LinksToPrimaryUser(t *testing.T) {
 
 func TestDevices_Show_LinksToDepartment(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	dept, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT001",
@@ -294,7 +294,7 @@ func TestDevices_Show_LinksToDepartment(t *testing.T) {
 		t.Fatalf("seed device: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, fmt.Sprintf("/devices/%d", d.ID), middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, fmt.Sprintf("/devices/%d", d.ID), middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -305,7 +305,7 @@ func TestDevices_Show_LinksToDepartment(t *testing.T) {
 
 func TestDevices_EditForm_LicenseManager_200(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
 		AssetCode: "PC-001",
@@ -314,7 +314,7 @@ func TestDevices_EditForm_LicenseManager_200(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, fmt.Sprintf("/devices/%d/edit", d.ID), middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, fmt.Sprintf("/devices/%d/edit", d.ID), middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -324,7 +324,7 @@ func TestDevices_EditForm_LicenseManager_200(t *testing.T) {
 
 func TestDevices_EditForm_GeneralUser_403(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
 		AssetCode: "PC-001",
@@ -333,7 +333,7 @@ func TestDevices_EditForm_GeneralUser_403(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, fmt.Sprintf("/devices/%d/edit", d.ID), middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, fmt.Sprintf("/devices/%d/edit", d.ID), middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -342,7 +342,7 @@ func TestDevices_EditForm_GeneralUser_403(t *testing.T) {
 
 func TestDevices_Update_RewritesFields(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
 		AssetCode: "PC-001",
@@ -351,7 +351,7 @@ func TestDevices_Update_RewritesFields(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/devices/%d", d.ID), middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/devices/%d", d.ID), middleware.RoleLicenseManager, url.Values{
 		"asset_code": {"PC-001"},
 		"hostname":   {"tagawa-pc"},
 	})
@@ -373,7 +373,7 @@ func TestDevices_Update_RewritesFields(t *testing.T) {
 
 func TestDevices_Update_ClearsOptionalFieldsToNull(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	hostname := "tagawa-pc"
 	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
@@ -384,7 +384,7 @@ func TestDevices_Update_ClearsOptionalFieldsToNull(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/devices/%d", d.ID), middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/devices/%d", d.ID), middleware.RoleLicenseManager, url.Values{
 		"asset_code": {"PC-001"},
 		"hostname":   {""},
 	})
@@ -405,7 +405,7 @@ func TestDevices_Update_ClearsOptionalFieldsToNull(t *testing.T) {
 
 func TestDevices_Update_RejectsDuplicateAssetCode(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	if _, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
 		AssetCode: "PC-001",
@@ -419,7 +419,7 @@ func TestDevices_Update_RejectsDuplicateAssetCode(t *testing.T) {
 		t.Fatalf("seed second: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/devices/%d", d.ID), middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/devices/%d", d.ID), middleware.RoleLicenseManager, url.Values{
 		"asset_code": {"PC-001"},
 	})
 	rec := httptest.NewRecorder()
@@ -433,7 +433,7 @@ func TestDevices_Update_RejectsDuplicateAssetCode(t *testing.T) {
 
 func TestDevices_Retire_SetsRetiredAt(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
 		AssetCode: "PC-001",
@@ -442,7 +442,7 @@ func TestDevices_Retire_SetsRetiredAt(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/devices/%d/retire", d.ID), middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/devices/%d/retire", d.ID), middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -465,7 +465,7 @@ func TestDevices_Retire_SetsRetiredAt(t *testing.T) {
 
 func TestDevices_Retire_HidesFromDefaultList(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
 		AssetCode: "PC-001",
@@ -475,7 +475,7 @@ func TestDevices_Retire_HidesFromDefaultList(t *testing.T) {
 	}
 
 	r.ServeHTTP(httptest.NewRecorder(),
-		handlertest.PostForm(t, fmt.Sprintf("/devices/%d/retire", d.ID), middleware.RoleLicenseManager, nil))
+		handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/devices/%d/retire", d.ID), middleware.RoleLicenseManager, nil))
 
 	ds, err := q.ListDevices(context.Background())
 	if err != nil {
@@ -488,9 +488,9 @@ func TestDevices_Retire_HidesFromDefaultList(t *testing.T) {
 
 func TestDevices_Retire_NotFound_404(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.PostForm(t, "/devices/9999/retire", middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/devices/9999/retire", middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -499,7 +499,7 @@ func TestDevices_Retire_NotFound_404(t *testing.T) {
 
 func TestDevices_Retire_AlreadyRetired_409(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
 		AssetCode: "PC-001",
@@ -509,9 +509,9 @@ func TestDevices_Retire_AlreadyRetired_409(t *testing.T) {
 	}
 
 	r.ServeHTTP(httptest.NewRecorder(),
-		handlertest.PostForm(t, fmt.Sprintf("/devices/%d/retire", d.ID), middleware.RoleLicenseManager, nil))
+		handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/devices/%d/retire", d.ID), middleware.RoleLicenseManager, nil))
 
-	req2 := handlertest.PostForm(t, fmt.Sprintf("/devices/%d/retire", d.ID), middleware.RoleLicenseManager, nil)
+	req2 := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/devices/%d/retire", d.ID), middleware.RoleLicenseManager, nil)
 	rec2 := httptest.NewRecorder()
 	r.ServeHTTP(rec2, req2)
 
@@ -523,7 +523,7 @@ func TestDevices_Retire_AlreadyRetired_409(t *testing.T) {
 
 func TestDevices_Retire_GeneralUser_403(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
 		AssetCode: "PC-001",
@@ -532,7 +532,7 @@ func TestDevices_Retire_GeneralUser_403(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/devices/%d/retire", d.ID), middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/devices/%d/retire", d.ID), middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -541,7 +541,7 @@ func TestDevices_Retire_GeneralUser_403(t *testing.T) {
 
 func TestDevices_Restore_ClearsRetiredAt(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
 		AssetCode: "PC-001",
@@ -553,7 +553,7 @@ func TestDevices_Restore_ClearsRetiredAt(t *testing.T) {
 		t.Fatalf("soft delete: %v", derr)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/devices/%d/restore", d.ID), middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/devices/%d/restore", d.ID), middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -572,7 +572,7 @@ func TestDevices_Restore_ClearsRetiredAt(t *testing.T) {
 
 func TestDevices_Restore_AlreadyActive_409(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
 		AssetCode: "PC-001",
@@ -581,7 +581,7 @@ func TestDevices_Restore_AlreadyActive_409(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/devices/%d/restore", d.ID), middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/devices/%d/restore", d.ID), middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -593,7 +593,7 @@ func TestDevices_Restore_AlreadyActive_409(t *testing.T) {
 
 func TestDevices_Restore_GeneralUser_403(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
 		AssetCode: "PC-001",
@@ -602,7 +602,7 @@ func TestDevices_Restore_GeneralUser_403(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/devices/%d/restore", d.ID), middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/devices/%d/restore", d.ID), middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -611,7 +611,7 @@ func TestDevices_Restore_GeneralUser_403(t *testing.T) {
 
 func TestDevices_EditForm_PinsRetiredUser(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	user, err := q.CreateUser(context.Background(), repository.CreateUserParams{
 		EmployeeCode: "E001",
@@ -631,7 +631,7 @@ func TestDevices_EditForm_PinsRetiredUser(t *testing.T) {
 		t.Fatalf("soft delete user: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, fmt.Sprintf("/devices/%d/edit", d.ID), middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, fmt.Sprintf("/devices/%d/edit", d.ID), middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -642,7 +642,7 @@ func TestDevices_EditForm_PinsRetiredUser(t *testing.T) {
 
 func TestDevices_EditForm_PinsInactiveDepartment(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	dept, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT-GONE",
@@ -662,7 +662,7 @@ func TestDevices_EditForm_PinsInactiveDepartment(t *testing.T) {
 		t.Fatalf("soft delete dept: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, fmt.Sprintf("/devices/%d/edit", d.ID), middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, fmt.Sprintf("/devices/%d/edit", d.ID), middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -673,7 +673,7 @@ func TestDevices_EditForm_PinsInactiveDepartment(t *testing.T) {
 
 func TestDevices_List_RetiredUserLabel(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	user, err := q.CreateUser(context.Background(), repository.CreateUserParams{
 		EmployeeCode: "E001",
@@ -692,7 +692,7 @@ func TestDevices_List_RetiredUserLabel(t *testing.T) {
 		t.Fatalf("soft delete user: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/devices", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/devices", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -702,7 +702,7 @@ func TestDevices_List_RetiredUserLabel(t *testing.T) {
 
 func TestDevices_List_RetiredDepartmentLabel(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	dept, err := q.CreateDepartment(context.Background(), repository.CreateDepartmentParams{
 		Code: "DEPT-GONE",
@@ -721,7 +721,7 @@ func TestDevices_List_RetiredDepartmentLabel(t *testing.T) {
 		t.Fatalf("soft delete dept: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/devices", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/devices", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
