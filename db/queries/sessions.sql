@@ -25,7 +25,7 @@ UPDATE sessions
 SET last_seen_at = ?
 WHERE id = ?;
 
--- name: RotateSessionID :exec
+-- name: RotateSessionID :execrows
 UPDATE sessions
 SET id = sqlc.arg(new_id)
 WHERE id = sqlc.arg(old_id);
@@ -37,3 +37,8 @@ WHERE id = ?;
 -- name: DeleteExpiredSessions :execrows
 DELETE FROM sessions
 WHERE expires_at <= ?;
+
+-- name: BindSessionToAppUser :execrows
+UPDATE sessions
+SET app_user_id = ?
+WHERE id = ?;

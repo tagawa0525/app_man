@@ -38,3 +38,8 @@ RETURNING
 UPDATE app_users
 SET password_hash = ?
 WHERE username = ?;
+
+-- name: UpdateAppUserLastLoginAt :exec
+UPDATE app_users
+SET last_login_at = ?
+WHERE id = ?;

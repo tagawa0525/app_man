@@ -79,13 +79,15 @@ func (s *SQLiteStore) Touch(ctx context.Context, id string, now time.Time) error
 }
 
 // Rotate は session ID だけを差し替える。CSRF token / app_user_id /
-// created_at は維持される。ログイン成功時に固定攻撃対策として呼ぶ
-// (本 PR では未使用、次 PR で利用)。
+// created_at は維持される。ログイン成功時に固定攻撃対策として呼ぶ。
+// 0 行更新でもエラーにしない (呼び出し側で行数検証する責務)。
+// authHandlers.rotateAndBind は tx + RotateSessionID 直呼びで行数検証する経路を持つ。
 func (s *SQLiteStore) Rotate(ctx context.Context, oldID, newID string) error {
-	return s.q.RotateSessionID(ctx, repository.RotateSessionIDParams{
+	_, err := s.q.RotateSessionID(ctx, repository.RotateSessionIDParams{
 		NewID: newID,
 		OldID: oldID,
 	})
+	return err
 }
 
 // Delete はログアウト時 (次 PR) と Cookie 不整合時に呼ぶ。

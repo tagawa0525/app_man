@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
+	"github.com/tagawa0525/app_man/internal/auth"
 	"github.com/tagawa0525/app_man/internal/handler/middleware"
 	"github.com/tagawa0525/app_man/internal/handler/web"
 	"github.com/tagawa0525/app_man/internal/session"
@@ -43,6 +44,9 @@ type Deps struct {
 	// SessionMaxAge は新規発行する session の有効期間。
 	// config.auth.session_max_age_hours から導出する。
 	SessionMaxAge time.Duration
+	// Authenticator はログインフロー (POST /login) で利用する。
+	// nil なら /login / /logout ハンドラを登録しない (テスト時の利便性)。
+	Authenticator auth.Authenticator
 }
 
 // NewRouter は appmgr-server で使う http.Handler を組み立てる。
@@ -74,9 +78,13 @@ func NewRouter(deps Deps) http.Handler {
 	}
 
 	web.RegisterRoutes(r, web.Deps{
-		Logger:  deps.Logger,
-		DB:      deps.DB,
-		DevMode: deps.DevMode,
+		Logger:        deps.Logger,
+		DB:            deps.DB,
+		DevMode:       deps.DevMode,
+		Authenticator: deps.Authenticator,
+		SessionStore:  deps.SessionStore,
+		CookieSecure:  deps.CookieSecure,
+		SessionMaxAge: deps.SessionMaxAge,
 	})
 
 	r.NotFound(notFoundHandler)

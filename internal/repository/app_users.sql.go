@@ -7,6 +7,7 @@ package repository
 
 import (
 	"context"
+	"time"
 )
 
 const createAppUser = `-- name: CreateAppUser :one
@@ -93,6 +94,22 @@ func (q *Queries) GetAppUserByUsername(ctx context.Context, username string) (Ap
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const updateAppUserLastLoginAt = `-- name: UpdateAppUserLastLoginAt :exec
+UPDATE app_users
+SET last_login_at = ?
+WHERE id = ?
+`
+
+type UpdateAppUserLastLoginAtParams struct {
+	LastLoginAt *time.Time
+	ID          int64
+}
+
+func (q *Queries) UpdateAppUserLastLoginAt(ctx context.Context, arg UpdateAppUserLastLoginAtParams) error {
+	_, err := q.db.ExecContext(ctx, updateAppUserLastLoginAt, arg.LastLoginAt, arg.ID)
+	return err
 }
 
 const updateAppUserPasswordHash = `-- name: UpdateAppUserPasswordHash :execrows

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/tagawa0525/app_man/internal/applog"
+	"github.com/tagawa0525/app_man/internal/auth"
 	"github.com/tagawa0525/app_man/internal/config"
 	"github.com/tagawa0525/app_man/internal/db"
 	"github.com/tagawa0525/app_man/internal/handler"
@@ -113,6 +114,7 @@ func run(configPath string) error {
 		SessionStore:  sessionStore,
 		CookieSecure:  cfg.Server.CookieSecure,
 		SessionMaxAge: time.Duration(cfg.Auth.SessionMaxAgeHours) * time.Hour,
+		Authenticator: auth.NewLocalAuthenticator(sqlDB),
 	})
 
 	srv := &http.Server{

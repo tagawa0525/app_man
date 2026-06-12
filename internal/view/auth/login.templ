@@ -1,0 +1,65 @@
+// Package auth はログイン画面のテンプレート。
+//
+// /login は未認証で開かれるため、内部画面用の layout.Base (Nav に業務リンク
+// が並ぶ) は使わず、本パッケージ専用の薄いレイアウトを切る。
+package auth
+
+import "net/url"
+
+// LoginProps は /login GET / POST 失敗時のテンプレに渡す可変部。
+type LoginProps struct {
+	// CSRFToken は <form> の hidden input に埋める値。
+	// 現状は middleware.DummyCSRFToken を渡す前提だが、
+	// 後続 PR (CSRF 強化) で session.CSRFToken に切り替える際にも
+	// テンプレ本体を触らずに済むよう props 経由で受け取る。
+	CSRFToken string
+	// Next は ?next= で渡された遷移先 (validate 済み)。空なら "/" に戻る。
+	Next string
+	// ErrorMessage は認証失敗時の表示文言。空なら表示しない。
+	ErrorMessage string
+	// Username は失敗時にフォームに残す値 (パスワードは復元しない)。
+	Username string
+}
+
+templ LoginPage(p LoginProps) {
+	<!DOCTYPE html>
+	<html lang="ja">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>ログイン - 社内アプリ管理</title>
+			<link rel="stylesheet" href="/static/css/app.css"/>
+		</head>
+		<body class="login-body">
+			<main class="login-container">
+				<h1>社内アプリ管理</h1>
+				<form method="post" action={ loginAction(p.Next) } class="login-form">
+					<input type="hidden" name="_csrf" value={ p.CSRFToken }/>
+					<label>
+						ユーザ名
+						<input type="text" name="username" value={ p.Username } autocomplete="username" required autofocus/>
+					</label>
+					<label>
+						パスワード
+						<input type="password" name="password" autocomplete="current-password" required/>
+					</label>
+					if p.ErrorMessage != "" {
+						<div class="login-error" role="alert">{ p.ErrorMessage }</div>
+					}
+					<button type="submit" class="btn btn-primary">ログイン</button>
+				</form>
+			</main>
+		</body>
+	</html>
+}
+
+// loginAction は ?next= があれば付けた "/login?next=..." を返す。
+// next は呼び出し側で validateNext を通っている前提 (open redirect 防止)。
+// クエリ含みの next (例: "/products?tab=all") を素のまま連結すると後段の
+// クエリ展開で壊れるため、url.QueryEscape でエンコードする。
+func loginAction(next string) string {
+	if next == "" || next == "/" {
+		return "/login"
+	}
+	return "/login?next=" + url.QueryEscape(next)
+}
