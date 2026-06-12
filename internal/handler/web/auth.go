@@ -133,9 +133,16 @@ func (h *authHandlers) logoutPost(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
+// errSessionRowMissing は Rotate / BindSessionToAppUser の UPDATE が 0 行更新
+// だった場合に返る内部エラー。「SessionMiddleware が ephemeral session を
+// 返しており oldSessionID が DB に無い」「並列リクエストで先に消えた」等の
+// 不整合シナリオで、Cookie だけ書き換えてログイン状態にならない事故を防ぐ。
+var errSessionRowMissing = errors.New("session row not found for rotation")
+
 // rotateAndBind は session ID 再発行 + app_user_id 結びつけ + last_login_at 更新を
 // 1 トランザクションで行う。途中失敗で session ID だけ変わって app_user_id が
-// 埋まらない、を防ぐ。
+// 埋まらない、を防ぐ。Rotate / BindSessionToAppUser は :execrows で対象 1 行を
+// 確認し、0 件なら tx をロールバックする。
 func (h *authHandlers) rotateAndBind(ctx context.Context, oldSessionID string, appUserID int64) (string, error) {
 	newID, err := session.NewID()
 	if err != nil {
@@ -149,11 +156,19 @@ func (h *authHandlers) rotateAndBind(ctx context.Context, oldSessionID string, a
 	defer func() { _ = tx.Rollback() }()
 
 	q := repository.New(tx)
-	if err := q.RotateSessionID(ctx, repository.RotateSessionIDParams{NewID: newID, OldID: oldSessionID}); err != nil {
+	n, err := q.RotateSessionID(ctx, repository.RotateSessionIDParams{NewID: newID, OldID: oldSessionID})
+	if err != nil {
 		return "", err
 	}
-	if err := q.BindSessionToAppUser(ctx, repository.BindSessionToAppUserParams{AppUserID: &appUserID, ID: newID}); err != nil {
+	if n != 1 {
+		return "", errSessionRowMissing
+	}
+	n, err = q.BindSessionToAppUser(ctx, repository.BindSessionToAppUserParams{AppUserID: &appUserID, ID: newID})
+	if err != nil {
 		return "", err
+	}
+	if n != 1 {
+		return "", errSessionRowMissing
 	}
 	now := time.Now()
 	if err := q.UpdateAppUserLastLoginAt(ctx, repository.UpdateAppUserLastLoginAtParams{LastLoginAt: &now, ID: appUserID}); err != nil {

@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const bindSessionToAppUser = `-- name: BindSessionToAppUser :exec
+const bindSessionToAppUser = `-- name: BindSessionToAppUser :execrows
 UPDATE sessions
 SET app_user_id = ?
 WHERE id = ?
@@ -21,9 +21,12 @@ type BindSessionToAppUserParams struct {
 	ID        string
 }
 
-func (q *Queries) BindSessionToAppUser(ctx context.Context, arg BindSessionToAppUserParams) error {
-	_, err := q.db.ExecContext(ctx, bindSessionToAppUser, arg.AppUserID, arg.ID)
-	return err
+func (q *Queries) BindSessionToAppUser(ctx context.Context, arg BindSessionToAppUserParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, bindSessionToAppUser, arg.AppUserID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const createSession = `-- name: CreateSession :exec
@@ -108,7 +111,7 @@ func (q *Queries) GetSessionByID(ctx context.Context, id string) (Session, error
 	return i, err
 }
 
-const rotateSessionID = `-- name: RotateSessionID :exec
+const rotateSessionID = `-- name: RotateSessionID :execrows
 UPDATE sessions
 SET id = ?1
 WHERE id = ?2
@@ -119,9 +122,12 @@ type RotateSessionIDParams struct {
 	OldID string
 }
 
-func (q *Queries) RotateSessionID(ctx context.Context, arg RotateSessionIDParams) error {
-	_, err := q.db.ExecContext(ctx, rotateSessionID, arg.NewID, arg.OldID)
-	return err
+func (q *Queries) RotateSessionID(ctx context.Context, arg RotateSessionIDParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, rotateSessionID, arg.NewID, arg.OldID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const touchSession = `-- name: TouchSession :exec
