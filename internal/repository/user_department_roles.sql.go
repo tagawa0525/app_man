@@ -45,3 +45,40 @@ func (q *Queries) CreateUserDepartmentRole(ctx context.Context, arg CreateUserDe
 	)
 	return i, err
 }
+
+const listActiveRolesForAppUser = `-- name: ListActiveRolesForAppUser :many
+SELECT
+  role,
+  department_id
+FROM user_department_roles
+WHERE app_user_id = ?
+  AND revoked_at IS NULL
+`
+
+type ListActiveRolesForAppUserRow struct {
+	Role         string
+	DepartmentID *int64
+}
+
+func (q *Queries) ListActiveRolesForAppUser(ctx context.Context, appUserID int64) ([]ListActiveRolesForAppUserRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveRolesForAppUser, appUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListActiveRolesForAppUserRow
+	for rows.Next() {
+		var i ListActiveRolesForAppUserRow
+		if err := rows.Scan(&i.Role, &i.DepartmentID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
