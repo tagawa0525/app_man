@@ -18,9 +18,9 @@ import (
 
 func TestDevices_List_GeneralUser_403(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/devices", middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/devices", middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -29,9 +29,9 @@ func TestDevices_List_GeneralUser_403(t *testing.T) {
 
 func TestDevices_List_Viewer_200(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/devices", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/devices", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -41,7 +41,7 @@ func TestDevices_List_Viewer_200(t *testing.T) {
 
 func TestDevices_List_ShowsExistingDevices(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	if _, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
 		AssetCode: "PC-001",
@@ -54,7 +54,7 @@ func TestDevices_List_ShowsExistingDevices(t *testing.T) {
 		t.Fatalf("seed CreateDevice: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/devices", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/devices", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -65,9 +65,9 @@ func TestDevices_List_ShowsExistingDevices(t *testing.T) {
 
 func TestDevices_List_HidesNewButton_ForViewer(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/devices", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/devices", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -79,9 +79,9 @@ func TestDevices_List_HidesNewButton_ForViewer(t *testing.T) {
 
 func TestDevices_List_ShowsNewButton_ForLicenseManager(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/devices", middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/devices", middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -91,9 +91,9 @@ func TestDevices_List_ShowsNewButton_ForLicenseManager(t *testing.T) {
 
 func TestDevices_NewForm_GeneralUser_403(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/devices/new", middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/devices/new", middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -102,9 +102,9 @@ func TestDevices_NewForm_GeneralUser_403(t *testing.T) {
 
 func TestDevices_NewForm_LicenseManager_200(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/devices/new", middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/devices/new", middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -117,7 +117,7 @@ func TestDevices_NewForm_LicenseManager_200(t *testing.T) {
 
 func TestDevices_Search_MatchesAssetCode(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	if _, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
 		AssetCode: "PC-001",
@@ -130,7 +130,7 @@ func TestDevices_Search_MatchesAssetCode(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/devices?q=PC-001", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/devices?q=PC-001", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -143,7 +143,7 @@ func TestDevices_Search_MatchesAssetCode(t *testing.T) {
 
 func TestDevices_List_ExcludesInactive_ByDefault(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	if _, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
 		AssetCode: "PC-001",
@@ -160,7 +160,7 @@ func TestDevices_List_ExcludesInactive_ByDefault(t *testing.T) {
 		t.Fatalf("soft delete: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/devices", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/devices", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -173,7 +173,7 @@ func TestDevices_List_ExcludesInactive_ByDefault(t *testing.T) {
 
 func TestDevices_List_IncludesInactive_WithQueryParam(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	if _, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
 		AssetCode: "PC-001",
@@ -190,7 +190,7 @@ func TestDevices_List_IncludesInactive_WithQueryParam(t *testing.T) {
 		t.Fatalf("soft delete: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/devices?include_inactive=1", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/devices?include_inactive=1", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -203,9 +203,9 @@ func TestDevices_List_IncludesInactive_WithQueryParam(t *testing.T) {
 
 func TestDevices_List_IncludeInactiveCheckbox_Rendered(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/devices", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/devices", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -215,7 +215,7 @@ func TestDevices_List_IncludeInactiveCheckbox_Rendered(t *testing.T) {
 
 func TestDevices_Search_ExcludesInactive_ByDefault(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	if _, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
 		AssetCode: "PC-001",
@@ -232,7 +232,7 @@ func TestDevices_Search_ExcludesInactive_ByDefault(t *testing.T) {
 		t.Fatalf("soft delete: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/devices?q=PC-", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/devices?q=PC-", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -245,7 +245,7 @@ func TestDevices_Search_ExcludesInactive_ByDefault(t *testing.T) {
 
 func TestDevices_Show_RetiredBadgeShown(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
 		AssetCode: "PC-001",
@@ -257,7 +257,7 @@ func TestDevices_Show_RetiredBadgeShown(t *testing.T) {
 		t.Fatalf("soft delete: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/devices/"+strconv.FormatInt(d.ID, 10), middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/devices/"+strconv.FormatInt(d.ID, 10), middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -267,7 +267,7 @@ func TestDevices_Show_RetiredBadgeShown(t *testing.T) {
 
 func TestDevices_Show_LastSeenAtRendersUnknownWhenNull(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	d, err := q.CreateDevice(context.Background(), repository.CreateDeviceParams{
 		AssetCode: "PC-001",
@@ -276,7 +276,7 @@ func TestDevices_Show_LastSeenAtRendersUnknownWhenNull(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/devices/"+strconv.FormatInt(d.ID, 10), middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/devices/"+strconv.FormatInt(d.ID, 10), middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -287,7 +287,7 @@ func TestDevices_Show_LastSeenAtRendersUnknownWhenNull(t *testing.T) {
 
 func TestDevices_Search_MatchesHostname(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	hostname1 := "tagawa-pc"
 	hostname2 := "yamada-pc"
@@ -304,7 +304,7 @@ func TestDevices_Search_MatchesHostname(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/devices?q=tagawa", middleware.RoleViewer, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/devices?q=tagawa", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 

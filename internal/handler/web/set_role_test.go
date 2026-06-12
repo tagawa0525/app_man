@@ -16,9 +16,30 @@ import (
 	"github.com/tagawa0525/app_man/internal/repository"
 )
 
+// newDummyAuthRouter は /__set_role 専用に旧 DummyAuthMiddleware ベースの
+// chi.Router を返す。/__set_role と DummyAuth / RoleCookieName は 4c で
+// 一括削除されるため、本ファイル単体で旧スタックを維持する。
+//
+// 他テスト (vendors / products 等) は vendors_test.go の newWebRouter
+// (実 AuthMiddleware ベース) を使う。
+func newDummyAuthRouter(t *testing.T) http.Handler {
+	t.Helper()
+	sqlDB := handlertest.NewTestDB(t)
+
+	r := chi.NewRouter()
+	r.Use(middleware.DummyAuthMiddleware)
+	r.Use(middleware.CSRFMiddleware)
+	web.RegisterRoutes(r, web.Deps{
+		Logger:  slog.New(slog.DiscardHandler),
+		DB:      sqlDB,
+		DevMode: true,
+	})
+	return r
+}
+
 func TestSetRole_SetsCookie_RedirectsToReferer(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r := newDummyAuthRouter(t)
 
 	req := handlertest.PostForm(t, "/__set_role", "", url.Values{
 		"role": {string(middleware.RoleLicenseManager)},
@@ -57,7 +78,7 @@ func TestSetRole_SetsCookie_RedirectsToReferer(t *testing.T) {
 
 func TestSetRole_RedirectsToRoot_WhenNoReferer(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r := newDummyAuthRouter(t)
 
 	req := handlertest.PostForm(t, "/__set_role", "", url.Values{
 		"role": {string(middleware.RoleViewer)},
@@ -75,7 +96,7 @@ func TestSetRole_RedirectsToRoot_WhenNoReferer(t *testing.T) {
 
 func TestSetRole_RejectsCrossOriginReferer_403(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r := newDummyAuthRouter(t)
 
 	req := handlertest.PostForm(t, "/__set_role", "", url.Values{
 		"role": {string(middleware.RoleViewer)},
@@ -92,7 +113,7 @@ func TestSetRole_RejectsCrossOriginReferer_403(t *testing.T) {
 
 func TestSetRole_RejectsCrossOriginOrigin_403(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r := newDummyAuthRouter(t)
 
 	req := handlertest.PostForm(t, "/__set_role", "", url.Values{
 		"role": {string(middleware.RoleViewer)},
@@ -109,7 +130,7 @@ func TestSetRole_RejectsCrossOriginOrigin_403(t *testing.T) {
 
 func TestSetRole_AcceptsSameOriginOrigin(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r := newDummyAuthRouter(t)
 
 	req := handlertest.PostForm(t, "/__set_role", "", url.Values{
 		"role": {string(middleware.RoleViewer)},
@@ -126,7 +147,7 @@ func TestSetRole_AcceptsSameOriginOrigin(t *testing.T) {
 
 func TestSetRole_RedirectsToRoot_WhenRefererHasEmptyPath(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r := newDummyAuthRouter(t)
 
 	req := handlertest.PostForm(t, "/__set_role", "", url.Values{
 		"role": {string(middleware.RoleViewer)},
@@ -146,7 +167,7 @@ func TestSetRole_RedirectsToRoot_WhenRefererHasEmptyPath(t *testing.T) {
 
 func TestSetRole_RejectsInvalidRole_400(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r := newDummyAuthRouter(t)
 
 	req := handlertest.PostForm(t, "/__set_role", "", url.Values{
 		"role": {"supreme_overlord"},
@@ -166,7 +187,7 @@ func TestSetRole_RejectsInvalidRole_400(t *testing.T) {
 
 func TestSetRole_RejectsWithoutCSRF_403(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r := newDummyAuthRouter(t)
 
 	body := url.Values{"role": {string(middleware.RoleViewer)}}.Encode()
 	req := httptest.NewRequest(http.MethodPost, "/__set_role", strings.NewReader(body))
@@ -218,7 +239,7 @@ func TestSetRole_AcceptedForAllRoles(t *testing.T) {
 	for _, role := range roles {
 		t.Run(string(role), func(t *testing.T) {
 			t.Parallel()
-			r, _ := newWebRouter(t)
+			r := newDummyAuthRouter(t)
 
 			req := handlertest.PostForm(t, "/__set_role", "", url.Values{
 				"role": {string(role)},

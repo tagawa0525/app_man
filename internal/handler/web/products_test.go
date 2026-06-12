@@ -38,12 +38,12 @@ func seedProduct(t *testing.T, q *repository.Queries, vendorID int64, name strin
 
 func TestProducts_List_GeneralUser_200(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	v := seedVendor(t, q, "Adobe")
 	seedProduct(t, q, v.ID, "Acrobat Pro DC")
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/products", middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/products", middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -54,7 +54,7 @@ func TestProducts_List_GeneralUser_200(t *testing.T) {
 
 func TestProducts_List_SearchMatchesAlias(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	v := seedVendor(t, q, "Adobe")
 	p := seedProduct(t, q, v.ID, "Acrobat Pro DC")
@@ -67,7 +67,7 @@ func TestProducts_List_SearchMatchesAlias(t *testing.T) {
 	// 検索に引っかからない別商品も入れる。
 	seedProduct(t, q, v.ID, "Photoshop")
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/products?q=Acrobat+DC", middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/products?q=Acrobat+DC", middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -80,10 +80,10 @@ func TestProducts_List_SearchMatchesAlias(t *testing.T) {
 
 func TestProducts_NewForm_LicenseManager_200(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 	seedVendor(t, q, "Adobe") // vendor select の選択肢用
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/products/new", middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/products/new", middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -94,9 +94,9 @@ func TestProducts_NewForm_LicenseManager_200(t *testing.T) {
 
 func TestProducts_NewForm_GeneralUser_403(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/products/new", middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/products/new", middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -105,7 +105,7 @@ func TestProducts_NewForm_GeneralUser_403(t *testing.T) {
 
 func TestProducts_Show_DisplaysProductAndAliases(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	v := seedVendor(t, q, "Adobe")
 	p := seedProduct(t, q, v.ID, "Acrobat Pro DC")
@@ -116,7 +116,7 @@ func TestProducts_Show_DisplaysProductAndAliases(t *testing.T) {
 		t.Fatalf("CreateAlias: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, fmt.Sprintf("/products/%d", p.ID), middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, fmt.Sprintf("/products/%d", p.ID), middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -128,9 +128,9 @@ func TestProducts_Show_DisplaysProductAndAliases(t *testing.T) {
 
 func TestProducts_Show_404OnUnknownID(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.NewRequest(t, http.MethodGet, "/products/9999", middleware.RoleGeneralUser, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/products/9999", middleware.RoleGeneralUser, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 

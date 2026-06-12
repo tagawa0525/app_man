@@ -15,10 +15,10 @@ import (
 
 func TestProducts_Create_RedirectsAndPersists(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 	v := seedVendor(t, q, "Adobe")
 
-	req := handlertest.PostForm(t, "/products", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/products", middleware.RoleLicenseManager, url.Values{
 		"vendor_id":               {fmt.Sprintf("%d", v.ID)},
 		"canonical_name":          {"Acrobat Pro DC"},
 		"edition":                 {"Pro"},
@@ -53,9 +53,9 @@ func TestProducts_Create_RedirectsAndPersists(t *testing.T) {
 
 func TestProducts_Create_RejectsMissingVendor(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebRouter(t)
+	r, db, store, _ := newWebRouter(t)
 
-	req := handlertest.PostForm(t, "/products", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/products", middleware.RoleLicenseManager, url.Values{
 		"canonical_name": {"Foo"},
 	})
 	rec := httptest.NewRecorder()
@@ -69,10 +69,10 @@ func TestProducts_Create_RejectsMissingVendor(t *testing.T) {
 
 func TestProducts_Create_RejectsInvalidSoftwareType(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 	v := seedVendor(t, q, "Adobe")
 
-	req := handlertest.PostForm(t, "/products", middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/products", middleware.RoleLicenseManager, url.Values{
 		"vendor_id":      {fmt.Sprintf("%d", v.ID)},
 		"canonical_name": {"Foo"},
 		"software_type":  {"cloud"},
@@ -88,10 +88,10 @@ func TestProducts_Create_RejectsInvalidSoftwareType(t *testing.T) {
 
 func TestProducts_Create_GeneralUser_403(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 	v := seedVendor(t, q, "Adobe")
 
-	req := handlertest.PostForm(t, "/products", middleware.RoleGeneralUser, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/products", middleware.RoleGeneralUser, url.Values{
 		"vendor_id":      {fmt.Sprintf("%d", v.ID)},
 		"canonical_name": {"Foo"},
 	})
@@ -103,12 +103,12 @@ func TestProducts_Create_GeneralUser_403(t *testing.T) {
 
 func TestProducts_Update_RewritesFields(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	v := seedVendor(t, q, "Adobe")
 	p := seedProduct(t, q, v.ID, "Acrobat")
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/products/%d", p.ID), middleware.RoleLicenseManager, url.Values{
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/products/%d", p.ID), middleware.RoleLicenseManager, url.Values{
 		"vendor_id":               {fmt.Sprintf("%d", v.ID)},
 		"canonical_name":          {"Acrobat Pro DC"},
 		"software_type":           {"installed"},
@@ -134,12 +134,12 @@ func TestProducts_Update_RewritesFields(t *testing.T) {
 
 func TestProducts_Delete_RemovesRow(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	v := seedVendor(t, q, "Adobe")
 	p := seedProduct(t, q, v.ID, "Acrobat")
 
-	req := handlertest.PostForm(t, fmt.Sprintf("/products/%d/delete", p.ID), middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/products/%d/delete", p.ID), middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -157,7 +157,7 @@ func TestProducts_Delete_RemovesRow(t *testing.T) {
 
 func TestProducts_EditForm_PopulatesExistingValues(t *testing.T) {
 	t.Parallel()
-	r, q := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
 
 	v := seedVendor(t, q, "Adobe")
 	p, err := q.CreateProduct(context.Background(), repository.CreateProductParams{
@@ -170,7 +170,7 @@ func TestProducts_EditForm_PopulatesExistingValues(t *testing.T) {
 		t.Fatalf("CreateProduct: %v", err)
 	}
 
-	req := handlertest.NewRequest(t, http.MethodGet, fmt.Sprintf("/products/%d/edit", p.ID), middleware.RoleLicenseManager, nil)
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, fmt.Sprintf("/products/%d/edit", p.ID), middleware.RoleLicenseManager, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
