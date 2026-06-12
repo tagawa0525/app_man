@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/tagawa0525/app_man/internal/handler/handlertest"
 	"github.com/tagawa0525/app_man/internal/handler/middleware"
@@ -100,7 +101,7 @@ func TestAuthenticatedAs_WorksWithSessionAndAuthMiddleware(t *testing.T) {
 	})
 	chain := middleware.SessionMiddleware(middleware.SessionConfig{
 		Store:  store,
-		MaxAge: 3600,
+		MaxAge: time.Hour,
 	})(middleware.AuthMiddleware(middleware.AuthConfig{DB: db})(inner))
 
 	req := httptest.NewRequest(http.MethodGet, "/products", nil)
