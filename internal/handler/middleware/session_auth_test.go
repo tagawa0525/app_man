@@ -275,6 +275,23 @@ func TestAuthMiddleware_CustomPublicPrefix(t *testing.T) {
 	}
 }
 
+func TestAuthMiddleware_PublicPath_NotPrefixOnSingleEntry(t *testing.T) {
+	t.Parallel()
+	cfg := defaultAuthConfig(t)
+
+	chain, _ := newAuthChain(t, cfg, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// 末尾に "/" を持たない "/login" は完全一致のみ。"/loginxxx" は素通りしない
+	rec := httptest.NewRecorder()
+	chain.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/loginxxx", nil))
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("/loginxxx: status = %d, want 303 (must NOT be treated as public)", rec.Code)
+	}
+}
+
 func TestAuthMiddleware_Panics_WhenDBNil(t *testing.T) {
 	t.Parallel()
 	defer func() {

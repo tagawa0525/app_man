@@ -92,9 +92,22 @@ func AuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 	}
 }
 
-func isPublicPath(path string, prefixes []string) bool {
-	for _, p := range prefixes {
-		if strings.HasPrefix(path, p) {
+// isPublicPath は path がいずれかの公開エントリにマッチするかを返す。
+//
+// マッチルール:
+//   - エントリが末尾 "/" で終わる → ディレクトリ用途の prefix マッチ
+//     (例: "/static/" は "/static/app.css" にマッチ、"/static" 単体には不一致)
+//   - エントリが末尾 "/" 以外 → 完全一致 (クエリ無しの URL.Path)
+//     (例: "/login" は "/login" にマッチするが "/loginxxx" には不一致)
+//
+// クエリは URL.Path に含まれないので別途考慮不要。
+func isPublicPath(path string, entries []string) bool {
+	for _, e := range entries {
+		if strings.HasSuffix(e, "/") {
+			if strings.HasPrefix(path, e) {
+				return true
+			}
+		} else if path == e {
 			return true
 		}
 	}
