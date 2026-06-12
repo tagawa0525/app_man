@@ -116,7 +116,7 @@ func TestSessionMiddleware_ExistingCookie_ReusesAndTouches(t *testing.T) {
 	}
 }
 
-func TestSessionMiddleware_ExpiredCookie_IssuesNewAndClearsOld(t *testing.T) {
+func TestSessionMiddleware_ExpiredCookie_IssuesNew(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
