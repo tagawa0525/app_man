@@ -129,17 +129,17 @@ type Store interface {
      - store.Touch(id, now) (last_seen_at 更新)
      - context に session を詰めて next
 3. Cookie 値が存在するが store にない or 期限切れなら:
-     - 古い Cookie を削除指示 (Set-Cookie MaxAge<0)
-     - 新規 session を発行 (匿名) → Cookie 設定 → context 詰めて next
+     - 新規 session を発行 (匿名) → 同名 Cookie を Set-Cookie で**上書き** → context 詰めて next
+     - 明示的な `ClearCookie` (MaxAge<0) は出さない: 同名上書きで古い値はブラウザから消える
 4. Cookie が無い → 新規 session を発行 (匿名) → Cookie 設定 → context 詰めて next
 ```
 
 **注意**: 毎リクエスト session 発行は heavy に見えるが、
 
-- `/healthz` と `/static/*` は SessionMiddleware を通さないルーティングにする (router.go で chi.Group 分離)
-- 業務ハンドラ側は GET でも session を必要とする (CSRF token のため)
+- 毎リクエスト Touch は SQLite で WAL モードなら問題にならない (社員 300 名想定)
+- 業務ハンドラ側は GET でも session を必要とする (CSRF token のため) ので、結局すべての業務ルートが SessionMiddleware を通る
 
-の二点で必要十分。さらに毎リクエスト Touch は SQLite で WAL モードなら問題にならない (社員 300 名想定)。
+`/healthz` と `/static/*` も現在は同じミドルウェアチェーンを通る (router.go で `Deps.SessionStore == nil` のときだけ middleware を省略する仕組みは、テスト時の DB なし運用のため)。/healthz のスループットを最適化する必要が出てきたら chi.Group で分離する余地はある。
 
 ### `cmd/server/main.go` 起動時 GC
 
