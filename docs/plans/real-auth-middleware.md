@@ -76,11 +76,13 @@ type AuthConfig struct {
     DB                 *sql.DB
     Logger             *slog.Logger
     LoginURL           string   // default "/login"
-    PublicPathPrefixes []string // default ["/login", "/static/", "/healthz"]
+    PublicPathPrefixes []string // default ["/static/", "/healthz"] + LoginURL.Path
 }
 
 // AuthMiddleware は SessionMiddleware の後段で動く。SessionFrom(ctx) が
-// nil なら panic (= router 組立順のミス、fail-fast)。
+// nil ならリクエスト単位で 500 + error ログ (router 組立順のミス検出)。
+// 起動時 panic にしないのは、ハンドラ毎に SessionMiddleware を貼らない
+// ルート (例: /healthz) を許容するため。
 func AuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler
 ```
 
