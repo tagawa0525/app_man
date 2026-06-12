@@ -89,14 +89,17 @@ func TestProducts_Create_RejectsJavaScriptURL(t *testing.T) {
 
 func TestProducts_Create_RejectsJavaScriptURL_InAllURLFields(t *testing.T) {
 	t.Parallel()
-	r, db, store, _ := newWebRouter(t)
+	r, db, store, q := newWebRouter(t)
+	// 実 vendor を seed しないと decodeProductForm の vendor_id バリデーションで
+	// 早期 400 になり、URL バリデーションが破れていてもテストが pass してしまう。
+	v := seedVendor(t, q, "VendorForURLTest")
 
 	for _, field := range []string{"canonical_download_url", "service_admin_url", "license_terms_url"} {
 		field := field
 		t.Run(field, func(t *testing.T) {
 			t.Parallel()
 			req := handlertest.AuthenticatedPostForm(t, db, store, "/products", middleware.RoleLicenseManager, url.Values{
-				"vendor_id":      {"1"},
+				"vendor_id":      {fmt.Sprintf("%d", v.ID)},
 				"canonical_name": {"Bad"},
 				field:            {"javascript:alert(1)"},
 			})
