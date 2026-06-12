@@ -11,12 +11,14 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/tagawa0525/app_man/internal/handler/middleware"
 	"github.com/tagawa0525/app_man/internal/handler/web"
+	"github.com/tagawa0525/app_man/internal/session"
 	"github.com/tagawa0525/app_man/internal/view/errors"
 )
 
@@ -31,6 +33,16 @@ type Deps struct {
 	// される経路を完全に塞ぐ。cmd/server/main.go で APP_MAN_DEV_MODE
 	// 環境変数から読む。
 	DevMode bool
+	// SessionStore は SessionMiddleware が使う永続化境界。
+	// nil なら SessionMiddleware を挟まない (テスト時の利便性のため)。
+	// 本番では cmd/server/main.go が SQLiteStore を渡す。
+	SessionStore session.Store
+	// CookieSecure は Set-Cookie の Secure 属性。本番 HTTPS で true、
+	// 開発 HTTP で false。config.server.cookie_secure と同義。
+	CookieSecure bool
+	// SessionMaxAge は新規発行する session の有効期間。
+	// config.auth.session_max_age_hours から導出する。
+	SessionMaxAge time.Duration
 }
 
 // NewRouter は appmgr-server で使う http.Handler を組み立てる。
@@ -41,6 +53,16 @@ func NewRouter(deps Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
 	r.Use(recoverer(deps.Logger))
+	// SessionMiddleware は Cookie を読み・新規発行する。Cookie に関係しない
+	// /healthz でも空打ちで動くが、SessionStore が nil のテストでは省略する。
+	if deps.SessionStore != nil {
+		r.Use(middleware.SessionMiddleware(middleware.SessionConfig{
+			Store:        deps.SessionStore,
+			SecureCookie: deps.CookieSecure,
+			MaxAge:       deps.SessionMaxAge,
+			Logger:       deps.Logger,
+		}))
+	}
 	r.Use(middleware.DummyAuthMiddleware)
 	r.Use(middleware.CSRFMiddleware)
 

@@ -17,6 +17,7 @@ import (
 	"github.com/tagawa0525/app_man/internal/db"
 	"github.com/tagawa0525/app_man/internal/handler"
 	"github.com/tagawa0525/app_man/internal/lockfile"
+	"github.com/tagawa0525/app_man/internal/session"
 	"github.com/tagawa0525/app_man/internal/view/static"
 )
 
@@ -95,11 +96,23 @@ func run(configPath string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	sessionStore := session.NewSQLiteStore(sqlDB)
+	// 起動時に期限切れセッションを掃除する。best-effort なのでエラーで
+	// 起動を止めない。定期 GC は需要発生まで cron バイナリを足さない。
+	if deleted, err := sessionStore.DeleteExpired(ctx, time.Now()); err != nil {
+		logger.Warn("session GC failed", slog.Any("error", err))
+	} else if deleted > 0 {
+		logger.Info("expired sessions deleted", slog.Int64("count", deleted))
+	}
+
 	r := handler.NewRouter(handler.Deps{
-		Logger:   logger,
-		DB:       sqlDB,
-		StaticFS: static.FS(),
-		DevMode:  os.Getenv("APP_MAN_DEV_MODE") == "1",
+		Logger:        logger,
+		DB:            sqlDB,
+		StaticFS:      static.FS(),
+		DevMode:       os.Getenv("APP_MAN_DEV_MODE") == "1",
+		SessionStore:  sessionStore,
+		CookieSecure:  cfg.Server.CookieSecure,
+		SessionMaxAge: time.Duration(cfg.Auth.SessionMaxAgeHours) * time.Hour,
 	})
 
 	srv := &http.Server{

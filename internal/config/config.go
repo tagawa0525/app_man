@@ -13,12 +13,26 @@ type Config struct {
 	Database DatabaseConfig `yaml:"database"`
 	Locks    LocksConfig    `yaml:"locks"`
 	Logging  LoggingConfig  `yaml:"logging"`
+	Auth     AuthConfig     `yaml:"auth"`
 }
 
 type ServerConfig struct {
 	Listen        string `yaml:"listen"`
 	BaseURL       string `yaml:"base_url"`
 	SessionSecret string `yaml:"session_secret"`
+	// CookieSecure は Cookie の Secure 属性を立てるかどうか。本番 (HTTPS) で
+	// true、開発 (HTTP) で false にする。仕様書 §7.3 で SameSite=Lax /
+	// HttpOnly は固定だが、Secure はトランスポート前提で切り替えが必要。
+	CookieSecure bool `yaml:"cookie_secure"`
+}
+
+// AuthConfig は認証・セッション関連の設定。
+// 後続 PR (Authenticator) で Mode / LDAP / RemoteHeader フィールドを足す予定。
+type AuthConfig struct {
+	// SessionMaxAgeHours はセッション Cookie / DB レコードの有効期間 (時間)。
+	// 仕様書 §7.3 のサンプル値は 8。未指定 (= 0) なら 8 にフォールバック、
+	// 負値はエラー。
+	SessionMaxAgeHours int `yaml:"session_max_age_hours"`
 }
 
 type DatabaseConfig struct {
@@ -75,6 +89,12 @@ func (c *Config) validate() error {
 	}
 	if c.Logging.BaseDir == "" {
 		return fmt.Errorf("logging.base_dir is required")
+	}
+	if c.Auth.SessionMaxAgeHours < 0 {
+		return fmt.Errorf("auth.session_max_age_hours must be >= 0 (0 means default 8h)")
+	}
+	if c.Auth.SessionMaxAgeHours == 0 {
+		c.Auth.SessionMaxAgeHours = 8
 	}
 	return nil
 }

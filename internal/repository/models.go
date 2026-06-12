@@ -265,6 +265,15 @@ type RawInstallation struct {
 	CreatedAt         time.Time
 }
 
+type Session struct {
+	ID         string
+	AppUserID  *int64
+	CsrfToken  string
+	CreatedAt  time.Time
+	LastSeenAt time.Time
+	ExpiresAt  time.Time
+}
+
 type User struct {
 	ID            int64
 	EmployeeCode  string
