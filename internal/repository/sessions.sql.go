@@ -10,6 +10,22 @@ import (
 	"time"
 )
 
+const bindSessionToAppUser = `-- name: BindSessionToAppUser :exec
+UPDATE sessions
+SET app_user_id = ?
+WHERE id = ?
+`
+
+type BindSessionToAppUserParams struct {
+	AppUserID *int64
+	ID        string
+}
+
+func (q *Queries) BindSessionToAppUser(ctx context.Context, arg BindSessionToAppUserParams) error {
+	_, err := q.db.ExecContext(ctx, bindSessionToAppUser, arg.AppUserID, arg.ID)
+	return err
+}
+
 const createSession = `-- name: CreateSession :exec
 INSERT INTO sessions (
   id,

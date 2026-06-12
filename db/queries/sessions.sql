@@ -37,3 +37,8 @@ WHERE id = ?;
 -- name: DeleteExpiredSessions :execrows
 DELETE FROM sessions
 WHERE expires_at <= ?;
+
+-- name: BindSessionToAppUser :exec
+UPDATE sessions
+SET app_user_id = ?
+WHERE id = ?;
