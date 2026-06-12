@@ -313,6 +313,24 @@ func TestAuthMiddleware_PublicPath_NotPrefixOnSingleEntry(t *testing.T) {
 	}
 }
 
+func TestAuthMiddleware_NoSessionMiddleware_Returns500(t *testing.T) {
+	t.Parallel()
+	cfg := defaultAuthConfig(t)
+
+	// SessionMiddleware を挟まない。public path でなければ SessionFrom(ctx) は
+	// nil → router 組立ミスとして 500 を返すパスを担保する。
+	bare := middleware.AuthMiddleware(cfg)(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		t.Fatal("next must not be called when session is missing")
+	}))
+
+	rec := httptest.NewRecorder()
+	bare.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/products", nil))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 (no session in ctx)", rec.Code)
+	}
+}
+
 func TestAuthMiddleware_Panics_WhenDBNil(t *testing.T) {
 	t.Parallel()
 	defer func() {
