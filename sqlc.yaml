@@ -9,6 +9,7 @@ sql:
       - "db/migrations/000004_approvals.up.sql"
       - "db/migrations/000005_app.up.sql"
       - "db/migrations/000006_indexes_views.up.sql"
+      - "db/migrations/000007_sessions.up.sql"
     gen:
       go:
         package: "repository"
