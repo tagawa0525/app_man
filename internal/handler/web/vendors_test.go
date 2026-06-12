@@ -42,9 +42,8 @@ func newWebRouter(t *testing.T) (http.Handler, *sql.DB, session.Store, *reposito
 	}))
 	r.Use(middleware.CSRFMiddleware)
 	web.RegisterRoutes(r, web.Deps{
-		Logger:  slog.New(slog.DiscardHandler),
-		DB:      sqlDB,
-		DevMode: true,
+		Logger: slog.New(slog.DiscardHandler),
+		DB:     sqlDB,
 	})
 	return r, sqlDB, store, repository.New(sqlDB)
 }

@@ -24,9 +24,6 @@ import (
 type Deps struct {
 	Logger *slog.Logger
 	DB     *sql.DB
-	// DevMode が true のときのみ /__set_role 等の開発用エンドポイントを
-	// 登録する。本番デプロイ時は false にして攻撃経路を塞ぐ。
-	DevMode bool
 	// Authenticator はログインフロー (POST /login) が利用する。
 	// 本 PR では LocalAuthenticator が直接渡る。
 	Authenticator auth.Authenticator
@@ -65,23 +62,14 @@ var departmentViewers = []mw.Role{
 }
 
 // RegisterRoutes は本パッケージのルートを r に登録する。
-// 呼び出し側 (handler.NewRouter) で DummyAuth / CSRF middleware を r に
-// 適用済みの前提。
+// 呼び出し側 (handler.NewRouter) で Session / Auth / CSRF middleware を
+// r に適用済みの前提。
 func RegisterRoutes(r chi.Router, deps Deps) {
 	v := &vendorHandlers{db: deps.DB, logger: deps.Logger}
 	p := &productHandlers{db: deps.DB, logger: deps.Logger}
 	d := &departmentHandlers{db: deps.DB, logger: deps.Logger}
 	u := &userHandlers{db: deps.DB, logger: deps.Logger}
 	dev := &deviceHandlers{db: deps.DB, logger: deps.Logger}
-
-	// dev 用ロール切替エンドポイントは DevMode 時のみ登録する。
-	// 本番では完全に消えるため、外部からの POST /__set_role は 404。
-	// CSRF middleware + 同一オリジンチェック (setRole 内) で保護する。
-	// フェーズ 3 認証実装時に削除 / act-as へ転用のどちらかを再判断。
-	if deps.DevMode {
-		devUI := &devHandlers{logger: deps.Logger}
-		r.Post("/__set_role", devUI.setRole)
-	}
 
 	// /login / /logout は role 不問。Authenticator / SessionStore が注入
 	// されている場合のみ登録する (テストで nil を渡したときに panic

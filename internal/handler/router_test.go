@@ -7,18 +7,38 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/tagawa0525/app_man/internal/handler"
+	"github.com/tagawa0525/app_man/internal/handler/handlertest"
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/session"
 	"github.com/tagawa0525/app_man/internal/view/static"
 )
 
 func newTestRouter(t *testing.T) http.Handler {
 	t.Helper()
-	return handler.NewRouter(handler.Deps{
-		Logger:   slog.New(slog.DiscardHandler),
-		DB:       nil, // 本 PR では handler から DB を触らない
-		StaticFS: static.FS(),
+	r, _ := newAuthedTestRouter(t)
+	return r
+}
+
+// newAuthedTestRouter は本番 router と同等の middleware チェーンを組み立て、
+// system_admin として認証済みの session Cookie を併せて返す。
+// /healthz / /static/* は公開パスなので Cookie 不要だが、業務ルートを
+// 触るテスト (NotFound テンプレ等) では Cookie を AddCookie する。
+func newAuthedTestRouter(t *testing.T) (http.Handler, *http.Cookie) {
+	t.Helper()
+	db := handlertest.NewTestDB(t)
+	store := session.NewSQLiteStore(db)
+	r := handler.NewRouter(handler.Deps{
+		Logger:        slog.New(slog.DiscardHandler),
+		DB:            db,
+		StaticFS:      static.FS(),
+		SessionStore:  store,
+		SessionMaxAge: time.Hour,
 	})
+	cookie := handlertest.AuthenticatedAs(t, db, store, middleware.RoleSystemAdmin)
+	return r, cookie
 }
 
 func TestRouter_Healthz_Returns200(t *testing.T) {
@@ -89,8 +109,9 @@ func TestRouter_StaticCSS_Served(t *testing.T) {
 func TestRouter_Unknown_Returns404_WithTemplate(t *testing.T) {
 	t.Parallel()
 
-	r := newTestRouter(t)
+	r, cookie := newAuthedTestRouter(t)
 	req := httptest.NewRequest(http.MethodGet, "/no-such-path", nil)
+	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
