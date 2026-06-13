@@ -4,10 +4,9 @@ import "github.com/tagawa0525/app_man/internal/handler/middleware"
 
 // BaseProps は Base レイアウトの可変部。
 //
-// CSRFToken は固定値 (middleware.CSRFTokenFrom(ctx)) を渡す前提だが、
-// テンプレートに props として受け取らせる形にして、フェーズ 3 で
-// session-bound トークンに差し替える際にテンプレ本体を触らずに済むよう
-// インタフェースを切ってある。
+// CSRFToken は <form> の hidden / meta tag に埋め込まれる値。
+// 各 entity の templ から middleware.CSRFTokenFrom(ctx) で取得した
+// session.CSRFToken を渡し、CSRFMiddleware の検証対象と一致させる。
 type BaseProps struct {
 	Title     string
 	Role      middleware.Role
