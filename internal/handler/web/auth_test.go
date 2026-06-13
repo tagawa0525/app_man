@@ -157,8 +157,14 @@ func TestLogin_Get_AlreadyAuthenticated_RedirectsToRoot(t *testing.T) {
 // なったため、Cookie と _csrf の両方を整合させる必要がある。
 func postLogin(t *testing.T, store session.Store, target string, values url.Values) *http.Request {
 	t.Helper()
-	id, _ := session.NewID()
-	tok, _ := session.NewCSRFToken()
+	id, err := session.NewID()
+	if err != nil {
+		t.Fatalf("postLogin: session.NewID: %v", err)
+	}
+	tok, err := session.NewCSRFToken()
+	if err != nil {
+		t.Fatalf("postLogin: session.NewCSRFToken: %v", err)
+	}
 	now := time.Now()
 	if err := store.Create(context.Background(), session.Session{
 		ID:         id,
