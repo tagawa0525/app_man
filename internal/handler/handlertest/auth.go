@@ -124,8 +124,9 @@ func AuthenticatedPostForm(t *testing.T, db *sql.DB, store session.Store,
 			values.Set("_csrf", sess.CSRFToken)
 		}
 	}
-	req.Body = io.NopCloser(strings.NewReader(values.Encode()))
-	req.ContentLength = int64(len(values.Encode()))
+	encoded := values.Encode()
+	req.Body = io.NopCloser(strings.NewReader(encoded))
+	req.ContentLength = int64(len(encoded))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	return req
 }
