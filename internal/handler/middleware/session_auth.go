@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"database/sql"
 	"log/slog"
 	"net/http"
@@ -49,7 +48,10 @@ func AuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 		cfg.LoginURL = defaultLoginURL
 	}
 	if cfg.PublicPathPrefixes == nil {
-		cfg.PublicPathPrefixes = []string{"/static/", "/healthz"}
+		// /logout は role が無い (revoked / disabled) ユーザでも到達できるよう
+		// 認可チェックの外に置く。ハンドラは SessionFrom() で session を読み
+		// store.Delete(ID) するだけなので役割は不要。
+		cfg.PublicPathPrefixes = []string{"/static/", "/healthz", "/logout"}
 	}
 	// LoginURL の path 部を必ず公開リストに含める。LoginURL を /auth 等に
 	// 変更したときに、未認証アクセスがログインページ自体に redirect されて
@@ -95,8 +97,7 @@ func AuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 				return
 			}
 
-			ctx := context.WithValue(r.Context(), roleKey{}, role)
-			next.ServeHTTP(w, r.WithContext(ctx))
+			next.ServeHTTP(w, r.WithContext(WithRole(r.Context(), role)))
 		})
 	}
 }

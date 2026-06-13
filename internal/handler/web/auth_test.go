@@ -34,7 +34,10 @@ func newAuthRouter(t *testing.T) (http.Handler, session.Store, *sql.DB) {
 		MaxAge:       time.Hour,
 		Logger:       slog.New(slog.DiscardHandler),
 	}))
-	r.Use(middleware.DummyAuthMiddleware)
+	r.Use(middleware.AuthMiddleware(middleware.AuthConfig{
+		DB:     sqlDB,
+		Logger: slog.New(slog.DiscardHandler),
+	}))
 	r.Use(middleware.CSRFMiddleware)
 	web.RegisterRoutes(r, web.Deps{
 		Logger:        slog.New(slog.DiscardHandler),

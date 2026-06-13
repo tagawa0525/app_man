@@ -6,8 +6,6 @@ import (
 )
 
 // CookieName は session ID を保持する Cookie 名。
-// 役割 (role 切替) Cookie の RoleCookieName と prefix を揃えて、
-// dev 用に手動操作するときの取り回しを良くしている。
 const CookieName = "app_man_session"
 
 // SetCookie は w にセッション Cookie を Set-Cookie で書き出す。

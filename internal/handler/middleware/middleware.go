@@ -1,10 +1,13 @@
 // Package middleware は appmgr-server の HTTP ミドルウェア群を提供する。
 //
-// PR-A 時点では「ダミー認可」(X-User-Role ヘッダ → context への role 詰め込み)
-// と「ダミー CSRF」(固定トークン検証) の 2 つを提供する。
-// フェーズ 3 で本物のセッション・CSRF ジェネレータに差し替える際は、
-// 各 middleware の検証ロジックだけを書き換え、handler 側のインタフェース
-// (RoleFrom / RequireRole / DummyCSRFToken) は据え置く想定。
+// 提供する middleware:
+//
+//   - SessionMiddleware: Cookie ベースのセッション読み込み / 新規発行
+//   - AuthMiddleware: session.AppUserID から user_department_roles を引き、
+//     最高権限 role を context に詰める (未認証は /login にリダイレクト)
+//   - CSRFMiddleware: GET 以外のリクエストに CSRF トークン検証を強制
+//     (現状は DummyCSRFToken 固定値、別 PR で session.CSRFToken に差し替え予定)
+//   - RequireRole: 許可ロールリストに含まれる role のみ next を呼ぶ
 //
 // chi/v5/middleware と名前空間が衝突するため、import 時はエイリアスを
 // 付ける運用 (例: chimw "github.com/go-chi/chi/v5/middleware") とする。

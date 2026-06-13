@@ -2,8 +2,6 @@
 //
 // cmd/server/main.go は lock 取得・DB open・signal 処理・Shutdown だけを
 // 担当し、ルータ組立とハンドラ実装はすべてこのパッケージに集約する。
-// 後続 PR (PR-B 以降) で /products, /departments 等を NewRouter 内に
-// 追加していく。
 package handler
 
 import (
@@ -24,19 +22,12 @@ import (
 )
 
 // Deps は NewRouter が必要とする外部依存をまとめる。
-// フェーズ 3 でセッションストア・CSRF ジェネレータ・Authenticator を追加する。
 type Deps struct {
 	Logger   *slog.Logger
 	DB       *sql.DB
 	StaticFS fs.FS
-	// DevMode は開発用エンドポイント (POST /__set_role 等) を有効化する
-	// フラグ。本番では false にして、外部から system_admin に自己昇格
-	// される経路を完全に塞ぐ。cmd/server/main.go で APP_MAN_DEV_MODE
-	// 環境変数から読む。
-	DevMode bool
 	// SessionStore は SessionMiddleware が使う永続化境界。
-	// nil なら SessionMiddleware を挟まない (テスト時の利便性のため)。
-	// 本番では cmd/server/main.go が SQLiteStore を渡す。
+	// 本番では cmd/server/main.go が SQLiteStore を渡す。必須。
 	SessionStore session.Store
 	// CookieSecure は Set-Cookie の Secure 属性。本番 HTTPS で true、
 	// 開発 HTTP で false。config.server.cookie_secure と同義。
@@ -44,30 +35,30 @@ type Deps struct {
 	// SessionMaxAge は新規発行する session の有効期間。
 	// config.auth.session_max_age_hours から導出する。
 	SessionMaxAge time.Duration
-	// Authenticator はログインフロー (POST /login) で利用する。
-	// nil なら /login / /logout ハンドラを登録しない (テスト時の利便性)。
+	// Authenticator はログインフロー (POST /login) で利用する。必須。
 	Authenticator auth.Authenticator
 }
 
 // NewRouter は appmgr-server で使う http.Handler を組み立てる。
 //
-// PR-A では /healthz と /static/* のみ登録する。
-// 業務ハンドラは PR-B 以降で追加する。
+// middleware チェーン: RequestID → recoverer → SessionMiddleware →
+// AuthMiddleware → CSRFMiddleware。
+// 公開パス (/healthz, /static/*, /login, /logout) は AuthMiddleware が
+// 素通りさせる (デフォルト PublicPathPrefixes と LoginURL.Path の合成)。
 func NewRouter(deps Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
 	r.Use(recoverer(deps.Logger))
-	// SessionMiddleware は Cookie を読み・新規発行する。Cookie に関係しない
-	// /healthz でも空打ちで動くが、SessionStore が nil のテストでは省略する。
-	if deps.SessionStore != nil {
-		r.Use(middleware.SessionMiddleware(middleware.SessionConfig{
-			Store:        deps.SessionStore,
-			SecureCookie: deps.CookieSecure,
-			MaxAge:       deps.SessionMaxAge,
-			Logger:       deps.Logger,
-		}))
-	}
-	r.Use(middleware.DummyAuthMiddleware)
+	r.Use(middleware.SessionMiddleware(middleware.SessionConfig{
+		Store:        deps.SessionStore,
+		SecureCookie: deps.CookieSecure,
+		MaxAge:       deps.SessionMaxAge,
+		Logger:       deps.Logger,
+	}))
+	r.Use(middleware.AuthMiddleware(middleware.AuthConfig{
+		DB:     deps.DB,
+		Logger: deps.Logger,
+	}))
 	r.Use(middleware.CSRFMiddleware)
 
 	r.Get("/healthz", healthHandler)
@@ -80,7 +71,6 @@ func NewRouter(deps Deps) http.Handler {
 	web.RegisterRoutes(r, web.Deps{
 		Logger:        deps.Logger,
 		DB:            deps.DB,
-		DevMode:       deps.DevMode,
 		Authenticator: deps.Authenticator,
 		SessionStore:  deps.SessionStore,
 		CookieSecure:  deps.CookieSecure,
