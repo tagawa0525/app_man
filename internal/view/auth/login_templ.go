@@ -21,9 +21,8 @@ import "net/url"
 // LoginProps は /login GET / POST 失敗時のテンプレに渡す可変部。
 type LoginProps struct {
 	// CSRFToken は <form> の hidden input に埋める値。
-	// 現状は middleware.DummyCSRFToken を渡す前提だが、
-	// 後続 PR (CSRF 強化) で session.CSRFToken に切り替える際にも
-	// テンプレ本体を触らずに済むよう props 経由で受け取る。
+	// 通常は handler 側で middleware.CSRFTokenFrom(r.Context()) を渡し、
+	// session.CSRFToken (CSRFMiddleware の検証対象) と一致させる。
 	CSRFToken string
 	// Next は ?next= で渡された遷移先 (validate 済み)。空なら "/" に戻る。
 	Next string
@@ -61,7 +60,7 @@ func LoginPage(p LoginProps) templ.Component {
 		var templ_7745c5c3_Var2 templ.SafeURL
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinURLErrs(loginAction(p.Next))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/auth/login.templ`, Line: 36, Col: 52}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/auth/login.templ`, Line: 35, Col: 52}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
@@ -74,7 +73,7 @@ func LoginPage(p LoginProps) templ.Component {
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(p.CSRFToken)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/auth/login.templ`, Line: 37, Col: 58}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/auth/login.templ`, Line: 36, Col: 58}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
@@ -87,7 +86,7 @@ func LoginPage(p LoginProps) templ.Component {
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(p.Username)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/auth/login.templ`, Line: 40, Col: 59}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/auth/login.templ`, Line: 39, Col: 59}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 		if templ_7745c5c3_Err != nil {
@@ -105,7 +104,7 @@ func LoginPage(p LoginProps) templ.Component {
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(p.ErrorMessage)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/auth/login.templ`, Line: 47, Col: 60}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/auth/login.templ`, Line: 46, Col: 60}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {

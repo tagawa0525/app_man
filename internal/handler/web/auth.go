@@ -56,7 +56,7 @@ func (h *authHandlers) loginGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.renderLogin(w, r, authview.LoginProps{
-		CSRFToken: middleware.DummyCSRFToken,
+		CSRFToken: middleware.CSRFTokenFrom(r.Context()),
 		Next:      next,
 	}, http.StatusOK)
 }
@@ -73,7 +73,7 @@ func (h *authHandlers) loginPost(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		h.logger.WarnContext(r.Context(), "login parse form", "err", err)
 		h.renderLogin(w, r, authview.LoginProps{
-			CSRFToken:    middleware.DummyCSRFToken,
+			CSRFToken:    middleware.CSRFTokenFrom(r.Context()),
 			ErrorMessage: msgInternal,
 		}, http.StatusBadRequest)
 		return
@@ -94,7 +94,7 @@ func (h *authHandlers) loginPost(w http.ResponseWriter, r *http.Request) {
 		// これに来るのは router の組立ミスか ephemeral session のケース。
 		h.logger.ErrorContext(r.Context(), "login: no session in context")
 		h.renderLogin(w, r, authview.LoginProps{
-			CSRFToken:    middleware.DummyCSRFToken,
+			CSRFToken:    middleware.CSRFTokenFrom(r.Context()),
 			Username:     username,
 			Next:         next,
 			ErrorMessage: msgInternal,
@@ -106,7 +106,7 @@ func (h *authHandlers) loginPost(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "login: rotate+bind tx", "err", err, "username", username)
 		h.renderLogin(w, r, authview.LoginProps{
-			CSRFToken:    middleware.DummyCSRFToken,
+			CSRFToken:    middleware.CSRFTokenFrom(r.Context()),
 			Username:     username,
 			Next:         next,
 			ErrorMessage: msgInternal,
@@ -205,7 +205,7 @@ func (h *authHandlers) renderAuthError(w http.ResponseWriter, r *http.Request, u
 		status = http.StatusInternalServerError
 	}
 	h.renderLogin(w, r, authview.LoginProps{
-		CSRFToken:    middleware.DummyCSRFToken,
+		CSRFToken:    middleware.CSRFTokenFrom(r.Context()),
 		Username:     username,
 		Next:         next,
 		ErrorMessage: msg,

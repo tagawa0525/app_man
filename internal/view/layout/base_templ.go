@@ -12,10 +12,9 @@ import "github.com/tagawa0525/app_man/internal/handler/middleware"
 
 // BaseProps は Base レイアウトの可変部。
 //
-// CSRFToken は固定値 (middleware.DummyCSRFToken) を渡す前提だが、
-// テンプレートに props として受け取らせる形にして、フェーズ 3 で
-// session-bound トークンに差し替える際にテンプレ本体を触らずに済むよう
-// インタフェースを切ってある。
+// CSRFToken は <form> の hidden / meta tag に埋め込まれる値。
+// 各 entity の templ から middleware.CSRFTokenFrom(ctx) で取得した
+// session.CSRFToken を渡し、CSRFMiddleware の検証対象と一致させる。
 type BaseProps struct {
 	Title     string
 	Role      middleware.Role
@@ -51,7 +50,7 @@ func Base(p BaseProps) templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(p.CSRFToken)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/layout/base.templ`, Line: 24, Col: 48}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/layout/base.templ`, Line: 23, Col: 48}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
@@ -64,7 +63,7 @@ func Base(p BaseProps) templ.Component {
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(p.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/layout/base.templ`, Line: 25, Col: 19}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/layout/base.templ`, Line: 24, Col: 19}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
@@ -77,7 +76,7 @@ func Base(p BaseProps) templ.Component {
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(`{"X-CSRF-Token":"` + p.CSRFToken + `"}`)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/layout/base.templ`, Line: 29, Col: 61}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/layout/base.templ`, Line: 28, Col: 61}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 		if templ_7745c5c3_Err != nil {
@@ -103,7 +102,7 @@ func Base(p BaseProps) templ.Component {
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(p.Flash)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/layout/base.templ`, Line: 33, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/layout/base.templ`, Line: 32, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {
@@ -131,9 +130,9 @@ func Base(p BaseProps) templ.Component {
 // general_user 以上で閲覧可能だが、Nav 側で出し分けはしない
 // (押下時に role middleware が 403 を返す)。
 //
-// csrfToken は呼び出し側 (Base) から props として受け取る (DummyCSRFToken
-// を直接参照しない)。session-bound トークンに差し替える際にテンプレ本体を
-// 触らずに済むよう、Base 側の方針と揃える。
+// csrfToken は呼び出し側 (Base) から props として受け取る。
+// 通常は middleware.CSRFTokenFrom(ctx) で session.CSRFToken を取り出した値を
+// 渡す。Base 側の方針と揃える。
 //
 // role 引数は現在 Nav の表示には未使用だが、将来「role を chip 等で表示」
 // する用途で props として残す。
@@ -175,9 +174,8 @@ func Nav(role middleware.Role, csrfToken string) templ.Component {
 }
 
 // CSRFInput は <form> 内で利用する hidden input。
-// テンプレートから直接 DummyCSRFToken 定数を参照させず props 経由で
-// 受け取らせる方針のため、handler 側で BaseProps.CSRFToken と同じ値を
-// 渡す運用とする。
+// 呼び出し側 (テンプレ or handler) で middleware.CSRFTokenFrom(ctx) などから
+// session.CSRFToken を取り出して渡す運用とする。
 func CSRFInput(token string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -206,7 +204,7 @@ func CSRFInput(token string) templ.Component {
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(token)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/layout/base.templ`, Line: 74, Col: 48}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/layout/base.templ`, Line: 72, Col: 48}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 		if templ_7745c5c3_Err != nil {

@@ -85,6 +85,13 @@ func SessionFrom(ctx context.Context) *session.Session {
 	return nil
 }
 
+// WithSessionForTest は context に session を詰めて返す。
+// SessionMiddleware を経由せずに CSRFMiddleware / ハンドラ単体をテストする
+// 用途で、本番コードからは呼ばない。
+func WithSessionForTest(ctx context.Context, sess *session.Session) context.Context {
+	return context.WithValue(ctx, sessionKey{}, sess)
+}
+
 // loadOrCreateSession は Cookie 値から既存セッションを引き、無効なら新規発行する。
 // 戻り値の fresh が true の場合、呼び出し側で Set-Cookie が必要。
 func loadOrCreateSession(ctx context.Context, cfg SessionConfig, now time.Time, cookieID string) (*session.Session, bool) {

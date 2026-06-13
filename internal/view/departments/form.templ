@@ -38,7 +38,7 @@ templ Form(role middleware.Role, props FormProps) {
 	@layout.Base(layout.BaseProps{
 		Title:     props.Title,
 		Role:      role,
-		CSRFToken: middleware.DummyCSRFToken,
+		CSRFToken: middleware.CSRFTokenFrom(ctx),
 	}) {
 		<section class="page-departments-form">
 			<header class="page-header">
@@ -46,7 +46,7 @@ templ Form(role middleware.Role, props FormProps) {
 			</header>
 
 			<form method="post" action={ templ.SafeURL(props.Action) } class="vform">
-				@layout.CSRFInput(middleware.DummyCSRFToken)
+				@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
 
 				<div class="field">
 					<label for="code">部署コード <span class="required">*</span></label>

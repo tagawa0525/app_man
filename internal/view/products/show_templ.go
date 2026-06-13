@@ -125,7 +125,7 @@ func Show(role middleware.Role, props ShowProps) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = layout.CSRFInput(middleware.DummyCSRFToken).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = layout.CSRFInput(middleware.CSRFTokenFrom(ctx)).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -385,7 +385,7 @@ func Show(role middleware.Role, props ShowProps) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = layout.CSRFInput(middleware.DummyCSRFToken).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = layout.CSRFInput(middleware.CSRFTokenFrom(ctx)).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -422,7 +422,7 @@ func Show(role middleware.Role, props ShowProps) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = layout.CSRFInput(middleware.DummyCSRFToken).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = layout.CSRFInput(middleware.CSRFTokenFrom(ctx)).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -441,7 +441,7 @@ func Show(role middleware.Role, props ShowProps) templ.Component {
 			Title:     props.Product.CanonicalName,
 			Role:      role,
 			Flash:     props.Flash,
-			CSRFToken: middleware.DummyCSRFToken,
+			CSRFToken: middleware.CSRFTokenFrom(ctx),
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err

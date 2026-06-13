@@ -20,7 +20,7 @@ templ Show(role middleware.Role, props ShowProps) {
 		Title:     props.Device.AssetCode,
 		Role:      role,
 		Flash:     props.Flash,
-		CSRFToken: middleware.DummyCSRFToken,
+		CSRFToken: middleware.CSRFTokenFrom(ctx),
 	}) {
 		<section class="page-devices-show">
 			<header class="page-header">
@@ -36,13 +36,13 @@ templ Show(role middleware.Role, props ShowProps) {
 						if props.Device.RetiredAt == nil {
 							<form method="post" action={ templ.SafeURL("/devices/" + itoa(props.Device.ID) + "/retire") }
 								onsubmit="return confirm('この端末を退役扱いにしますか?');" class="inline">
-								@layout.CSRFInput(middleware.DummyCSRFToken)
+								@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
 								<button type="submit" class="btn btn-danger">退役</button>
 							</form>
 						} else {
 							<form method="post" action={ templ.SafeURL("/devices/" + itoa(props.Device.ID) + "/restore") }
 								onsubmit="return confirm('この端末を復活しますか?');" class="inline">
-								@layout.CSRFInput(middleware.DummyCSRFToken)
+								@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
 								<button type="submit" class="btn">復活</button>
 							</form>
 						}

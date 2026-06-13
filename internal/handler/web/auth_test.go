@@ -72,7 +72,7 @@ func seedLocalAdmin(t *testing.T, db *sql.DB, username, password string) int64 {
 
 func TestLogin_Get_ReturnsForm(t *testing.T) {
 	t.Parallel()
-	r, _, _ := newAuthRouter(t)
+	r, store, _ := newAuthRouter(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/login", nil)
 	rec := httptest.NewRecorder()
@@ -82,7 +82,26 @@ func TestLogin_Get_ReturnsForm(t *testing.T) {
 	handlertest.AssertContains(t, rec, `name="username"`)
 	handlertest.AssertContains(t, rec, `name="password"`)
 	handlertest.AssertContains(t, rec, `name="_csrf"`)
-	handlertest.AssertContains(t, rec, middleware.DummyCSRFToken)
+
+	// SessionMiddleware が発行した session の CSRFToken が form の hidden に
+	// 埋まっていることを確認する。
+	var sessionID string
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == session.CookieName {
+			sessionID = c.Value
+		}
+	}
+	if sessionID == "" {
+		t.Fatal("expected Set-Cookie with session id after GET /login")
+	}
+	sess, err := store.GetByID(context.Background(), sessionID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if sess.CSRFToken == "" {
+		t.Fatal("session.CSRFToken should be set")
+	}
+	handlertest.AssertContains(t, rec, sess.CSRFToken)
 }
 
 func TestLogin_Get_NextWithQuery_EncodedInFormAction(t *testing.T) {
@@ -133,13 +152,35 @@ func TestLogin_Get_AlreadyAuthenticated_RedirectsToRoot(t *testing.T) {
 	handlertest.AssertRedirect(t, rec, "/products")
 }
 
-func postLogin(t *testing.T, target string, values url.Values) *http.Request {
+// postLogin は session を 1 つ事前発行し、その CSRFToken と Cookie を付けた
+// POST /login リクエストを返す。CSRFMiddleware が session 紐付き検証に
+// なったため、Cookie と _csrf の両方を整合させる必要がある。
+func postLogin(t *testing.T, store session.Store, target string, values url.Values) *http.Request {
 	t.Helper()
+	id, err := session.NewID()
+	if err != nil {
+		t.Fatalf("postLogin: session.NewID: %v", err)
+	}
+	tok, err := session.NewCSRFToken()
+	if err != nil {
+		t.Fatalf("postLogin: session.NewCSRFToken: %v", err)
+	}
+	now := time.Now()
+	if err := store.Create(context.Background(), session.Session{
+		ID:         id,
+		CSRFToken:  tok,
+		CreatedAt:  now,
+		LastSeenAt: now,
+		ExpiresAt:  now.Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("postLogin: store.Create: %v", err)
+	}
 	if values.Get("_csrf") == "" {
-		values.Set("_csrf", middleware.DummyCSRFToken)
+		values.Set("_csrf", tok)
 	}
 	req := httptest.NewRequest(http.MethodPost, target, strings.NewReader(values.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: session.CookieName, Value: id})
 	return req
 }
 
@@ -150,7 +191,7 @@ func TestLogin_Post_Success_RedirectsAndBindsSession(t *testing.T) {
 
 	adminID := seedLocalAdmin(t, db, "admin", "passw0rd")
 
-	req := postLogin(t, "/login", url.Values{
+	req := postLogin(t, store, "/login", url.Values{
 		"username": {"admin"},
 		"password": {"passw0rd"},
 	})
@@ -195,7 +236,9 @@ func TestLogin_Post_Success_RotatesSessionID(t *testing.T) {
 
 	seedLocalAdmin(t, db, "admin", "passw0rd")
 
-	// 事前に匿名 session を発行
+	// 事前に匿名 session を発行し、その Cookie + CSRFToken で POST する。
+	// CSRFMiddleware は session 紐付き検証なので、Cookie と _csrf を同じ
+	// session のものに揃える必要がある。
 	preID, _ := session.NewID()
 	tok, _ := session.NewCSRFToken()
 	now := time.Now()
@@ -209,10 +252,14 @@ func TestLogin_Post_Success_RotatesSessionID(t *testing.T) {
 		t.Fatalf("seed pre-session: %v", err)
 	}
 
-	req := postLogin(t, "/login", url.Values{
+	values := url.Values{
 		"username": {"admin"},
 		"password": {"passw0rd"},
-	})
+		"_csrf":    {tok},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/login",
+		strings.NewReader(values.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: session.CookieName, Value: preID})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
@@ -227,10 +274,10 @@ func TestLogin_Post_Success_RotatesSessionID(t *testing.T) {
 
 func TestLogin_Post_WrongPassword_ReturnsError(t *testing.T) {
 	t.Parallel()
-	r, _, db := newAuthRouter(t)
+	r, store, db := newAuthRouter(t)
 	seedLocalAdmin(t, db, "admin", "correct-password")
 
-	req := postLogin(t, "/login", url.Values{
+	req := postLogin(t, store, "/login", url.Values{
 		"username": {"admin"},
 		"password": {"wrong-password"},
 	})
@@ -245,9 +292,9 @@ func TestLogin_Post_WrongPassword_ReturnsError(t *testing.T) {
 
 func TestLogin_Post_UnknownUser_ReturnsSameErrorAsWrongPassword(t *testing.T) {
 	t.Parallel()
-	r, _, _ := newAuthRouter(t)
+	r, store, _ := newAuthRouter(t)
 
-	req := postLogin(t, "/login", url.Values{
+	req := postLogin(t, store, "/login", url.Values{
 		"username": {"nobody"},
 		"password": {"anything"},
 	})
@@ -261,7 +308,7 @@ func TestLogin_Post_UnknownUser_ReturnsSameErrorAsWrongPassword(t *testing.T) {
 
 func TestLogin_Post_DisabledUser_ShowsDisabledMessage(t *testing.T) {
 	t.Parallel()
-	r, _, db := newAuthRouter(t)
+	r, store, db := newAuthRouter(t)
 
 	hash, _ := auth.Hash("passw0rd")
 	_, err := db.ExecContext(context.Background(),
@@ -271,7 +318,7 @@ func TestLogin_Post_DisabledUser_ShowsDisabledMessage(t *testing.T) {
 		t.Fatalf("seed disabled: %v", err)
 	}
 
-	req := postLogin(t, "/login", url.Values{
+	req := postLogin(t, store, "/login", url.Values{
 		"username": {"ex-admin"},
 		"password": {"passw0rd"},
 	})
@@ -284,7 +331,7 @@ func TestLogin_Post_DisabledUser_ShowsDisabledMessage(t *testing.T) {
 
 func TestLogin_Post_ADUser_ShowsAuthTypeMessage(t *testing.T) {
 	t.Parallel()
-	r, _, db := newAuthRouter(t)
+	r, store, db := newAuthRouter(t)
 
 	_, err := db.ExecContext(context.Background(),
 		`INSERT INTO app_users (username, password_hash, auth_type) VALUES (?, NULL, 'ad')`,
@@ -293,7 +340,7 @@ func TestLogin_Post_ADUser_ShowsAuthTypeMessage(t *testing.T) {
 		t.Fatalf("seed AD: %v", err)
 	}
 
-	req := postLogin(t, "/login", url.Values{
+	req := postLogin(t, store, "/login", url.Values{
 		"username": {"employee01"},
 		"password": {"anything"},
 	})
@@ -321,10 +368,10 @@ func TestLogin_Post_NoCSRF_Returns403(t *testing.T) {
 
 func TestLogin_Post_NextSameOrigin_RedirectsToPath(t *testing.T) {
 	t.Parallel()
-	r, _, db := newAuthRouter(t)
+	r, store, db := newAuthRouter(t)
 	seedLocalAdmin(t, db, "admin", "passw0rd")
 
-	req := postLogin(t, "/login?next=/products", url.Values{
+	req := postLogin(t, store, "/login?next=/products", url.Values{
 		"username": {"admin"},
 		"password": {"passw0rd"},
 	})
@@ -336,10 +383,10 @@ func TestLogin_Post_NextSameOrigin_RedirectsToPath(t *testing.T) {
 
 func TestLogin_Post_NextProtocolRelative_Rejected(t *testing.T) {
 	t.Parallel()
-	r, _, db := newAuthRouter(t)
+	r, store, db := newAuthRouter(t)
 	seedLocalAdmin(t, db, "admin", "passw0rd")
 
-	req := postLogin(t, "/login?next=//evil.com/path", url.Values{
+	req := postLogin(t, store, "/login?next=//evil.com/path", url.Values{
 		"username": {"admin"},
 		"password": {"passw0rd"},
 	})
@@ -351,10 +398,10 @@ func TestLogin_Post_NextProtocolRelative_Rejected(t *testing.T) {
 
 func TestLogin_Post_NextExternalURL_Rejected(t *testing.T) {
 	t.Parallel()
-	r, _, db := newAuthRouter(t)
+	r, store, db := newAuthRouter(t)
 	seedLocalAdmin(t, db, "admin", "passw0rd")
 
-	req := postLogin(t, "/login?next=https://evil.com/path", url.Values{
+	req := postLogin(t, store, "/login?next=https://evil.com/path", url.Values{
 		"username": {"admin"},
 		"password": {"passw0rd"},
 	})
@@ -386,7 +433,7 @@ func TestLogout_Post_DeletesSessionAndClearsCookie(t *testing.T) {
 	}
 
 	values := url.Values{}
-	values.Set("_csrf", middleware.DummyCSRFToken)
+	values.Set("_csrf", tok)
 	req := httptest.NewRequest(http.MethodPost, "/logout",
 		strings.NewReader(values.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

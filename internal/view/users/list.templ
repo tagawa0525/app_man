@@ -18,7 +18,7 @@ templ List(role middleware.Role, query string, includeInactive bool, items []Lis
 	@layout.Base(layout.BaseProps{
 		Title:     "ユーザ一覧",
 		Role:      role,
-		CSRFToken: middleware.DummyCSRFToken,
+		CSRFToken: middleware.CSRFTokenFrom(ctx),
 	}) {
 		<section class="page-users-list">
 			<header class="page-header">
