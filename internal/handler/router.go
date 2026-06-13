@@ -43,7 +43,8 @@ type Deps struct {
 //
 // middleware チェーン: RequestID → recoverer → SessionMiddleware →
 // AuthMiddleware → CSRFMiddleware。
-// 公開パス (/healthz, /static/*, /login) は AuthMiddleware が素通りさせる。
+// 公開パス (/healthz, /static/*, /login, /logout) は AuthMiddleware が
+// 素通りさせる (デフォルト PublicPathPrefixes と LoginURL.Path の合成)。
 func NewRouter(deps Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
