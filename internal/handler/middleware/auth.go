@@ -56,9 +56,10 @@ func AllRoles() []Role {
 
 // RoleFrom は context から role を取り出す。未設定なら RoleGeneralUser。
 //
-// 実 AuthMiddleware は認証済リクエストに必ず role を詰めるため、本関数が
-// general_user フォールバックを返すのは context に role が入っていない
-// テストパスや一部 dev 環境のみ。
+// AuthMiddleware は認証済リクエスト (= 非公開パス) でのみ role を context に
+// 詰めるため、公開パス (/login / /logout / /healthz / /static/*) のハンドラや
+// AuthMiddleware を経由しないテストでは general_user フォールバックが返る。
+// 公開パスのテンプレが Role を見ない設計なら問題にならない。
 func RoleFrom(ctx context.Context) Role {
 	if v, ok := ctx.Value(roleKey{}).(Role); ok {
 		return v
