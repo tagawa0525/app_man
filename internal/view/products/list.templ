@@ -20,7 +20,7 @@ templ List(role middleware.Role, query string, items []repository.ListProductsRo
 	@layout.Base(layout.BaseProps{
 		Title:     "製品一覧",
 		Role:      role,
-		CSRFToken: middleware.DummyCSRFToken,
+		CSRFToken: middleware.CSRFTokenFrom(ctx),
 	}) {
 		<section class="page-products-list">
 			<header class="page-header">

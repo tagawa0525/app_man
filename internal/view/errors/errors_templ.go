@@ -55,7 +55,7 @@ func NotFound(role middleware.Role) templ.Component {
 		templ_7745c5c3_Err = layout.Base(layout.BaseProps{
 			Title:     "ページが見つかりません",
 			Role:      role,
-			CSRFToken: middleware.DummyCSRFToken,
+			CSRFToken: middleware.CSRFTokenFrom(ctx),
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -106,7 +106,7 @@ func ServerError(role middleware.Role) templ.Component {
 		templ_7745c5c3_Err = layout.Base(layout.BaseProps{
 			Title:     "サーバエラー",
 			Role:      role,
-			CSRFToken: middleware.DummyCSRFToken,
+			CSRFToken: middleware.CSRFTokenFrom(ctx),
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var4), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err

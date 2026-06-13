@@ -6,7 +6,8 @@
 //   - AuthMiddleware: session.AppUserID から user_department_roles を引き、
 //     最高権限 role を context に詰める (未認証は /login にリダイレクト)
 //   - CSRFMiddleware: GET 以外のリクエストに CSRF トークン検証を強制
-//     (現状は DummyCSRFToken 固定値、別 PR で session.CSRFToken に差し替え予定)
+//     (X-CSRF-Token ヘッダ or _csrf form 値が SessionFrom(ctx).CSRFToken と
+//     一致することを確認)
 //   - RequireRole: 許可ロールリストに含まれる role のみ next を呼ぶ
 //
 // chi/v5/middleware と名前空間が衝突するため、import 時はエイリアスを

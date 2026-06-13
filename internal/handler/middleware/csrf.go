@@ -1,18 +1,21 @@
 package middleware
 
 import (
+	"context"
 	"crypto/subtle"
 	"net/http"
 )
 
-// DummyCSRFToken はフェーズ 3 で session-bound 値に置き換える前提の固定値。
-// middleware の検証ロジック、template の hidden input、handlertest の
-// POST helper の 3 箇所から参照されるため、ここに 1 箇所で定義する。
-//
-// 検証ロジックは固定値比較で済ませているが、フェーズ 3 で session に紐づく
-// 値を発行・検証する形に書き換える際も、handler / template 側のインタフェース
-// (X-CSRF-Token ヘッダ or _csrf form フィールド) は据え置く想定。
-const DummyCSRFToken = "dummy-csrf-token"
+// CSRFTokenFrom は SessionFrom(ctx) から CSRF token を取り出す。
+// session が無い / ephemeral (CSRFToken == "") の場合は空文字を返す。
+// templ 側で同じ token を form の hidden / meta tag に埋め、
+// CSRFMiddleware が POST 等で検証する。
+func CSRFTokenFrom(ctx context.Context) string {
+	if s := SessionFrom(ctx); s != nil {
+		return s.CSRFToken
+	}
+	return ""
+}
 
 // safeMethods は CSRF 検証を素通りさせる HTTP メソッド集合。
 // RFC 9110 で「安全」と定義されるメソッドに沿う。
@@ -23,11 +26,15 @@ var safeMethods = map[string]struct{}{
 }
 
 // CSRFMiddleware は GET / HEAD / OPTIONS を素通りし、それ以外は
-// X-CSRF-Token ヘッダ or form 値 `_csrf` が DummyCSRFToken と一致する
-// ときのみ next を呼ぶ。一致しなければ 403 Forbidden を返す。
+// X-CSRF-Token ヘッダ or form 値 `_csrf` が SessionFrom(ctx).CSRFToken と
+// 一致するときのみ next を呼ぶ。一致しなければ 403 Forbidden を返す。
 //
-// 仕様書 §8.3「GET 以外のリクエストには CSRF トークンを必須」に対応する
-// ダミー実装。フェーズ 3 で本物のセッション + トークン生成に差し替える。
+// 仕様書 §8.3「サーバ側はセッションごとに発行したトークンと突合」に対応。
+// SessionMiddleware の後段で動く前提 (順序が逆だと SessionFrom が nil で
+// 常に 403 になる)。
+//
+// session が ephemeral (CSRFToken == "") の場合は受理トークンが空なので
+// 必ず 403 になる。空文字一致を偶発的に通さないためのガード。
 func CSRFMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, safe := safeMethods[r.Method]; safe {
@@ -44,7 +51,8 @@ func CSRFMiddleware(next http.Handler) http.Handler {
 			}
 		}
 
-		if subtle.ConstantTimeCompare([]byte(token), []byte(DummyCSRFToken)) != 1 {
+		expected := CSRFTokenFrom(r.Context())
+		if expected == "" || subtle.ConstantTimeCompare([]byte(token), []byte(expected)) != 1 {
 			http.Error(w, "csrf token mismatch", http.StatusForbidden)
 			return
 		}

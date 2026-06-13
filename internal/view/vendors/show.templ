@@ -18,7 +18,7 @@ templ Show(role middleware.Role, props ShowProps) {
 		Title:     props.Vendor.Name,
 		Role:      role,
 		Flash:     props.Flash,
-		CSRFToken: middleware.DummyCSRFToken,
+		CSRFToken: middleware.CSRFTokenFrom(ctx),
 	}) {
 		<section class="page-vendors-show">
 			<header class="page-header">
@@ -28,7 +28,7 @@ templ Show(role middleware.Role, props ShowProps) {
 						<a class="btn" href={ templ.SafeURL("/vendors/" + itoa(props.Vendor.ID) + "/edit") }>編集</a>
 						<form method="post" action={ templ.SafeURL("/vendors/" + itoa(props.Vendor.ID) + "/delete") }
 							onsubmit="return confirm('このベンダーを削除しますか?');" class="inline">
-							@layout.CSRFInput(middleware.DummyCSRFToken)
+							@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
 							<button type="submit" class="btn btn-danger">削除</button>
 						</form>
 					</div>

@@ -18,7 +18,7 @@ templ Show(role middleware.Role, props ShowProps) {
 		Title:     props.Product.CanonicalName,
 		Role:      role,
 		Flash:     props.Flash,
-		CSRFToken: middleware.DummyCSRFToken,
+		CSRFToken: middleware.CSRFTokenFrom(ctx),
 	}) {
 		<section class="page-products-show">
 			<header class="page-header">
@@ -33,7 +33,7 @@ templ Show(role middleware.Role, props ShowProps) {
 						<a class="btn" href={ templ.SafeURL("/products/" + itoa(props.Product.ID) + "/edit") }>編集</a>
 						<form method="post" action={ templ.SafeURL("/products/" + itoa(props.Product.ID) + "/delete") }
 							onsubmit="return confirm('この製品を削除しますか?');" class="inline">
-							@layout.CSRFInput(middleware.DummyCSRFToken)
+							@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
 							<button type="submit" class="btn btn-danger">削除</button>
 						</form>
 					</div>
@@ -87,7 +87,7 @@ templ Show(role middleware.Role, props ShowProps) {
 							if canEdit(role) {
 								<form method="post" action={ templ.SafeURL("/products/" + itoa(props.Product.ID) + "/aliases/" + itoa(a.ID) + "/delete") }
 									onsubmit="return confirm('このエイリアスを削除しますか?');" class="inline">
-									@layout.CSRFInput(middleware.DummyCSRFToken)
+									@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
 									<button type="submit" class="btn btn-xs btn-danger">削除</button>
 								</form>
 							}
@@ -98,7 +98,7 @@ templ Show(role middleware.Role, props ShowProps) {
 
 			if canEdit(role) {
 				<form method="post" action={ templ.SafeURL("/products/" + itoa(props.Product.ID) + "/aliases") } class="alias-add">
-					@layout.CSRFInput(middleware.DummyCSRFToken)
+					@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
 					<label for="alias_name">エイリアス追加</label>
 					<input id="alias_name" type="text" name="alias_name" placeholder="SKYSEA 上の名前など" required/>
 					<button type="submit" class="btn">追加</button>

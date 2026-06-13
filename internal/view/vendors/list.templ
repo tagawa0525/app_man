@@ -22,7 +22,7 @@ templ List(role middleware.Role, query string, items []repository.Vendor, trunca
 	@layout.Base(layout.BaseProps{
 		Title:     "ベンダー一覧",
 		Role:      role,
-		CSRFToken: middleware.DummyCSRFToken,
+		CSRFToken: middleware.CSRFTokenFrom(ctx),
 	}) {
 		<section class="page-vendors-list">
 			<header class="page-header">

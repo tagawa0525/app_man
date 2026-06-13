@@ -21,7 +21,7 @@ import "net/url"
 // LoginProps は /login GET / POST 失敗時のテンプレに渡す可変部。
 type LoginProps struct {
 	// CSRFToken は <form> の hidden input に埋める値。
-	// 現状は middleware.DummyCSRFToken を渡す前提だが、
+	// 現状は middleware.CSRFTokenFrom(ctx) を渡す前提だが、
 	// 後続 PR (CSRF 強化) で session.CSRFToken に切り替える際にも
 	// テンプレ本体を触らずに済むよう props 経由で受け取る。
 	CSRFToken string

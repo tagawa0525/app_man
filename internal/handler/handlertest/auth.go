@@ -98,12 +98,13 @@ func AuthenticatedRequest(t *testing.T, db *sql.DB, store session.Store,
 	return req
 }
 
-// AuthenticatedPostForm は CSRF token (DummyCSRFToken) を自動付与した
-// application/x-www-form-urlencoded POST リクエストに、AuthenticatedAs で作った
-// session Cookie を付けて返す。values に _csrf が含まれていればそちらを尊重する。
+// AuthenticatedPostForm は AuthenticatedAs で作った session Cookie を付け、
+// その session の CSRFToken を form の _csrf に埋めた POST リクエストを返す。
+// values に _csrf が含まれていればそちらを尊重する (CSRF mismatch の
+// 検証テストでカスタム値を渡す経路)。
 //
-// role="" を渡した場合は CSRF token は付与するが session Cookie は付けない
-// (= 認可で 303 to /login を期待するテスト)。
+// role="" を渡した場合は session を作らず _csrf も埋めない
+// (CSRFMiddleware が 403 を返す経路の検証用)。
 func AuthenticatedPostForm(t *testing.T, db *sql.DB, store session.Store,
 	target string, role middleware.Role, values url.Values,
 ) *http.Request {
@@ -111,11 +112,20 @@ func AuthenticatedPostForm(t *testing.T, db *sql.DB, store session.Store,
 	if values == nil {
 		values = url.Values{}
 	}
-	if values.Get("_csrf") == "" {
-		values.Set("_csrf", middleware.DummyCSRFToken)
+	req := httptest.NewRequest(http.MethodPost, target, nil)
+	if role != "" {
+		cookie := AuthenticatedAs(t, db, store, role)
+		req.AddCookie(cookie)
+		if values.Get("_csrf") == "" {
+			sess, err := store.GetByID(req.Context(), cookie.Value)
+			if err != nil {
+				t.Fatalf("AuthenticatedPostForm: GetByID(%q): %v", cookie.Value, err)
+			}
+			values.Set("_csrf", sess.CSRFToken)
+		}
 	}
-	req := AuthenticatedRequest(t, db, store,
-		http.MethodPost, target, role, strings.NewReader(values.Encode()))
+	req.Body = io.NopCloser(strings.NewReader(values.Encode()))
+	req.ContentLength = int64(len(values.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	return req
 }
