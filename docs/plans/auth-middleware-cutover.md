@@ -36,7 +36,7 @@ DummyAuth → 実 AuthMiddleware 切替と、それに伴う legacy コードの
 
 ### 範囲内 (削除)
 
-- `internal/handler/middleware/auth.go`: `DummyAuthMiddleware` / `RoleCookieName` / `roleFromCookie` / `validRoles` (内部のみ) を削除
+- `internal/handler/middleware/auth.go`: `DummyAuthMiddleware` / `RoleCookieName` / `roleFromCookie` を削除 (`validRoles` は `IsValidRole` と `pickHighestRole` から参照されるため維持)
 - `internal/handler/middleware/auth_test.go`: `TestDummyAuthMiddleware_*` 系テストを削除 (5 件)
 - `internal/handler/web/set_role.go`: ファイル削除
 - `internal/handler/web/set_role_test.go`: ファイル削除
