@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/tagawa0525/app_man/internal/clirun"
+	"github.com/tagawa0525/app_man/internal/db"
 	"github.com/tagawa0525/app_man/internal/repository"
 )
 
@@ -28,6 +30,22 @@ const (
 	defaultRetentionImportLogs        = 1095
 	defaultRetentionNotificationsSent = 365
 )
+
+// runPrune は db.Open + pruneAll の薄い合成。now は cutoff 計算の基準時刻
+// (main が time.Now() を渡す)。テストは in-memory DB を注入できる pruneAll を
+// 直接呼ぶため、この関数はテスト対象にしない。
+func runPrune(ctx context.Context, deps clirun.Deps, now time.Time) error {
+	sqlDB, closeDB, err := db.Open(deps.Cfg.Database)
+	if err != nil {
+		return fmt.Errorf("open db: %w", err)
+	}
+	defer func() {
+		if cerr := closeDB(); cerr != nil {
+			deps.Logger.Error("close db", slog.Any("error", cerr))
+		}
+	}()
+	return pruneAll(ctx, sqlDB, deps.Logger, now, deps.DryRun)
+}
 
 // pruneAll は保持期間を超過したレコードを 4 テーブルから物理削除する本体。
 // runPrune (db.Open との合成) から切り離してあるのは、テストが
