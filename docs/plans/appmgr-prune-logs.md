@@ -104,13 +104,18 @@ DELETE FROM audit_logs WHERE occurred_at < ?;
 -- CountPrunableImportLogs は DELETE と同一条件ではない: 実削除は raw →
 -- import_logs の順で同一実行内に子が先に消えるため、「この実行では消えない子
 -- (= raw の cutoff 以降の子) が残る親のみ除外」して実行後の姿を予告する。
+-- 2 個目の ? には raw 側の cutoff を渡す (生成される Params 構造体の
+-- CreatedAt)。sqlc.arg() での命名は不採用: sqlc v1.31.1 の sqlite パーサは
+-- クエリ直前の非 ASCII コメントでクエリ分割を誤るため、.sql 内の説明
+-- コメントは ASCII 英文に限定し、? プレースホルダで十分と判断
+-- (日本語の設計根拠は本 Plan と runner 側コメントに置く)。
 -- name: CountPrunableImportLogs :one
 SELECT count(*) FROM import_logs
-WHERE imported_at < sqlc.arg(imported_at)
+WHERE imported_at < ?
   AND NOT EXISTS (
     SELECT 1 FROM raw_installations r
     WHERE r.import_log_id = import_logs.id
-      AND r.created_at >= sqlc.arg(created_at)
+      AND r.created_at >= ?
   );
 
 -- name: PruneImportLogs :execrows
