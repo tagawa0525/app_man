@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"time"
 
 	"github.com/tagawa0525/app_man/internal/clirun"
@@ -76,6 +78,11 @@ func runBackup(ctx context.Context, deps clirun.Deps, now time.Time) error {
 		return fmt.Errorf("rename tmp to dest: %w", err)
 	}
 
+	pruned, err := pruneOldBackups(outputDir, deps.Cfg.Backup.Generations)
+	if err != nil {
+		return err
+	}
+
 	fi, err := os.Stat(dest)
 	if err != nil {
 		return fmt.Errorf("stat dest: %w", err)
@@ -83,8 +90,58 @@ func runBackup(ctx context.Context, deps clirun.Deps, now time.Time) error {
 	deps.Logger.Info("backup completed",
 		slog.String("dest", dest),
 		slog.Int64("size_bytes", fi.Size()),
+		slog.Int("pruned_count", pruned),
 	)
 	return nil
+}
+
+// backupNamePattern は完成品バックアップのファイル名。glob (app-*.db) では
+// なく厳格一致にするのは、利用者が置いた無関係ファイル (例 app-old.db) を
+// 世代管理で誤削除しないため。
+var backupNamePattern = regexp.MustCompile(`^app-\d{8}-\d{6}\.db$`)
+
+// pruneOldBackups は dir 内の ^app-\d{8}-\d{6}\.db$ に一致するファイルを
+// 名前昇順 (= 時刻昇順) に並べ、新しい方から generations 個を残して
+// 古いものを削除し、削除数を返す。generations == 0 は no-op。
+func pruneOldBackups(dir string, generations int) (int, error) {
+	names, err := listMatching(dir, backupNamePattern)
+	if err != nil {
+		return 0, err
+	}
+	removed := 0
+	for _, name := range prunePlan(names, generations) {
+		if err := os.Remove(filepath.Join(dir, name)); err != nil {
+			return removed, fmt.Errorf("remove old backup: %w", err)
+		}
+		removed++
+	}
+	return removed, nil
+}
+
+// listMatching は dir 直下で pattern に一致する通常ファイル名を昇順で返す。
+func listMatching(dir string, pattern *regexp.Regexp) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("read output dir: %w", err)
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() || !pattern.MatchString(e.Name()) {
+			continue
+		}
+		names = append(names, e.Name())
+	}
+	slices.Sort(names)
+	return names, nil
+}
+
+// prunePlan は昇順の names のうち、新しい方から generations 個を残した
+// 削除対象 (古い方) を返す。generations == 0 は無制限保持で対象なし。
+func prunePlan(names []string, generations int) []string {
+	if generations == 0 || len(names) <= generations {
+		return nil
+	}
+	return names[:len(names)-generations]
 }
 
 // syncFile は path を開いて fsync し、閉じる。VACUUM INTO の出力を
