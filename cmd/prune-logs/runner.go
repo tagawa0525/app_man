@@ -120,8 +120,13 @@ func pruneAll(ctx context.Context, sqlDB *sql.DB, logger *slog.Logger, now time.
 	return nil
 }
 
-// dryRunPrune は DELETE と同一条件の COUNT でテーブルごとの対象件数のみ
-// ログに出す (受け入れ基準 17「対象件数のみ確認できる」)。1 行も削除しない。
+// dryRunPrune は COUNT でテーブルごとの対象件数のみログに出す
+// (受け入れ基準 17「対象件数のみ確認できる」)。1 行も削除しない。
+//
+// import_logs の COUNT だけは DELETE と同一条件ではない: 実削除は raw →
+// import_logs の順で同一実行内に子が先に消えるため、「この実行では消えない子
+// (= cutoffRaw 以降の raw) が残る親のみ除外」して実行後の姿を予告する
+// (backup の dry-run と同じ思想)。
 func dryRunPrune(ctx context.Context, q *repository.Queries, logger *slog.Logger,
 	cutoffAudit, cutoffRaw, cutoffImport, cutoffNotif time.Time) error {
 	wouldAudit, err := q.CountPrunableAuditLogs(ctx, cutoffAudit)
@@ -132,7 +137,10 @@ func dryRunPrune(ctx context.Context, q *repository.Queries, logger *slog.Logger
 	if err != nil {
 		return fmt.Errorf("count raw_installations: %w", err)
 	}
-	wouldImport, err := q.CountPrunableImportLogs(ctx, cutoffImport)
+	wouldImport, err := q.CountPrunableImportLogs(ctx, repository.CountPrunableImportLogsParams{
+		ImportedAt: cutoffImport,
+		CreatedAt:  cutoffRaw,
+	})
 	if err != nil {
 		return fmt.Errorf("count import_logs: %w", err)
 	}
