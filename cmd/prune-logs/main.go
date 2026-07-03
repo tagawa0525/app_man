@@ -1,10 +1,12 @@
-// appmgr-prune-logs: 保持期間超過レコード（audit_logs / raw_installations 等）を
-// 物理削除する。実処理はフェーズ 1 PR3 では未実装。clirun に共通起動を委譲する骨格のみ。
+// appmgr-prune-logs: app_settings の保持期間キー (仕様書 §5.11) に従い、
+// 保持期間を超過した audit_logs / raw_installations / import_logs /
+// notifications (送信済みのみ) を物理削除する。--dry-run で対象件数のみ
+// 確認できる。フラグパース・config・logger・lock の共通起動は clirun に委譲する。
 package main
 
 import (
 	"context"
-	"log/slog"
+	"time"
 
 	"github.com/tagawa0525/app_man/internal/clirun"
 	"github.com/tagawa0525/app_man/internal/lockfile"
@@ -13,9 +15,7 @@ import (
 const binaryName = "appmgr-prune-logs"
 
 func main() {
-	clirun.Run(binaryName, lockfile.ModeShared, func(_ context.Context, deps clirun.Deps) error {
-		deps.Logger.Info("not implemented (skeleton only)",
-			slog.Bool("dry_run", deps.DryRun))
-		return nil
+	clirun.Run(binaryName, lockfile.ModeShared, func(ctx context.Context, deps clirun.Deps) error {
+		return runPrune(ctx, deps, time.Now())
 	})
 }
