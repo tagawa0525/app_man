@@ -14,6 +14,7 @@ type Config struct {
 	Locks    LocksConfig    `yaml:"locks"`
 	Logging  LoggingConfig  `yaml:"logging"`
 	Auth     AuthConfig     `yaml:"auth"`
+	Backup   BackupConfig   `yaml:"backup"`
 }
 
 type ServerConfig struct {
@@ -33,6 +34,12 @@ type AuthConfig struct {
 	// 仕様書 §7.3 のサンプル値は 8。未指定 (= 0) なら 8 にフォールバック、
 	// 負値はエラー。
 	SessionMaxAgeHours int `yaml:"session_max_age_hours"`
+}
+
+// BackupConfig は appmgr-backup の設定。
+type BackupConfig struct {
+	OutputDir   string `yaml:"output_dir"`  // VACUUM INTO の出力先。appmgr-backup 実行時に必須
+	Generations int    `yaml:"generations"` // 保持世代数。0 = 無制限、負値はエラー
 }
 
 type DatabaseConfig struct {
@@ -95,6 +102,9 @@ func (c *Config) validate() error {
 	}
 	if c.Auth.SessionMaxAgeHours == 0 {
 		c.Auth.SessionMaxAgeHours = 8
+	}
+	if c.Backup.Generations < 0 {
+		return fmt.Errorf("backup.generations must be >= 0 (0 means keep all)")
 	}
 	return nil
 }

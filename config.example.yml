@@ -24,3 +24,7 @@ logging:
 
 auth:
   session_max_age_hours: 8    # セッション Cookie / DB の有効期間 (時間)
+
+backup:
+  output_dir: ./data/backups  # VACUUM INTO の出力先。appmgr-backup 実行時に必須
+  generations: 14             # 保持世代数。0 = 無制限保持、負値はエラー
