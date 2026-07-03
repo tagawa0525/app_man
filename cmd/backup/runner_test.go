@@ -213,3 +213,130 @@ func TestRunBackup_PruneIgnoresUnrelatedFiles(t *testing.T) {
 	assertFileExists(t, filepath.Join(outputDir, "app-old.db"), true)
 	assertFileExists(t, filepath.Join(outputDir, "notes.txt"), true)
 }
+
+// TestRunBackup_DryRunTouchesNothing は dry-run でファイルの作成・削除が
+// 一切起きないことを確認する。残骸 tmp・世代管理の削除候補を事前に
+// 置いておき、実行後もディレクトリの中身が変わらないこと。
+func TestRunBackup_DryRunTouchesNothing(t *testing.T) {
+	t.Parallel()
+
+	srcPath := newSourceDB(t, 1)
+	outputDir := t.TempDir()
+	// 残骸 tmp (実実行なら掃除される) と古いバックアップ 2 個
+	// (Generations=1 の実実行なら少なくとも 1 個削除される) を seed。
+	seeded := []string{
+		"app-20200101-000000.db.tmp",
+		"app-20200101-000000.db",
+		"app-20200102-000000.db",
+	}
+	for _, name := range seeded {
+		if err := os.WriteFile(filepath.Join(outputDir, name), []byte("x"), 0o644); err != nil {
+			t.Fatalf("seed %s: %v", name, err)
+		}
+	}
+
+	deps := newDeps(srcPath, outputDir, 1)
+	deps.DryRun = true
+	now := time.Date(2026, 7, 3, 15, 4, 5, 0, time.UTC)
+
+	if err := runBackup(context.Background(), deps, now); err != nil {
+		t.Fatalf("runBackup dry-run: %v", err)
+	}
+
+	// 新規バックアップは作られない。
+	assertFileExists(t, filepath.Join(outputDir, "app-20260703-150405.db"), false)
+	// seed したファイルはすべて無傷。
+	got := listNames(t, outputDir)
+	if len(got) != len(seeded) {
+		t.Errorf("dry-run must not touch files: want %v, got %v", seeded, got)
+	}
+}
+
+// TestRunBackup_OutputDirRequired は backup.output_dir 未指定でエラーに
+// なることを確認する (config.validate ではなくバイナリ固有の前提条件)。
+func TestRunBackup_OutputDirRequired(t *testing.T) {
+	t.Parallel()
+
+	srcPath := newSourceDB(t, 1)
+	deps := newDeps(srcPath, "", 0)
+
+	err := runBackup(context.Background(), deps, time.Date(2026, 7, 3, 15, 4, 5, 0, time.UTC))
+	if err == nil {
+		t.Fatal("runBackup with empty OutputDir: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "backup.output_dir is required") {
+		t.Errorf("error should mention backup.output_dir is required, got: %v", err)
+	}
+}
+
+// TestRunBackup_MissingSourceDB は database.path が存在しない場合に
+// エラーになり、SQLite の「open 時に空 DB を自動生成」で偽の成功に
+// ならないことを確認する。
+func TestRunBackup_MissingSourceDB(t *testing.T) {
+	t.Parallel()
+
+	missing := filepath.Join(t.TempDir(), "nosuch.db")
+	outputDir := t.TempDir()
+	deps := newDeps(missing, outputDir, 0)
+
+	err := runBackup(context.Background(), deps, time.Date(2026, 7, 3, 15, 4, 5, 0, time.UTC))
+	if err == nil {
+		t.Fatal("runBackup with missing source db: want error, got nil")
+	}
+	// 空 DB が作られていないこと。
+	assertFileExists(t, missing, false)
+	// バックアップも作られていないこと。
+	if names := listNames(t, outputDir); len(names) != 0 {
+		t.Errorf("output dir should stay empty, got %v", names)
+	}
+}
+
+// TestRunBackup_RemovesStaleTmp は前回中断の残骸 app-*.db.tmp (厳格
+// パターン一致) が実行冒頭で削除され、パターン不一致の .tmp は温存される
+// ことを確認する。
+func TestRunBackup_RemovesStaleTmp(t *testing.T) {
+	t.Parallel()
+
+	srcPath := newSourceDB(t, 1)
+	outputDir := t.TempDir()
+	stale := filepath.Join(outputDir, "app-20200101-000000.db.tmp")
+	unrelated := filepath.Join(outputDir, "app-old.db.tmp")
+	for _, path := range []string{stale, unrelated} {
+		if err := os.WriteFile(path, []byte("partial"), 0o644); err != nil {
+			t.Fatalf("seed %s: %v", path, err)
+		}
+	}
+	deps := newDeps(srcPath, outputDir, 0)
+	now := time.Date(2026, 7, 3, 15, 4, 5, 0, time.UTC)
+
+	if err := runBackup(context.Background(), deps, now); err != nil {
+		t.Fatalf("runBackup: %v", err)
+	}
+
+	assertFileExists(t, stale, false)
+	assertFileExists(t, unrelated, true)
+	assertFileExists(t, filepath.Join(outputDir, "app-20260703-150405.db"), true)
+}
+
+// TestRunBackup_VacuumFailureLeavesNoTmp は VACUUM INTO が失敗した場合
+// (cancel 済み context で誘発) に error を返し、.tmp もバックアップも
+// 残らないことを確認する。
+func TestRunBackup_VacuumFailureLeavesNoTmp(t *testing.T) {
+	t.Parallel()
+
+	srcPath := newSourceDB(t, 1)
+	outputDir := t.TempDir()
+	deps := newDeps(srcPath, outputDir, 0)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := runBackup(ctx, deps, time.Date(2026, 7, 3, 15, 4, 5, 0, time.UTC))
+	if err == nil {
+		t.Fatal("runBackup with canceled context: want error, got nil")
+	}
+	assertNoTmpFiles(t, outputDir)
+	if names := listNames(t, outputDir); len(names) != 0 {
+		t.Errorf("output dir should stay empty after failure, got %v", names)
+	}
+}
