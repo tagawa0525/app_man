@@ -53,7 +53,7 @@ Plan 初版で最大リスクとしていた「modernc.org/sqlite の `VACUUM IN
 | OutputDir 未設定 | `runBackup` 冒頭で error (exit 1) | config.validate で必須化すると backup 設定を持たない server 等が起動不能になるため、バイナリ固有の前提条件として handler 内で検査。「config 不正なのに exit 3 でなく 1」の非対称は clirun の handler が exit code を選べない制約による割り切り (clirun 改修はこの PR ではしない) |
 | dry-run | `deps.DryRun` が true なら tmp 掃除・VACUUM INTO・削除を一切せず「出力予定パス + 削除予定ファイル (新ファイルが出来たと仮定して算出)」をログに出すのみ | clirun 共通フラグ。破壊的操作の事前確認。削除予定は実行後の姿を予告する方が有用 |
 | 添付スナップショット | コードでは行わない。`README.md` に手順を記載 | 仕様書「手順を README に明記」。添付ファイルのコピーはバイナリの責務外 |
-| ディレクトリ作成 | `output_dir` が無ければ `os.MkdirAll(0o755)` で作成 | 初回実行で出力先が無いのは正常系 |
+| ディレクトリ作成 | `output_dir` が無ければ `os.MkdirAll(OutputDir, 0o755)` で作成 | 初回実行で出力先が無いのは正常系 |
 | ログ | 成功: `info "backup completed" dest size_bytes pruned_count`、dry-run: `info "backup dry-run" dest would_prune`。失敗は error | 監査・運用可視性。DB の中身 (レコード値) は出さない |
 | exit code | clirun 既定 (0 OK / 1 handler error / 2 lock 競合 / 3 config 不正) | 既存規約 |
 
