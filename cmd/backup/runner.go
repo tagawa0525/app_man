@@ -24,6 +24,14 @@ import (
 // 残ると次回実行が恒久ブロックされるのを防ぎ、「app-*.db は常に完成品」
 // を保証するため。
 func runBackup(ctx context.Context, deps clirun.Deps, now time.Time) error {
+	// OutputDir の必須チェックは config.validate ではなくここで行う。
+	// validate で必須化すると backup 設定を持たない server 等が起動不能に
+	// なるため、バイナリ固有の前提条件として検査する。
+	outputDir := deps.Cfg.Backup.OutputDir
+	if outputDir == "" {
+		return errors.New("backup.output_dir is required")
+	}
+
 	// SQLite は open 時に空 DB を自動生成するため、db.Open の前にソース DB の
 	// 存在を確認する。database.path の設定ミスのまま「空 DB のバックアップに
 	// 成功」する事故を防ぐ。
@@ -31,7 +39,6 @@ func runBackup(ctx context.Context, deps clirun.Deps, now time.Time) error {
 		return fmt.Errorf("source database: %w", err)
 	}
 
-	outputDir := deps.Cfg.Backup.OutputDir
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return fmt.Errorf("create output dir: %w", err)
 	}
@@ -39,6 +46,18 @@ func runBackup(ctx context.Context, deps clirun.Deps, now time.Time) error {
 	// タイムスタンプはローカル時刻 (JST)。辞書順 = 時刻順になる形式。
 	dest := filepath.Join(outputDir, "app-"+now.Format("20060102-150405")+".db")
 	tmp := dest + ".tmp"
+
+	// dry-run: tmp 掃除・VACUUM INTO・世代管理の削除を一切行わず、
+	// 実行した場合の出力先と削除予定 (dest が出来たと仮定) をログに出す。
+	if deps.DryRun {
+		return dryRunBackup(deps, outputDir, dest)
+	}
+
+	// 前回中断の残骸 tmp を掃除する。ModeGlobal lock 下なので並走
+	// プロセスの tmp を消す危険は無い。
+	if err := removeStaleTmp(outputDir); err != nil {
+		return err
+	}
 
 	sqlDB, closeDB, err := db.Open(deps.Cfg.Database)
 	if err != nil {
@@ -97,8 +116,49 @@ func runBackup(ctx context.Context, deps clirun.Deps, now time.Time) error {
 
 // backupNamePattern は完成品バックアップのファイル名。glob (app-*.db) では
 // なく厳格一致にするのは、利用者が置いた無関係ファイル (例 app-old.db) を
-// 世代管理で誤削除しないため。
-var backupNamePattern = regexp.MustCompile(`^app-\d{8}-\d{6}\.db$`)
+// 世代管理で誤削除しないため。staleTmpPattern はその書きかけ (前回中断の
+// 残骸) で、同じ理由で厳格一致にする。
+var (
+	backupNamePattern = regexp.MustCompile(`^app-\d{8}-\d{6}\.db$`)
+	staleTmpPattern   = regexp.MustCompile(`^app-\d{8}-\d{6}\.db\.tmp$`)
+)
+
+// dryRunBackup は破壊的操作を行わず、出力予定の dest と、dest が出来たと
+// 仮定した場合の世代管理の削除予定をログに出す。実行後の姿を予告する方が
+// 事前確認として有用なため、既存分だけでなく dest を含めて算出する。
+func dryRunBackup(deps clirun.Deps, outputDir, dest string) error {
+	names, err := listMatching(outputDir, backupNamePattern)
+	if err != nil {
+		return err
+	}
+	base := filepath.Base(dest)
+	if !slices.Contains(names, base) {
+		names = append(names, base)
+		slices.Sort(names)
+	}
+	wouldPrune := prunePlan(names, deps.Cfg.Backup.Generations)
+	deps.Logger.Info("backup dry-run",
+		slog.String("dest", dest),
+		slog.Any("would_prune", wouldPrune),
+	)
+	return nil
+}
+
+// removeStaleTmp は dir 内の前回中断が残した app-*.db.tmp (厳格パターン
+// 一致) を削除する。dest 名の部分ファイルは次回の VACUUM INTO を恒久
+// ブロックするため、実行冒頭で必ず掃除する。
+func removeStaleTmp(dir string) error {
+	names, err := listMatching(dir, staleTmpPattern)
+	if err != nil {
+		return err
+	}
+	for _, name := range names {
+		if err := os.Remove(filepath.Join(dir, name)); err != nil {
+			return fmt.Errorf("remove stale tmp: %w", err)
+		}
+	}
+	return nil
+}
 
 // pruneOldBackups は dir 内の ^app-\d{8}-\d{6}\.db$ に一致するファイルを
 // 名前昇順 (= 時刻昇順) に並べ、新しい方から generations 個を残して
