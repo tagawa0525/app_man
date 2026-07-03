@@ -286,6 +286,113 @@ auth:
 	}
 }
 
+func TestLoad_backup_explicit(t *testing.T) {
+	yamlBody := `server:
+  listen: 0.0.0.0:8180
+  base_url: http://localhost:8180
+
+database:
+  path: ./data/app.db
+  wal: true
+
+locks:
+  base_dir: ./data/locks
+
+logging:
+  level: info
+  base_dir: ./logs
+  format: json
+
+backup:
+  output_dir: ./data/backups
+  generations: 14
+`
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(path, []byte(yamlBody), 0o644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	got, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+	if got.Backup.OutputDir != "./data/backups" {
+		t.Errorf("Backup.OutputDir = %q, want %q (from YAML)", got.Backup.OutputDir, "./data/backups")
+	}
+	if got.Backup.Generations != 14 {
+		t.Errorf("Backup.Generations = %d, want 14 (from YAML)", got.Backup.Generations)
+	}
+}
+
+func TestLoad_backup_unspecifiedDefaultsToZero(t *testing.T) {
+	yamlBody := `server:
+  listen: 0.0.0.0:8180
+  base_url: http://localhost:8180
+
+database:
+  path: ./data/app.db
+  wal: true
+
+locks:
+  base_dir: ./data/locks
+
+logging:
+  level: info
+  base_dir: ./logs
+  format: json
+`
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(path, []byte(yamlBody), 0o644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	got, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+	if got.Backup != (config.BackupConfig{}) {
+		t.Errorf("Backup = %+v, want zero value (backup section unspecified)", got.Backup)
+	}
+}
+
+func TestLoad_backup_negativeGenerationsRejected(t *testing.T) {
+	yamlBody := `server:
+  listen: 0.0.0.0:8180
+  base_url: http://localhost:8180
+
+database:
+  path: ./data/app.db
+  wal: true
+
+locks:
+  base_dir: ./data/locks
+
+logging:
+  level: info
+  base_dir: ./logs
+  format: json
+
+backup:
+  output_dir: ./data/backups
+  generations: -1
+`
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(path, []byte(yamlBody), 0o644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	_, err := config.Load(path)
+	if err == nil {
+		t.Fatal("Load() expected error for negative backup.generations, got nil")
+	}
+}
+
 func TestLoad_authSessionMaxAge_negativeRejected(t *testing.T) {
 	yamlBody := `server:
   listen: 0.0.0.0:8180
