@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -302,4 +304,66 @@ func TestPruneAll_DryRun(t *testing.T) {
 		t.Fatalf("pruneAll dry-run: %v", err)
 	}
 	assertRowCounts(t, sqlDB, 1, 1, 2, 1)
+}
+
+// TestPruneAll_DryRunImportLogsIncludesSameRunRawDeletion は dry-run の
+// would_delete_import_logs が「実行後の姿」を予告することを確認する。
+//
+// 実削除は raw_installations → import_logs の順で同一実行内に子が先に
+// 消えるため、子が超過 raw のみの超過親は実際には削除される。dry-run が
+// 「現時点で子が残っている親」を除外して数えると、このケース (溜まった
+// データを最初に prune する初回運用時に典型) を過少報告してしまう。
+func TestPruneAll_DryRunImportLogsIncludesSameRunRawDeletion(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := handlertest.NewTestDB(t)
+	ctx := context.Background()
+
+	// 超過親 A: 子は超過 raw のみ → 同一実行で子 → 親の順に両方消えるので
+	// dry-run は 1 件と予告すべき。
+	prunedParent := seedImportLog(t, sqlDB, "-2000 days")
+	seedRawInstallation(t, sqlDB, prunedParent, "-400 days")
+	// 超過親 B: 期間内の子が残る → 実削除でも消えないので数えない。
+	keptParent := seedImportLog(t, sqlDB, "-2000 days")
+	seedRawInstallation(t, sqlDB, keptParent, "-10 days")
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	if err := pruneAll(ctx, sqlDB, logger, time.Now(), true); err != nil {
+		t.Fatalf("pruneAll dry-run: %v", err)
+	}
+
+	var entry struct {
+		WouldDeleteImportLogs *int64 `json:"would_delete_import_logs"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &entry); err != nil {
+		t.Fatalf("parse dry-run log %q: %v", buf.String(), err)
+	}
+	if entry.WouldDeleteImportLogs == nil {
+		t.Fatalf("would_delete_import_logs attr missing in log: %s", buf.String())
+	}
+	if *entry.WouldDeleteImportLogs != 1 {
+		t.Errorf("would_delete_import_logs: want 1 (parent whose only child is expired raw), got %d",
+			*entry.WouldDeleteImportLogs)
+	}
+
+	// dry-run なので 1 行も削除されない。
+	if got := countWhere(t, sqlDB, "import_logs", "1=1"); got != 2 {
+		t.Errorf("dry-run must not delete import_logs: want 2 rows, got %d", got)
+	}
+	if got := countWhere(t, sqlDB, "raw_installations", "1=1"); got != 2 {
+		t.Errorf("dry-run must not delete raw_installations: want 2 rows, got %d", got)
+	}
+
+	// 予告 = 実行後の姿: 同じ DB を実削除すると import_logs はちょうど
+	// 1 件 (親 A) 消え、親 B は残る。
+	if err := pruneAll(ctx, sqlDB, slog.New(slog.DiscardHandler), time.Now(), false); err != nil {
+		t.Fatalf("pruneAll: %v", err)
+	}
+	if got := countWhere(t, sqlDB, "import_logs", fmt.Sprintf("id = %d", keptParent)); got != 1 {
+		t.Error("import_log with live raw child must survive the real run")
+	}
+	if got := countWhere(t, sqlDB, "import_logs", "1=1"); got != 1 {
+		t.Errorf("real run should delete exactly the predicted 1 import_log: want 1 row left, got %d", got)
+	}
 }
