@@ -58,7 +58,7 @@ cutoff は `now.UTC().AddDate(0, 0, -days)` で計算する (§8.6: 保存は UT
 | import_logs の FK 保護 | `DELETE ... WHERE imported_at < ? AND NOT EXISTS (SELECT 1 FROM raw_installations WHERE import_log_id = import_logs.id)` | `raw_installations.import_log_id` が FK 参照 (foreign_keys=1)。既定値では raw (365 日) が先に消えるので通常は影響しないが、管理者が import_logs の保持を raw より短く設定したときに FK 違反で全体失敗せず、子が残る親はスキップする構造的解決 |
 | 削除順序 | raw_installations → import_logs → audit_logs → notifications | FK の子から先に削除。後 2 者は独立 |
 | トランザクション | 使わない (テーブルごとに独立した DELETE) | 日次で再実行される冪等な処理。途中失敗で一部だけ消えても次回実行で収束する。巨大 tx の保持時間を避ける |
-| dry-run | DELETE と同一条件の SELECT COUNT でテーブルごとの対象件数をログに出すのみ | 受け入れ基準 17「対象件数のみ確認できる」 |
+| dry-run | テーブルごとの対象件数を SELECT COUNT でログに出すのみ。import_logs の COUNT だけは DELETE と同一条件ではなく「同一実行で消えない子 (= raw の保持期間内の子) が残る親のみ除外」する | 受け入れ基準 17「対象件数のみ確認できる」。実削除は raw → import_logs の順で子が先に消えるため、「現時点で子が残る親」を除外する COUNT では超過 raw だけを子に持つ超過親が過少報告される (実バイナリ検証で発見。下記「解消済みリスク」)。backup PR の dry-run と同じ「実行後の姿を予告する」思想に揃える |
 | クエリ | sqlc (`db/queries/app_settings.sql` + `db/queries/prune.sql`)。生成物はコミット | ORM 禁止 / sqlc 直書きの規約。`make generate` 後にコミット |
 | ログ | 成功: `info "prune completed"` に各テーブルの deleted_count と total。dry-run: `info "prune dry-run"` に would_delete。レコードの中身は出さない | 監査・運用可視性。§8.5 |
 | config.yml | 変更なし | 保持期間は app_settings 持ちのため。backup PR と異なり config 拡張は無い |
@@ -101,10 +101,17 @@ SELECT count(*) FROM audit_logs WHERE occurred_at < ?;
 -- name: PruneAuditLogs :execrows
 DELETE FROM audit_logs WHERE occurred_at < ?;
 
+-- CountPrunableImportLogs は DELETE と同一条件ではない: 実削除は raw →
+-- import_logs の順で同一実行内に子が先に消えるため、「この実行では消えない子
+-- (= raw の cutoff 以降の子) が残る親のみ除外」して実行後の姿を予告する。
 -- name: CountPrunableImportLogs :one
 SELECT count(*) FROM import_logs
-WHERE imported_at < ?
-  AND NOT EXISTS (SELECT 1 FROM raw_installations r WHERE r.import_log_id = import_logs.id);
+WHERE imported_at < sqlc.arg(imported_at)
+  AND NOT EXISTS (
+    SELECT 1 FROM raw_installations r
+    WHERE r.import_log_id = import_logs.id
+      AND r.created_at >= sqlc.arg(created_at)
+  );
 
 -- name: PruneImportLogs :execrows
 DELETE FROM import_logs
@@ -200,3 +207,16 @@ GREEN コミットごとに `make test` / `make lint` 緑を確認する
   (アプリログで足りる) により発生しない
 - **時計ずれ**: cutoff はアプリサーバの時計基準。DB の CURRENT_TIMESTAMP
   も同一ホストなので実運用上の乖離は無視できる
+
+## 解消済みリスク (記録)
+
+- ~~dry-run の COUNT は 4 テーブルとも DELETE と同一条件で正確~~ → 誤り。
+  実削除は raw_installations → import_logs の順で同一実行内に子が先に
+  消えるため、「現時点で子が残っている親」を除外する COUNT は
+  `would_delete_import_logs` を過少報告する (保持期間超過の import_logs の
+  子が超過 raw のみのとき、dry-run は 0 件と報告するが実削除では 1 件消える。
+  溜まったデータを最初に prune する初回運用時に典型的に起きる)。
+  2026-07-03 の実バイナリ end-to-end 検証で発見。`CountPrunableImportLogs` に
+  raw の cutoff を第 2 引数として追加し、「同一実行で削除されない子 (= raw の
+  保持期間内の子) が残る親のみ除外」に変更して解消。`PruneImportLogs`
+  (実削除) は削除順序が正しさを保証するため変更しない
