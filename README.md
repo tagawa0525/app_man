@@ -151,6 +151,26 @@ cp -r ./data/files/licenses "./data/backups/licenses-$(date +%Y%m%d-%H%M%S)"
 
 FS が正本・DB は検索インデックスという設計のため、DB と `licenses/` のスナップショット時刻が完全に一致していなくてもデータは失われない。ズレがある場合は FS 側の実体を優先し、整合性チェックの警告（ブロックはしない）に従って DB 側を修正する。
 
+## 保持期間管理（prune-logs）
+
+`appmgr-prune-logs` が保持期間を超過した古いレコード（`audit_logs` / `raw_installations` / `import_logs` / 送信済み `notifications`）を物理削除する。バックアップと同様、日次または週次でタスクスケジューラから実行する想定（登録手順は「バックアップ」節を参照。exit code の意味も同じ）。
+
+```sh
+appmgr-prune-logs -config config.yml            # 削除実行
+appmgr-prune-logs -config config.yml -dry-run   # 対象件数をログに出すのみ（削除しない）
+```
+
+保持期間は `app_settings` テーブルの以下のキーで指定する。キーが無ければ既定値で動くため、初期状態では設定不要。
+
+| キー | 対象テーブル | 既定値（日） |
+| ---- | ---- | ---- |
+| `retention_days_audit_logs` | `audit_logs` | 1825 |
+| `retention_days_raw_installations` | `raw_installations` | 365 |
+| `retention_days_import_logs` | `import_logs` | 1095 |
+| `retention_days_notifications_sent` | `notifications`（送信済みのみ） | 365 |
+
+値が不正（非整数・0 以下）な場合は exit 1 で全体を中断し、どのテーブルも削除しない（保持期間の解釈ミスによる大量削除の防止）。なお `import_logs` は `raw_installations` から参照されている行を削除対象から除外するため、`import_logs` の保持期間を `raw_installations` より短く設定しても FK 違反で失敗しない。
+
 ## 開発ルール
 
 - main ブランチへの直接コミットは禁止。必ず feature ブランチを切って PR を出す
