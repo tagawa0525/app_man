@@ -164,6 +164,12 @@ func (h *approvalHandlers) loadDeptProduct(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return dept, product, false
 	}
+	// 一覧は現役部署のみ選択可のため、直接 URL でも廃止部署は 404 に
+	// 揃える (廃止部署への承認登録・取消を許さない)。
+	if dept.ValidTo != nil {
+		http.NotFound(w, r)
+		return dept, product, false
+	}
 	product, err = q.GetProduct(r.Context(), productID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
