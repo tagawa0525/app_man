@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -606,4 +607,30 @@ func TestGlobalApprovals_Update_UnknownProduct_404(t *testing.T) {
 	r.ServeHTTP(rec, req)
 
 	handlertest.AssertStatus(t, rec, http.StatusNotFound)
+}
+
+// TestApprovals_RetiredDepartment_404 は廃止済み部署 (valid_to NOT NULL) への
+// 直接 URL アクセスで承認の閲覧・登録・取消ができないことを確認する
+// (一覧の「現役部署のみ選択可」を直接 URL でも貫く)。
+func TestApprovals_RetiredDepartment_404(t *testing.T) {
+	t.Parallel()
+	r, db, store, q := newWebRouter(t)
+	dept := seedApprovalDept(t, q)
+	vendor := seedApprovalVendor(t, q)
+	product := seedApprovalProduct(t, q, vendor.ID, "RetiredDeptApp", "department_discretion")
+	if _, err := db.Exec(`UPDATE departments SET valid_to = date('now') WHERE id = ?`, dept.ID); err != nil {
+		t.Fatalf("retire department: %v", err)
+	}
+
+	target := fmt.Sprintf("/approvals/%d/%d", dept.ID, product.ID)
+	getReq := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, target, middleware.RoleDepartmentSecurityAdmin, nil)
+	getRec := httptest.NewRecorder()
+	r.ServeHTTP(getRec, getReq)
+	handlertest.AssertStatus(t, getRec, http.StatusNotFound)
+
+	form := url.Values{"status": {"approved"}}
+	postReq := handlertest.AuthenticatedPostForm(t, db, store, target, middleware.RoleDepartmentSecurityAdmin, form)
+	postRec := httptest.NewRecorder()
+	r.ServeHTTP(postRec, postReq)
+	handlertest.AssertStatus(t, postRec, http.StatusNotFound)
 }
