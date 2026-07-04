@@ -140,3 +140,26 @@ func (q *Queries) ListLicenseDocumentsByLicense(ctx context.Context, licenseID i
 	}
 	return items, nil
 }
+
+const updateLicenseDocumentStoredPath = `-- name: UpdateLicenseDocumentStoredPath :execrows
+UPDATE license_documents
+SET stored_path = ?
+WHERE id = ?
+`
+
+type UpdateLicenseDocumentStoredPathParams struct {
+	StoredPath string
+	ID         int64
+}
+
+// UpdateLicenseDocumentStoredPath rewrites the stored_path of one document.
+// Used when a license fs_dir_path changes (directory rename on slug change):
+// the web layer re-prefixes each matching path so the DB keeps pointing at
+// the moved files.
+func (q *Queries) UpdateLicenseDocumentStoredPath(ctx context.Context, arg UpdateLicenseDocumentStoredPathParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateLicenseDocumentStoredPath, arg.StoredPath, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}

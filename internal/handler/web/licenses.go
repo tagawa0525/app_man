@@ -443,6 +443,14 @@ func (h *licenseHandlers) update(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		// 移動した証書を指す stored_path (base 相対) も新しい接頭辞に
+		// 付け替える。旧接頭辞に一致しない行 (手動修正済み等) は触らない。
+		if err := h.reprefixDocumentPaths(r.Context(), q, id, existing.FsDirPath, fsDir); err != nil {
+			h.logger.ErrorContext(r.Context(), "reprefix document stored_path", "err", err,
+				"from", existing.FsDirPath, "to", fsDir)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	affected, err := q.UpdateLicense(r.Context(), repository.UpdateLicenseParams{
