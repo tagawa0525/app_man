@@ -71,7 +71,7 @@ WHERE id = ? AND license_id = ? AND revoked_at IS NULL;
 -- CountActiveUserAssignment is the application-level duplicate check
 -- run before INSERT; the partial unique indexes
 -- uniq_user_assignments_active / uniq_device_assignments_active
--- (migration 000006) are the backstop.
+-- are the backstop.
 -- name: CountActiveUserAssignment :one
 SELECT count(*) FROM user_assignments
 WHERE license_id = ? AND user_id = ? AND revoked_at IS NULL;
@@ -92,7 +92,7 @@ WHERE license_id = ? AND revoked_at IS NULL;
 
 -- GetLicenseUsageByProduct returns the per-product usage summary
 -- (owned versus installed versus assigned) from the v_license_usage
--- view defined in migration 000006.
+-- v_license_usage view.
 -- name: GetLicenseUsageByProduct :one
 SELECT * FROM v_license_usage
 WHERE product_id = ?

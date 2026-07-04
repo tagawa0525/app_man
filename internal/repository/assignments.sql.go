@@ -52,7 +52,7 @@ type CountActiveUserAssignmentParams struct {
 // CountActiveUserAssignment is the application-level duplicate check
 // run before INSERT; the partial unique indexes
 // uniq_user_assignments_active / uniq_device_assignments_active
-// (migration 000006) are the backstop.
+// are the backstop.
 func (q *Queries) CountActiveUserAssignment(ctx context.Context, arg CountActiveUserAssignmentParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countActiveUserAssignment, arg.LicenseID, arg.UserID)
 	var count int64
@@ -154,7 +154,7 @@ LIMIT 1
 
 // GetLicenseUsageByProduct returns the per-product usage summary
 // (owned versus installed versus assigned) from the v_license_usage
-// view defined in migration 000006.
+// v_license_usage view.
 func (q *Queries) GetLicenseUsageByProduct(ctx context.Context, productID int64) (VLicenseUsage, error) {
 	row := q.db.QueryRowContext(ctx, getLicenseUsageByProduct, productID)
 	var i VLicenseUsage

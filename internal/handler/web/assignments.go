@@ -16,8 +16,8 @@ import (
 //
 // - 追加: 対象の実在チェック (在職ユーザ / 現役端末のみ) → アクティブ重複
 //   チェック (409) → INSERT。事前チェック後のレースは部分 UNIQUE インデックス
-//   uniq_user_assignments_active / uniq_device_assignments_active
-//   (migration 000006) の違反として現れるので 409 に変換する
+//   uniq_user_assignments_active / uniq_device_assignments_active の
+//   違反として現れるので 409 に変換する
 // - 解除: revoked_at を埋める論理解除 (:execrows)。0 行なら 404
 //   (既に解除済み / 他ライセンスの割当 ID)。二重 POST に安全
 // - エラー表示: products のエイリアス重複と同じ流儀で、詳細画面を flash
@@ -79,8 +79,8 @@ func (h *licenseHandlers) assignUser(w http.ResponseWriter, r *http.Request) {
 		Note:              nilIfEmpty(strings.TrimSpace(r.PostFormValue("note"))),
 	}); err != nil {
 		if isUniqueConstraintErr(err) {
-			// 事前チェック後のレース (並行 POST) は uniq_user_assignments_active
-			// (000006) の UNIQUE 違反で現れる。
+			// 事前チェック後のレース (並行 POST) は uniq_user_assignments_active の
+			// UNIQUE 違反で現れる。
 			h.renderShow(w, r, id, http.StatusConflict, "このユーザには既に割当済みです。")
 			return
 		}
@@ -176,8 +176,8 @@ func (h *licenseHandlers) assignDevice(w http.ResponseWriter, r *http.Request) {
 		Note:      nilIfEmpty(strings.TrimSpace(r.PostFormValue("note"))),
 	}); err != nil {
 		if isUniqueConstraintErr(err) {
-			// 事前チェック後のレース (並行 POST) は uniq_device_assignments_active
-			// (000006) の UNIQUE 違反で現れる。
+			// 事前チェック後のレース (並行 POST) は uniq_device_assignments_active の
+			// UNIQUE 違反で現れる。
 			h.renderShow(w, r, id, http.StatusConflict, "この端末には既に割当済みです。")
 			return
 		}
