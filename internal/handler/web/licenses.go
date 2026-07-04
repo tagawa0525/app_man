@@ -25,8 +25,8 @@ type licenseHandlers struct {
 	logger *slog.Logger
 }
 
-// expiringSoonWindow は一覧で「期限接近」警告を出すしきい値 (90 日)。
-const expiringSoonWindow = 90 * 24 * time.Hour
+// expiringSoonDays は一覧で「期限接近」警告を出すしきい値 (90 日)。
+const expiringSoonDays = 90
 
 // list は GET /licenses の一覧。デフォルトは現役のみ
 // (expires_at IS NULL または未来)、?expired=1 で満了込み。
@@ -47,18 +47,25 @@ func (h *licenseHandlers) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 満了 / 期限接近の表示フラグは SQL の判定 (date('now') 比較) と揃える
-	// ため、UTC の当日 0 時を基準にする。
+	// 満了 / 期限接近の表示フラグは、リポジトリ層の現役判定
+	// (expires_at >= date('now')、SQLite の date('now') は UTC 日付) と
+	// 揃えるため、両判定とも UTC の日付単位で比較する。時刻成分や
+	// ローカル TZ を混ぜると SQL の絞り込みと画面表示が食い違う。
+	// 満了 = UTC 日付が今日より前。期限接近 = 満了でなく、UTC 日付が
+	// 今日から 90 日後まで (ちょうど 90 日後を含む)。
 	now := time.Now().UTC()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	soonLimit := today.AddDate(0, 0, expiringSoonDays)
 	items := make([]licenseview.ListItem, len(rows))
 	for i, row := range rows {
 		item := licenseview.ListItem{License: row}
 		if row.ExpiresAt != nil {
+			exp := row.ExpiresAt.In(time.UTC)
+			expDay := time.Date(exp.Year(), exp.Month(), exp.Day(), 0, 0, 0, 0, time.UTC)
 			switch {
-			case row.ExpiresAt.Before(today):
+			case expDay.Before(today):
 				item.Expired = true
-			case time.Until(*row.ExpiresAt) <= expiringSoonWindow:
+			case !expDay.After(soonLimit):
 				item.ExpiringSoon = true
 			}
 		}

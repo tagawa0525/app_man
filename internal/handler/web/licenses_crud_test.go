@@ -157,6 +157,33 @@ func TestLicenses_List_MarksExpiringSoon(t *testing.T) {
 	}
 }
 
+func TestLicenses_List_ExpiryBoundaries(t *testing.T) {
+	t.Parallel()
+	r, db, store, q := newWebRouter(t)
+
+	// 判定は UTC 日付単位: 昨日 = 満了、ちょうど 90 日後 = 期限接近、
+	// 91 日後 = 非接近 (SQL の date('now') 判定と同じ基準)。
+	s := seedLicenseCatalog(t, q, "Adobe", "Acrobat Pro", "DEPT001", "情報システム部")
+	seedLicense(t, q, s, "yesterday", "昨日満了分", timePtr(time.Now().AddDate(0, 0, -1)), nil)
+	seedLicense(t, q, s, "day90", "90日後満了分", timePtr(time.Now().AddDate(0, 0, 90)), nil)
+	seedLicense(t, q, s, "day91", "91日後満了分", timePtr(time.Now().AddDate(0, 0, 91)), nil)
+
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/licenses?expired=1", middleware.RoleViewer, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusOK)
+	body := rec.Body.String()
+	// 満了バッジは昨日満了の 1 行だけ ("満了 (" は badge のみに現れる)。
+	if got := strings.Count(body, "満了 ("); got != 1 {
+		t.Errorf("満了バッジ count = %d, want 1, body:\n%s", got, body)
+	}
+	// 期限接近はちょうど 90 日後の 1 行だけ (91 日後は非接近)。
+	if got := strings.Count(body, "期限接近"); got != 1 {
+		t.Errorf("期限接近 count = %d, want 1, body:\n%s", got, body)
+	}
+}
+
 func TestLicenses_Show_HidesProductKeys(t *testing.T) {
 	t.Parallel()
 	r, db, store, q := newWebRouter(t)

@@ -103,7 +103,7 @@ templ Form(role middleware.Role, props FormProps) {
 				<div class="field">
 					<label for="license_slug">スラッグ <span class="required">*</span></label>
 					<input id="license_slug" type="text" name="license_slug" value={ props.Input.LicenseSlug } required/>
-					<p class="field-help">証書フォルダ名の一部になります (禁止文字とスペースは _ に置換)。</p>
+					<p class="field-help">入力した値はそのまま保存されます。証書フォルダ名 (fs_dir_path) の生成時にのみ、禁止文字とスペースを _ に置換した形が使われます。</p>
 					if msg, ok := props.Errors["license_slug"]; ok {
 						<p class="field-error">{ msg }</p>
 					}

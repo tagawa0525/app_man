@@ -434,7 +434,7 @@ func Form(role middleware.Role, props FormProps) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "\" required><p class=\"field-help\">証書フォルダ名の一部になります (禁止文字とスペースは _ に置換)。</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "\" required><p class=\"field-help\">入力した値はそのまま保存されます。証書フォルダ名 (fs_dir_path) の生成時にのみ、禁止文字とスペースを _ に置換した形が使われます。</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
