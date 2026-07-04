@@ -8,10 +8,20 @@ import (
 	"time"
 
 	"github.com/tagawa0525/app_man/internal/approval"
+	"github.com/tagawa0525/app_man/internal/repository"
 )
 
 func itoa(n int64) string {
 	return strconv.FormatInt(n, 10)
+}
+
+// productLabel は行内フォームの aria-label 等に使う製品の表示名
+// (edition があれば併記)。
+func productLabel(p repository.ListProductsRow) string {
+	if p.Edition != nil && *p.Edition != "" {
+		return p.CanonicalName + " " + *p.Edition
+	}
+	return p.CanonicalName
 }
 
 // detailPath は登録・編集画面のパス (/approvals/{deptID}/{productID})。

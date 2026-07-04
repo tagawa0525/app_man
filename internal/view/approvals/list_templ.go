@@ -150,7 +150,7 @@ func List(role middleware.Role, props ListProps) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<table class=\"data-table\"><thead><tr><th>ベンダー</th><th>製品</th><th>全社設定</th><th>判定</th><th></th></tr></thead> <tbody>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<table class=\"data-table\"><thead><tr><th>ベンダー</th><th>製品</th><th>全社設定</th><th>判定</th><th>操作</th></tr></thead> <tbody>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

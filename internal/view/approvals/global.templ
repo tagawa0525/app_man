@@ -52,7 +52,7 @@ templ Global(role middleware.Role, props GlobalProps) {
 								<td>
 									<form method="post" action={ templ.SafeURL("/admin/global-approvals/" + itoa(p.ID)) } class="inline-form">
 										@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
-										<select name="default_approval_status">
+										<select name="default_approval_status" aria-label={ "全社承認設定: " + productLabel(p) }>
 											@defaultStatusOption(approval.DefaultGloballyApproved, p.DefaultApprovalStatus)
 											@defaultStatusOption(approval.DefaultGloballyProhibited, p.DefaultApprovalStatus)
 											@defaultStatusOption(approval.DefaultUnknown, p.DefaultApprovalStatus)
