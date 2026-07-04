@@ -50,8 +50,9 @@ type CountActiveUserAssignmentParams struct {
 }
 
 // CountActiveUserAssignment is the application-level duplicate check
-// run before INSERT; the partial unique index of migration 000008 is
-// the backstop.
+// run before INSERT; the partial unique indexes
+// uniq_user_assignments_active / uniq_device_assignments_active
+// (migration 000006) are the backstop.
 func (q *Queries) CountActiveUserAssignment(ctx context.Context, arg CountActiveUserAssignmentParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countActiveUserAssignment, arg.LicenseID, arg.UserID)
 	var count int64
@@ -320,10 +321,10 @@ type RevokeUserAssignmentParams struct {
 	LicenseID int64
 }
 
-// RevokeUserAssignment marks an assignment as revoked. The caller
+// RevokeUserAssignment marks an assignment as revoked. The handler
 // checks the affected row count: 0 rows means the assignment does not
-// exist, belongs to another license, or is already revoked, so a
-// duplicate POST is harmless.
+// exist, belongs to another license, or is already revoked, and the
+// handler responds with 404 in that case.
 func (q *Queries) RevokeUserAssignment(ctx context.Context, arg RevokeUserAssignmentParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, revokeUserAssignment, arg.ID, arg.LicenseID)
 	if err != nil {

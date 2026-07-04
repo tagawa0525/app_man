@@ -54,10 +54,10 @@ INSERT INTO device_assignments (
 )
 RETURNING *;
 
--- RevokeUserAssignment marks an assignment as revoked. The caller
+-- RevokeUserAssignment marks an assignment as revoked. The handler
 -- checks the affected row count: 0 rows means the assignment does not
--- exist, belongs to another license, or is already revoked, so a
--- duplicate POST is harmless.
+-- exist, belongs to another license, or is already revoked, and the
+-- handler responds with 404 in that case.
 -- name: RevokeUserAssignment :execrows
 UPDATE user_assignments
 SET revoked_at = CURRENT_TIMESTAMP
@@ -69,8 +69,9 @@ SET revoked_at = CURRENT_TIMESTAMP
 WHERE id = ? AND license_id = ? AND revoked_at IS NULL;
 
 -- CountActiveUserAssignment is the application-level duplicate check
--- run before INSERT; the partial unique index of migration 000008 is
--- the backstop.
+-- run before INSERT; the partial unique indexes
+-- uniq_user_assignments_active / uniq_device_assignments_active
+-- (migration 000006) are the backstop.
 -- name: CountActiveUserAssignment :one
 SELECT count(*) FROM user_assignments
 WHERE license_id = ? AND user_id = ? AND revoked_at IS NULL;
