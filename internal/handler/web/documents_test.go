@@ -851,3 +851,78 @@ func TestLicenses_Update_SlugChange_UpdatesDocumentStoredPaths(t *testing.T) {
 		}
 	}
 }
+
+// TestLicenses_Update_CollisionRollsBackDocumentPaths は更新が UNIQUE 衝突で
+// 409 になったとき、直前に行った FS rename と stored_path の付け替えが
+// 残骸として残らないことを確認する (DB は tx で巻き戻し、FS は rename を
+// 復元)。残ると「DB は旧・FS と documents は新」の部分更新状態になる。
+func TestLicenses_Update_CollisionRollsBackDocumentPaths(t *testing.T) {
+	t.Parallel()
+	fsCfg := docsFSCfg(t)
+	r, db, store, q := newDocsRouter(t, fsCfg)
+
+	s := seedLicenseCatalog(t, q, "Adobe", "Acrobat Pro", "DEPT001", "情報システム部")
+
+	form := validLicenseForm(s)
+	form.Set("license_slug", "衝突元")
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/licenses", middleware.RoleLicenseManager, form)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("create A status = %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	idA := locationID(t, rec)
+	uploadTestDocument(t, r, db, store, q, idA, "証書.pdf", pdfContent)
+
+	formB := validLicenseForm(s)
+	formB.Set("license_slug", "衝突先")
+	req = handlertest.AuthenticatedPostForm(t, db, store, "/licenses", middleware.RoleLicenseManager, formB)
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("create B status = %d (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	// A を B と同じ (product, dept, slug) に更新 → UNIQUE 衝突で 409
+	upd := validLicenseForm(s)
+	upd.Set("license_slug", "衝突先")
+	req = handlertest.AuthenticatedPostForm(t, db, store,
+		fmt.Sprintf("/licenses/%d", idA), middleware.RoleLicenseManager, upd)
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("update status = %d, want 409 (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	// stored_path は旧接頭辞のまま
+	docs, err := q.ListLicenseDocumentsByLicense(context.Background(), idA)
+	if err != nil {
+		t.Fatalf("ListLicenseDocumentsByLicense: %v", err)
+	}
+	if len(docs) != 1 {
+		t.Fatalf("documents = %d, want 1", len(docs))
+	}
+	wantPrefix := "licenses/Adobe/Acrobat_Pro/衝突元/"
+	if !strings.HasPrefix(docs[0].StoredPath, wantPrefix) {
+		t.Errorf("stored_path = %q, want prefix %q (rolled back)", docs[0].StoredPath, wantPrefix)
+	}
+
+	// ダウンロードも引き続き成功する
+	dlReq := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet,
+		fmt.Sprintf("/licenses/%d/documents/%d/download", idA, docs[0].ID),
+		middleware.RoleViewer, nil)
+	dlRec := httptest.NewRecorder()
+	r.ServeHTTP(dlRec, dlReq)
+	if dlRec.Code != http.StatusOK {
+		t.Errorf("download status = %d, want 200", dlRec.Code)
+	}
+
+	// FS↔DB が整合 (rename が復元されている)
+	rep, err := integrity.Scan(context.Background(), q, fsCfg.BasePath, true, time.Now())
+	if err != nil {
+		t.Fatalf("integrity.Scan: %v", err)
+	}
+	for _, f := range rep.Findings {
+		t.Errorf("finding: kind=%s license_id=%d path=%s", f.Kind, f.LicenseID, f.Path)
+	}
+}
