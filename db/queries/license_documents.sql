@@ -31,3 +31,12 @@ RETURNING *;
 SELECT * FROM license_documents
 WHERE id = ?
 LIMIT 1;
+
+-- UpdateLicenseDocumentStoredPath rewrites the stored_path of one document.
+-- Used when a license fs_dir_path changes (directory rename on slug change):
+-- the web layer re-prefixes each matching path so the DB keeps pointing at
+-- the moved files.
+-- name: UpdateLicenseDocumentStoredPath :execrows
+UPDATE license_documents
+SET stored_path = ?
+WHERE id = ?;

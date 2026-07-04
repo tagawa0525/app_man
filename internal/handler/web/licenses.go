@@ -430,6 +430,7 @@ func (h *licenseHandlers) update(w http.ResponseWriter, r *http.Request) {
 	// fs_dir_path が変わる場合は DB 更新前に物理ディレクトリを追随させる
 	// (rename 失敗時に DB と FS がズレない順序。仕様 §3.2 / Plan の決定)。
 	fsDir := existing.FsDirPath
+	dirChanged := false
 	if want := licenseFsDirPath(parsed.VendorName, parsed.ProductName, parsed.LicenseSlug); want != existing.FsDirPath {
 		fsDir, err = h.resolveLicenseFsDir(r.Context(), q, want, id)
 		if err != nil {
@@ -443,9 +444,49 @@ func (h *licenseHandlers) update(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		dirChanged = true
+	}
+	// 以降で DB 更新に失敗したら rename を巻き戻す (best-effort)。
+	// 「DB は旧・FS と documents は新」の部分更新状態を残さないため。
+	// 復元自体の失敗は check-integrity が警告する前提でログに留める。
+	restoreRename := func() {
+		if !dirChanged {
+			return
+		}
+		if rerr := h.renameLicenseDir(fsDir, existing.FsDirPath); rerr != nil {
+			h.logger.ErrorContext(r.Context(), "restore license dir rename after failed update",
+				"err", rerr, "from", fsDir, "to", existing.FsDirPath)
+		}
 	}
 
-	affected, err := q.UpdateLicense(r.Context(), repository.UpdateLicenseParams{
+	// stored_path の付け替えと licenses の UPDATE は 1 トランザクション。
+	// 片方だけ成立した部分更新を DB 内に残さない。
+	tx, err := h.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		restoreRename()
+		h.logger.ErrorContext(r.Context(), "begin tx for update license", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	// Commit 成功後の Rollback は no-op (database/sql 仕様)。
+	defer func() { _ = tx.Rollback() }()
+	qtx := q.WithTx(tx)
+
+	if dirChanged {
+		// 移動した証書を指す stored_path (base 相対) も新しい接頭辞に
+		// 付け替える。旧接頭辞に一致しない行 (手動修正済み等) は触らない。
+		if err := h.reprefixDocumentPaths(r.Context(), qtx, id, existing.FsDirPath, fsDir); err != nil {
+			// FS 復元中に tx (接続) を保持し続けないよう先に閉じる
+			_ = tx.Rollback()
+			restoreRename()
+			h.logger.ErrorContext(r.Context(), "reprefix document stored_path", "err", err,
+				"from", existing.FsDirPath, "to", fsDir)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	affected, err := qtx.UpdateLicense(r.Context(), repository.UpdateLicenseParams{
 		ProductID:          parsed.ProductID,
 		OwningDepartmentID: parsed.DepartmentID,
 		LicenseSlug:        parsed.LicenseSlug,
@@ -466,6 +507,10 @@ func (h *licenseHandlers) update(w http.ResponseWriter, r *http.Request) {
 		ID:                 id,
 	})
 	if err != nil {
+		// テンプレ描画等の後続処理中に tx (接続) を保持し続けないよう、
+		// defer に頼らずこの時点で明示的に閉じる。
+		_ = tx.Rollback()
+		restoreRename()
 		if isUniqueConstraintErr(err) {
 			pinned, perr := resolvePinnedDepartment(r, q, depts, &existing.OwningDepartmentID)
 			if perr != nil {
@@ -492,7 +537,17 @@ func (h *licenseHandlers) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if affected == 0 {
+		_ = tx.Rollback()
+		restoreRename()
 		http.NotFound(w, r)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		// commit 失敗後に tx が open のまま残る実装に備えて明示的に解放
+		_ = tx.Rollback()
+		restoreRename()
+		h.logger.ErrorContext(r.Context(), "commit update license", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 

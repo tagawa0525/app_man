@@ -409,3 +409,34 @@ func isAttrChar(c byte) bool {
 	}
 	return false
 }
+
+// reprefixDocumentPaths はライセンスの物理ディレクトリ移動 (oldDir →
+// newDir) に合わせて、配下の証書を指す license_documents.stored_path
+// (base 相対) の接頭辞を付け替える。旧接頭辞に一致しない行 (手動修正
+// 済み等) はそのまま残す。
+func (h *licenseHandlers) reprefixDocumentPaths(ctx context.Context, q *repository.Queries, licenseID int64, oldDir, newDir string) error {
+	docs, err := q.ListLicenseDocumentsByLicense(ctx, licenseID)
+	if err != nil {
+		return fmt.Errorf("list documents: %w", err)
+	}
+	prefix := oldDir + "/"
+	for _, d := range docs {
+		if !strings.HasPrefix(d.StoredPath, prefix) {
+			continue
+		}
+		newPath := newDir + "/" + strings.TrimPrefix(d.StoredPath, prefix)
+		affected, err := q.UpdateLicenseDocumentStoredPath(ctx, repository.UpdateLicenseDocumentStoredPathParams{
+			StoredPath: newPath,
+			ID:         d.ID,
+		})
+		if err != nil {
+			return fmt.Errorf("update stored_path for document %d: %w", d.ID, err)
+		}
+		if affected != 1 {
+			// 直前に列挙した行が消えている等の想定外。黙って進めると
+			// 旧パスのままの行が残るためエラーにする
+			return fmt.Errorf("update stored_path for document %d: affected %d rows, want 1", d.ID, affected)
+		}
+	}
+	return nil
+}
