@@ -16,6 +16,7 @@ import (
 	"github.com/tagawa0525/app_man/internal/auth"
 	"github.com/tagawa0525/app_man/internal/config"
 	"github.com/tagawa0525/app_man/internal/db"
+	"github.com/tagawa0525/app_man/internal/filestore"
 	"github.com/tagawa0525/app_man/internal/handler"
 	"github.com/tagawa0525/app_man/internal/lockfile"
 	"github.com/tagawa0525/app_man/internal/session"
@@ -45,6 +46,12 @@ func run(configPath string) error {
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
+	}
+	// file_store.base_path の必須チェックは config.validate ではなくここで
+	// 行う (backup.output_dir と同じ「消費者側で検査」パターン。バッチ系
+	// バイナリは file_store を使わないため validate で全バイナリを落とさない)。
+	if cfg.FileStore.BasePath == "" {
+		return errors.New("file_store.base_path is required")
 	}
 
 	logger, closeLog, err := applog.New(cfg.Logging, binaryName)
@@ -114,6 +121,8 @@ func run(configPath string) error {
 		CookieSecure:  cfg.Server.CookieSecure,
 		SessionMaxAge: time.Duration(cfg.Auth.SessionMaxAgeHours) * time.Hour,
 		Authenticator: auth.NewLocalAuthenticator(sqlDB),
+		FileStore:     filestore.New(cfg.FileStore),
+		FileStoreCfg:  cfg.FileStore,
 	})
 
 	srv := &http.Server{

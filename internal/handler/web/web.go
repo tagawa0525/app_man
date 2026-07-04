@@ -15,6 +15,8 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/tagawa0525/app_man/internal/auth"
+	"github.com/tagawa0525/app_man/internal/config"
+	"github.com/tagawa0525/app_man/internal/filestore"
 	mw "github.com/tagawa0525/app_man/internal/handler/middleware"
 	"github.com/tagawa0525/app_man/internal/session"
 )
@@ -33,6 +35,14 @@ type Deps struct {
 	CookieSecure bool
 	// SessionMaxAge はログイン後に session ID を Rotate した際の Cookie MaxAge。
 	SessionMaxAge time.Duration
+	// FileStore は証書ファイルの保存・オープン (L-3)。ライセンス系ルートを
+	// 使うテスト / 本番では必須 (cmd/server が BasePath 必須チェックの上で
+	// 注入する)。nil のままライセンス FS 処理に到達すると panic するのは
+	// 配線ミスの早期検出として意図どおり。
+	FileStore *filestore.Store
+	// FileStoreCfg は file_store 設定 (BasePath / UploadMaxBytes)。web 層は
+	// meta.yml の書込み先やディレクトリ作成・rename に BasePath を使う。
+	FileStoreCfg config.FileStoreConfig
 }
 
 // viewers は 「閲覧」権限ロール集合 (general_user 以上)。
@@ -83,7 +93,7 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 	d := &departmentHandlers{db: deps.DB, logger: deps.Logger}
 	u := &userHandlers{db: deps.DB, logger: deps.Logger}
 	dev := &deviceHandlers{db: deps.DB, logger: deps.Logger}
-	lic := &licenseHandlers{db: deps.DB, logger: deps.Logger}
+	lic := &licenseHandlers{db: deps.DB, logger: deps.Logger, store: deps.FileStore, fsCfg: deps.FileStoreCfg}
 
 	// /login / /logout は role 不問。Authenticator / SessionStore が注入
 	// されている場合のみ登録する (テストで nil を渡したときに panic
@@ -118,6 +128,8 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 		// /licenses の閲覧は要件書 §6.1 で「viewer 以上」(general_user 除外)。
 		r.Get("/licenses", lic.list)
 		r.Get("/licenses/{id}", lic.show)
+		// 証書ダウンロードは詳細画面と同じ「viewer 以上」(L-3)。
+		r.Get("/licenses/{id}/documents/{docID}/download", lic.downloadDocument)
 	})
 	r.With(mw.RequireRole(editors...)).Group(func(r chi.Router) {
 		r.Get("/vendors/new", v.newForm)
@@ -160,5 +172,9 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 		r.Post("/licenses/{id}/assignments/users/{aid}/revoke", lic.revokeUserAssignment)
 		r.Post("/licenses/{id}/assignments/devices", lic.assignDevice)
 		r.Post("/licenses/{id}/assignments/devices/{aid}/revoke", lic.revokeDeviceAssignment)
+		// 証書アップロードとキー閲覧 (L-3)。キー閲覧を GET にすると
+		// audit_logs 記録を回避してキーを読める経路になるため POST のみ。
+		r.Post("/licenses/{id}/documents", lic.uploadDocument)
+		r.Post("/licenses/{id}/keys/reveal", lic.revealKeys)
 	})
 }

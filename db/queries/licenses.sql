@@ -84,3 +84,10 @@ SET
   note = ?,
   updated_at = CURRENT_TIMESTAMP
 WHERE id = ?;
+
+-- CountLicensesByFsDirPath counts licenses already using fs_dir_path,
+-- excluding the given id (pass 0 when creating a new license). Used by
+-- the web layer for suffix-based collision avoidance (spec 3.2).
+-- name: CountLicensesByFsDirPath :one
+SELECT COUNT(*) FROM licenses
+WHERE fs_dir_path = ? AND id != ?;

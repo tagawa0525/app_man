@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/tagawa0525/app_man/internal/config"
@@ -46,6 +47,11 @@ logging:
 		Auth: config.AuthConfig{
 			// 未指定 (= 0) → validate で 8h デフォルトに補完される
 			SessionMaxAgeHours: 8,
+		},
+		FileStore: config.FileStoreConfig{
+			// 未指定 → validate で 20 MiB / PDF・PNG・JPEG に補完される
+			UploadMaxBytes:   20971520,
+			AllowedMimeTypes: []string{"application/pdf", "image/png", "image/jpeg"},
 		},
 	}
 
@@ -95,7 +101,7 @@ logging:
 			if got == nil {
 				t.Fatal("Load() returned nil config without error")
 			}
-			if *got != *tt.want {
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Load() = %+v, want %+v", *got, *tt.want)
 			}
 		})
@@ -390,6 +396,83 @@ backup:
 	_, err := config.Load(path)
 	if err == nil {
 		t.Fatal("Load() expected error for negative backup.generations, got nil")
+	}
+}
+
+func TestLoad_fileStore_explicit(t *testing.T) {
+	yamlBody := `server:
+  listen: 0.0.0.0:8180
+  base_url: http://localhost:8180
+
+database:
+  path: ./data/app.db
+  wal: true
+
+file_store:
+  base_path: ./data/files
+  upload_max_bytes: 1048576
+  allowed_mime_types:
+    - application/pdf
+
+locks:
+  base_dir: ./data/locks
+
+logging:
+  level: info
+  base_dir: ./logs
+  format: json
+`
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(path, []byte(yamlBody), 0o644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	got, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+	want := config.FileStoreConfig{
+		BasePath:         "./data/files",
+		UploadMaxBytes:   1048576,
+		AllowedMimeTypes: []string{"application/pdf"},
+	}
+	if !reflect.DeepEqual(got.FileStore, want) {
+		t.Errorf("FileStore = %+v, want %+v (from YAML)", got.FileStore, want)
+	}
+}
+
+func TestLoad_fileStore_negativeUploadMaxBytesRejected(t *testing.T) {
+	yamlBody := `server:
+  listen: 0.0.0.0:8180
+  base_url: http://localhost:8180
+
+database:
+  path: ./data/app.db
+  wal: true
+
+file_store:
+  upload_max_bytes: -1
+
+locks:
+  base_dir: ./data/locks
+
+logging:
+  level: info
+  base_dir: ./logs
+  format: json
+`
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(path, []byte(yamlBody), 0o644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	_, err := config.Load(path)
+	if err == nil {
+		t.Fatal("Load() expected error for negative file_store.upload_max_bytes, got nil")
 	}
 }
 

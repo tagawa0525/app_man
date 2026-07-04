@@ -15,6 +15,8 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/tagawa0525/app_man/internal/auth"
+	"github.com/tagawa0525/app_man/internal/config"
+	"github.com/tagawa0525/app_man/internal/filestore"
 	"github.com/tagawa0525/app_man/internal/handler/middleware"
 	"github.com/tagawa0525/app_man/internal/handler/web"
 	"github.com/tagawa0525/app_man/internal/session"
@@ -37,6 +39,10 @@ type Deps struct {
 	SessionMaxAge time.Duration
 	// Authenticator はログインフロー (POST /login) で利用する。必須。
 	Authenticator auth.Authenticator
+	// FileStore / FileStoreCfg は証書ファイルの物理配置 (L-3)。
+	// cmd/server が file_store.base_path 必須チェックの上で注入する。
+	FileStore    *filestore.Store
+	FileStoreCfg config.FileStoreConfig
 }
 
 // NewRouter は appmgr-server で使う http.Handler を組み立てる。
@@ -59,7 +65,9 @@ func NewRouter(deps Deps) http.Handler {
 		DB:     deps.DB,
 		Logger: deps.Logger,
 	}))
-	r.Use(middleware.CSRFMiddleware)
+	// multipart の CSRF 検証パースに掛ける上限 = アップロード上限 +
+	// フォームフィールド分の余裕 1 MiB (超過は CSRF 検証段階で 400)。
+	r.Use(middleware.CSRFMiddleware(deps.FileStoreCfg.UploadMaxBytes + 1<<20))
 
 	r.Get("/healthz", healthHandler)
 
@@ -75,6 +83,8 @@ func NewRouter(deps Deps) http.Handler {
 		SessionStore:  deps.SessionStore,
 		CookieSecure:  deps.CookieSecure,
 		SessionMaxAge: deps.SessionMaxAge,
+		FileStore:     deps.FileStore,
+		FileStoreCfg:  deps.FileStoreCfg,
 	})
 
 	r.NotFound(notFoundHandler)
