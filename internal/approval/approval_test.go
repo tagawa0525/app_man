@@ -15,20 +15,31 @@ import (
 //  2. アクティブ承認レコード (revoked_at IS NULL) の評価:
 //     レコードなし / approved × scope_type 3 種 (specific_* は
 //     scope に対象が含まれるか) / conditional / prohibited /
-//     expires_at <= now は期限切れ (未承認扱い)
+//     expires_at は日付粒度で判定し、期限日の翌日 0 時 (UTC) 以降が
+//     期限切れ (未承認扱い)。期限日当日は終日有効
+//
+// 期限の日付粒度は <input type=date> の値が当日 0 時 (UTC) で保存される
+// ことへの対応で、L-1 licenses の「expires_at 当日はまだ現役
+// (expires_at >= date('now'))」と同じ日付包含セマンティクスに揃える
+// (PR #31 Copilot 指摘)。
 //
 // Evaluate は純関数で、DB lookup は呼び出し側の責務。レコードの
 // 有無は rec == nil、scope への対象包含は Record.InScope で渡す。
 func TestEvaluate(t *testing.T) {
 	now := time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC)
-	past := now.Add(-time.Hour)
+	// prevDay は前日 (日付粒度でも確実に期限切れ)。
+	prevDay := now.AddDate(0, 0, -1)
 	future := now.Add(time.Hour)
+	// dateOnly は <input type=date> が保存する形 (当日 0 時 UTC)。
+	dateOnly := time.Date(2026, 7, 4, 0, 0, 0, 0, time.UTC)
 
 	tests := []struct {
 		name          string
 		defaultStatus string
 		rec           *approval.Record
-		want          approval.Verdict
+		// now を上書きしたい境界ケース用 (ゼロ値なら共通の now)。
+		now  time.Time
+		want approval.Verdict
 	}{
 		// --- 1. default_approval_status による即決 ---
 		{
@@ -137,20 +148,48 @@ func TestEvaluate(t *testing.T) {
 			want:          approval.VerdictUnapproved,
 		},
 
-		// --- 2. expires_at (期限切れ = 未承認扱い) ---
+		// --- 2. expires_at (日付粒度。期限切れ = 未承認扱い) ---
 		{
-			name:          "expires_at 経過は期限切れ",
+			name:          "expires_at が前日なら期限切れ",
 			defaultStatus: "department_discretion",
-			rec:           &approval.Record{Status: "approved", ScopeType: "department_wide", ExpiresAt: &past},
+			rec:           &approval.Record{Status: "approved", ScopeType: "department_wide", ExpiresAt: &prevDay},
 			want:          approval.VerdictExpired,
 		},
 		{
-			// 境界: 仕様は expires_at <= now() なので、ちょうど now は
-			// 期限切れ。
-			name:          "expires_at ちょうど now は期限切れ",
+			// <input type=date> は当日 0 時 (UTC) で保存されるが、
+			// ユーザ期待は「当日いっぱい有効」。時刻比較 (expires_at <=
+			// now) だと期限日の開始時点から失効してしまう。
+			name:          "期限日当日 (日中) はまだ有効",
 			defaultStatus: "department_discretion",
-			rec:           &approval.Record{Status: "approved", ScopeType: "department_wide", ExpiresAt: &now},
+			rec:           &approval.Record{Status: "approved", ScopeType: "department_wide", ExpiresAt: &dateOnly},
+			now:           time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC),
+			want:          approval.VerdictAllowed,
+		},
+		{
+			// 境界: 期限日の最後の 1 秒までは有効。
+			name:          "期限日当日 23:59:59Z はまだ有効",
+			defaultStatus: "department_discretion",
+			rec:           &approval.Record{Status: "approved", ScopeType: "department_wide", ExpiresAt: &dateOnly},
+			now:           time.Date(2026, 7, 4, 23, 59, 59, 0, time.UTC),
+			want:          approval.VerdictAllowed,
+		},
+		{
+			// 境界: 翌日 0 時 (UTC) ちょうどから期限切れ。
+			name:          "期限日翌日 00:00:00Z は期限切れ",
+			defaultStatus: "department_discretion",
+			rec:           &approval.Record{Status: "approved", ScopeType: "department_wide", ExpiresAt: &dateOnly},
+			now:           time.Date(2026, 7, 5, 0, 0, 0, 0, time.UTC),
 			want:          approval.VerdictExpired,
+		},
+		{
+			// expires_at に時刻成分があっても判定は日付粒度 (同日中の
+			// 時刻差では失効しない)。
+			name:          "expires_at の時刻成分は無視して日付で判定",
+			defaultStatus: "department_discretion",
+			rec: &approval.Record{Status: "approved", ScopeType: "department_wide",
+				ExpiresAt: timePtr(time.Date(2026, 7, 4, 11, 0, 0, 0, time.UTC))},
+			now:  time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC),
+			want: approval.VerdictAllowed,
 		},
 		{
 			name:          "expires_at が未来なら期限内 (許可)",
@@ -163,30 +202,39 @@ func TestEvaluate(t *testing.T) {
 			// (仕様「期限切れ (未承認扱い)」)。
 			name:          "conditional でも期限切れが優先",
 			defaultStatus: "department_discretion",
-			rec:           &approval.Record{Status: "conditional", ScopeType: "department_wide", ExpiresAt: &past},
+			rec:           &approval.Record{Status: "conditional", ScopeType: "department_wide", ExpiresAt: &prevDay},
 			want:          approval.VerdictExpired,
 		},
 		{
 			name:          "prohibited でも期限切れが優先",
 			defaultStatus: "department_discretion",
-			rec:           &approval.Record{Status: "prohibited", ScopeType: "department_wide", ExpiresAt: &past},
+			rec:           &approval.Record{Status: "prohibited", ScopeType: "department_wide", ExpiresAt: &prevDay},
 			want:          approval.VerdictExpired,
 		},
 		{
 			name:          "specific_users で対象内でも期限切れが優先",
 			defaultStatus: "department_discretion",
-			rec:           &approval.Record{Status: "approved", ScopeType: "specific_users", InScope: true, ExpiresAt: &past},
+			rec:           &approval.Record{Status: "approved", ScopeType: "specific_users", InScope: true, ExpiresAt: &prevDay},
 			want:          approval.VerdictExpired,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := approval.Evaluate(tt.defaultStatus, tt.rec, now); got != tt.want {
-				t.Errorf("Evaluate(%q, %+v, now) = %q, want %q",
-					tt.defaultStatus, tt.rec, got, tt.want)
+			evalNow := now
+			if !tt.now.IsZero() {
+				evalNow = tt.now
+			}
+			if got := approval.Evaluate(tt.defaultStatus, tt.rec, evalNow); got != tt.want {
+				t.Errorf("Evaluate(%q, %+v, %s) = %q, want %q",
+					tt.defaultStatus, tt.rec, evalNow, got, tt.want)
 			}
 		})
 	}
+}
+
+// timePtr はテーブル内でリテラル時刻のポインタを作るヘルパ。
+func timePtr(t time.Time) *time.Time {
+	return &t
 }
 
 // TestVerdictValues は Verdict 定数の文字列表現を固定する。
