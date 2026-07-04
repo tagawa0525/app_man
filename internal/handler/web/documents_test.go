@@ -61,7 +61,7 @@ func newDocsRouter(t *testing.T, fsCfg config.FileStoreConfig) (http.Handler, *s
 		DB:     sqlDB,
 		Logger: slog.New(slog.DiscardHandler),
 	}))
-	r.Use(middleware.CSRFMiddleware)
+	r.Use(middleware.CSRFMiddleware(fsCfg.UploadMaxBytes + 1<<20))
 	web.RegisterRoutes(r, web.Deps{
 		Logger:       slog.New(slog.DiscardHandler),
 		DB:           sqlDB,

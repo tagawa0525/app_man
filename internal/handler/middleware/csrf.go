@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"crypto/subtle"
+	"errors"
 	"net/http"
 	"strings"
 )
@@ -36,37 +37,54 @@ var safeMethods = map[string]struct{}{
 //
 // session が ephemeral (CSRFToken == "") の場合は受理トークンが空なので
 // 必ず 403 になる。空文字一致を偶発的に通さないためのガード。
-func CSRFMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, safe := safeMethods[r.Method]; safe {
+//
+// multipartMaxBytes は multipart form の hidden _csrf を読むために body を
+// パースする際の上限。CSRF 検証前 (= トークン不一致の攻撃リクエストでも)
+// にパースが走るため、上限なしだと巨大 body を一時ファイルへ書き出して
+// しまう (DoS 入口)。router 組立側で file_store.upload_max_bytes +
+// フォームフィールド分の余裕を渡す。超過は 400 で拒否し next を呼ばない。
+func CSRFMiddleware(multipartMaxBytes int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, safe := safeMethods[r.Method]; safe {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			token := r.Header.Get("X-CSRF-Token")
+			if token == "" {
+				// form 値の参照は ParseForm が必要。Content-Type が
+				// application/x-www-form-urlencoded のときだけ意味がある。
+				if err := r.ParseForm(); err == nil {
+					token = r.PostFormValue("_csrf")
+				}
+			}
+			if token == "" && strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+				// multipart form (証書アップロード等) の hidden _csrf は
+				// ParseForm では読めないため multipart をパースする。ここで
+				// パース済みになった body は後段ハンドラの ParseMultipartForm
+				// ではキャッシュが返る。maxMemory 超過分は一時ファイルに
+				// 落ちるため、書き出し量を MaxBytesReader で頭打ちにする
+				// (ファイル本体の厳密な上限は filestore 層との二重防御)。
+				r.Body = http.MaxBytesReader(w, r.Body, multipartMaxBytes)
+				if err := r.ParseMultipartForm(32 << 20); err != nil {
+					var maxErr *http.MaxBytesError
+					if errors.As(err, &maxErr) {
+						http.Error(w, "request body too large", http.StatusBadRequest)
+						return
+					}
+					// その他のパース失敗は token 無しのまま下の 403 に落とす。
+				} else {
+					token = r.PostFormValue("_csrf")
+				}
+			}
+
+			expected := CSRFTokenFrom(r.Context())
+			if expected == "" || subtle.ConstantTimeCompare([]byte(token), []byte(expected)) != 1 {
+				http.Error(w, "csrf token mismatch", http.StatusForbidden)
+				return
+			}
 			next.ServeHTTP(w, r)
-			return
-		}
-
-		token := r.Header.Get("X-CSRF-Token")
-		if token == "" {
-			// form 値の参照は ParseForm が必要。Content-Type が
-			// application/x-www-form-urlencoded のときだけ意味がある。
-			if err := r.ParseForm(); err == nil {
-				token = r.PostFormValue("_csrf")
-			}
-		}
-		if token == "" && strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
-			// multipart form (証書アップロード等) の hidden _csrf は
-			// ParseForm では読めないため multipart をパースする。ここで
-			// パース済みになった body は後段ハンドラの ParseMultipartForm
-			// ではキャッシュが返る (ファイル本体のサイズ上限はハンドラ /
-			// filestore 層が担う)。maxMemory 超過分は一時ファイルに落ちる。
-			if err := r.ParseMultipartForm(32 << 20); err == nil {
-				token = r.PostFormValue("_csrf")
-			}
-		}
-
-		expected := CSRFTokenFrom(r.Context())
-		if expected == "" || subtle.ConstantTimeCompare([]byte(token), []byte(expected)) != 1 {
-			http.Error(w, "csrf token mismatch", http.StatusForbidden)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+		})
+	}
 }

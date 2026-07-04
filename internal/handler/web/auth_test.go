@@ -38,7 +38,8 @@ func newAuthRouter(t *testing.T) (http.Handler, session.Store, *sql.DB) {
 		DB:     sqlDB,
 		Logger: slog.New(slog.DiscardHandler),
 	}))
-	r.Use(middleware.CSRFMiddleware)
+	// 認証フローに multipart POST は無いので上限は 1 MiB で十分。
+	r.Use(middleware.CSRFMiddleware(1 << 20))
 	web.RegisterRoutes(r, web.Deps{
 		Logger:        slog.New(slog.DiscardHandler),
 		DB:            sqlDB,

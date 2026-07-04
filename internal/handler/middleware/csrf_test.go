@@ -14,6 +14,10 @@ import (
 	"github.com/tagawa0525/app_man/internal/session"
 )
 
+// testMultipartLimit は multipart パース上限が主題でないテストで使う
+// 十分大きな上限。
+const testMultipartLimit = int64(1 << 20)
+
 func okHandler(called *bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		*called = true
@@ -37,7 +41,7 @@ func TestCSRFMiddleware_GET_PassThrough(t *testing.T) {
 			t.Parallel()
 
 			called := false
-			h := middleware.CSRFMiddleware(okHandler(&called))
+			h := middleware.CSRFMiddleware(testMultipartLimit)(okHandler(&called))
 
 			req := httptest.NewRequest(method, "/", nil)
 			rec := httptest.NewRecorder()
@@ -57,7 +61,7 @@ func TestCSRFMiddleware_POST_WithoutSession_Returns403(t *testing.T) {
 	t.Parallel()
 
 	called := false
-	h := middleware.CSRFMiddleware(okHandler(&called))
+	h := middleware.CSRFMiddleware(testMultipartLimit)(okHandler(&called))
 
 	req := httptest.NewRequest(http.MethodPost, "/", nil)
 	rec := httptest.NewRecorder()
@@ -75,7 +79,7 @@ func TestCSRFMiddleware_POST_WithHeaderToken_Passes(t *testing.T) {
 	t.Parallel()
 
 	called := false
-	h := middleware.CSRFMiddleware(okHandler(&called))
+	h := middleware.CSRFMiddleware(testMultipartLimit)(okHandler(&called))
 
 	req := requestWithSession(http.MethodPost, "/", "valid-csrf-token", "")
 	req.Header.Set("X-CSRF-Token", "valid-csrf-token")
@@ -94,7 +98,7 @@ func TestCSRFMiddleware_POST_WithFormToken_Passes(t *testing.T) {
 	t.Parallel()
 
 	called := false
-	h := middleware.CSRFMiddleware(okHandler(&called))
+	h := middleware.CSRFMiddleware(testMultipartLimit)(okHandler(&called))
 
 	form := url.Values{}
 	form.Set("_csrf", "valid-csrf-token")
@@ -115,7 +119,7 @@ func TestCSRFMiddleware_POST_InvalidToken_Returns403(t *testing.T) {
 	t.Parallel()
 
 	called := false
-	h := middleware.CSRFMiddleware(okHandler(&called))
+	h := middleware.CSRFMiddleware(testMultipartLimit)(okHandler(&called))
 
 	req := requestWithSession(http.MethodPost, "/", "valid-csrf-token", "")
 	req.Header.Set("X-CSRF-Token", "wrong-token")
@@ -134,7 +138,7 @@ func TestCSRFMiddleware_POST_EphemeralSession_Returns403(t *testing.T) {
 	t.Parallel()
 
 	called := false
-	h := middleware.CSRFMiddleware(okHandler(&called))
+	h := middleware.CSRFMiddleware(testMultipartLimit)(okHandler(&called))
 
 	// session が存在するが CSRFToken が空 (ephemeral)
 	// 空文字一致を偶発的に通さないためのガードを検証する

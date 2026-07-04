@@ -65,7 +65,9 @@ func NewRouter(deps Deps) http.Handler {
 		DB:     deps.DB,
 		Logger: deps.Logger,
 	}))
-	r.Use(middleware.CSRFMiddleware)
+	// multipart の CSRF 検証パースに掛ける上限 = アップロード上限 +
+	// フォームフィールド分の余裕 1 MiB (超過は CSRF 検証段階で 400)。
+	r.Use(middleware.CSRFMiddleware(deps.FileStoreCfg.UploadMaxBytes + 1<<20))
 
 	r.Get("/healthz", healthHandler)
 

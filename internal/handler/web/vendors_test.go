@@ -41,10 +41,10 @@ func newWebRouter(t *testing.T) (http.Handler, *sql.DB, session.Store, *reposito
 		DB:     sqlDB,
 		Logger: slog.New(slog.DiscardHandler),
 	}))
-	r.Use(middleware.CSRFMiddleware)
 	// licenses の create / update は FS 処理 (物理ディレクトリ + meta.yml)
 	// を伴うため、t.TempDir() を base にした filestore を常に注入する。
 	fsCfg := docsFSCfg(t)
+	r.Use(middleware.CSRFMiddleware(fsCfg.UploadMaxBytes + 1<<20))
 	web.RegisterRoutes(r, web.Deps{
 		Logger:       slog.New(slog.DiscardHandler),
 		DB:           sqlDB,
