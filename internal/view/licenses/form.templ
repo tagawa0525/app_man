@@ -1,0 +1,225 @@
+package licenses
+
+import (
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+// FormInput は new / edit 兼用フォームの入力値。バリデーション失敗時の
+// 再表示用に生の文字列で保持する。ProductKeys は write-only 運用のため
+// 編集フォームでは常に空で渡す (空欄提出 = 変更なし)。
+type FormInput struct {
+	ProductID     string
+	DepartmentID  string
+	LicenseSlug   string
+	DisplayName   string
+	TotalCount    string
+	CountUnit     string
+	ContractType  string
+	PurchasedAt   string
+	StartedAt     string
+	ExpiresAt     string
+	VendorOrderNo string
+	Purchaser     string
+	UnitPrice     string
+	Currency      string
+	ProductKeys   string
+	Note          string
+}
+
+// FormProps は new / edit 兼用フォームに渡す描画引数。
+//
+//   - Departments      : owning_department_id の選択肢 (現役のみ)
+//   - PinnedDepartment : 編集中レコードの所管部署が廃止済みの場合に、
+//     その 1 件だけ「(廃止)」付きで select に残すため
+type FormProps struct {
+	Action           string
+	Title            string
+	Submit           string
+	IsEdit           bool
+	Input            FormInput
+	Errors           map[string]string
+	Products         []repository.ListProductsRow
+	Departments      []repository.Department
+	PinnedDepartment *repository.Department
+}
+
+templ Form(role middleware.Role, props FormProps) {
+	@layout.Base(layout.BaseProps{
+		Title:     props.Title,
+		Role:      role,
+		CSRFToken: middleware.CSRFTokenFrom(ctx),
+	}) {
+		<section class="page-licenses-form">
+			<header class="page-header">
+				<h1>{ props.Title }</h1>
+			</header>
+
+			<form method="post" action={ templ.SafeURL(props.Action) } class="vform">
+				@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
+
+				<div class="field">
+					<label for="product_id">製品 <span class="required">*</span></label>
+					<select id="product_id" name="product_id" required>
+						<option value="">-- 選択 --</option>
+						for _, p := range props.Products {
+							if itoa(p.ID) == props.Input.ProductID {
+								<option value={ itoa(p.ID) } selected>{ productLabel(p) }</option>
+							} else {
+								<option value={ itoa(p.ID) }>{ productLabel(p) }</option>
+							}
+						}
+					</select>
+					if msg, ok := props.Errors["product_id"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
+				</div>
+
+				<div class="field">
+					<label for="owning_department_id">所管部署 <span class="required">*</span></label>
+					<select id="owning_department_id" name="owning_department_id" required>
+						<option value="">-- 選択 --</option>
+						for _, d := range props.Departments {
+							if itoa(d.ID) == props.Input.DepartmentID {
+								<option value={ itoa(d.ID) } selected>{ d.Code } / { d.Name }</option>
+							} else {
+								<option value={ itoa(d.ID) }>{ d.Code } / { d.Name }</option>
+							}
+						}
+						if props.PinnedDepartment != nil {
+							if itoa(props.PinnedDepartment.ID) == props.Input.DepartmentID {
+								<option value={ itoa(props.PinnedDepartment.ID) } selected>{ props.PinnedDepartment.Code } / { props.PinnedDepartment.Name } (廃止)</option>
+							} else {
+								<option value={ itoa(props.PinnedDepartment.ID) }>{ props.PinnedDepartment.Code } / { props.PinnedDepartment.Name } (廃止)</option>
+							}
+						}
+					</select>
+					if msg, ok := props.Errors["owning_department_id"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
+				</div>
+
+				<div class="field">
+					<label for="license_slug">スラッグ <span class="required">*</span></label>
+					<input id="license_slug" type="text" name="license_slug" value={ props.Input.LicenseSlug } required/>
+					<p class="field-help">証書フォルダ名の一部になります (禁止文字とスペースは _ に置換)。</p>
+					if msg, ok := props.Errors["license_slug"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
+				</div>
+
+				<div class="field">
+					<label for="display_name">表示名 <span class="required">*</span></label>
+					<input id="display_name" type="text" name="display_name" value={ props.Input.DisplayName } required/>
+					if msg, ok := props.Errors["display_name"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
+				</div>
+
+				<div class="field">
+					<label for="total_count">本数 (空欄 = 無制限)</label>
+					<input id="total_count" type="number" name="total_count" min="0" value={ props.Input.TotalCount }/>
+					if msg, ok := props.Errors["total_count"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
+				</div>
+
+				<div class="field">
+					<label for="count_unit">本数単位 <span class="required">*</span></label>
+					<select id="count_unit" name="count_unit" required>
+						@selectOption("device", "デバイス", props.Input.CountUnit)
+						@selectOption("user", "ユーザ", props.Input.CountUnit)
+					</select>
+					if msg, ok := props.Errors["count_unit"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
+				</div>
+
+				<div class="field">
+					<label for="contract_type">契約形態 <span class="required">*</span></label>
+					<select id="contract_type" name="contract_type" required>
+						@selectOption("perpetual", "永続", props.Input.ContractType)
+						@selectOption("subscription", "サブスクリプション", props.Input.ContractType)
+					</select>
+					if msg, ok := props.Errors["contract_type"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
+				</div>
+
+				<div class="field">
+					<label for="purchased_at">購入日</label>
+					<input id="purchased_at" type="date" name="purchased_at" value={ props.Input.PurchasedAt }/>
+					if msg, ok := props.Errors["purchased_at"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
+				</div>
+
+				<div class="field">
+					<label for="started_at">利用開始日</label>
+					<input id="started_at" type="date" name="started_at" value={ props.Input.StartedAt }/>
+					if msg, ok := props.Errors["started_at"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
+				</div>
+
+				<div class="field">
+					<label for="expires_at">満了日 (空欄 = 無期限)</label>
+					<input id="expires_at" type="date" name="expires_at" value={ props.Input.ExpiresAt }/>
+					if msg, ok := props.Errors["expires_at"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
+				</div>
+
+				<div class="field">
+					<label for="vendor_order_no">発注番号</label>
+					<input id="vendor_order_no" type="text" name="vendor_order_no" value={ props.Input.VendorOrderNo }/>
+				</div>
+
+				<div class="field">
+					<label for="purchaser">購入者</label>
+					<input id="purchaser" type="text" name="purchaser" value={ props.Input.Purchaser }/>
+				</div>
+
+				<div class="field">
+					<label for="unit_price">単価</label>
+					<input id="unit_price" type="number" name="unit_price" min="0" value={ props.Input.UnitPrice }/>
+					if msg, ok := props.Errors["unit_price"]; ok {
+						<p class="field-error">{ msg }</p>
+					}
+				</div>
+
+				<div class="field">
+					<label for="currency">通貨</label>
+					<input id="currency" type="text" name="currency" value={ props.Input.Currency }/>
+				</div>
+
+				<div class="field">
+					<label for="product_keys">ライセンスキー</label>
+					<textarea id="product_keys" name="product_keys" rows="4">{ props.Input.ProductKeys }</textarea>
+					if props.IsEdit {
+						<p class="field-help">空欄のままなら変更されません。入力すると既存のキーを上書きします。</p>
+					}
+				</div>
+
+				<div class="field">
+					<label for="note">メモ</label>
+					<textarea id="note" name="note" rows="4">{ props.Input.Note }</textarea>
+				</div>
+
+				<div class="form-actions">
+					<button type="submit" class="btn btn-primary">{ props.Submit }</button>
+					<a class="btn" href="/licenses">キャンセル</a>
+				</div>
+			</form>
+		</section>
+	}
+}
+
+templ selectOption(value, label, current string) {
+	if value == current {
+		<option value={ value } selected>{ label }</option>
+	} else {
+		<option value={ value }>{ label }</option>
+	}
+}

@@ -1,0 +1,89 @@
+package licenses
+
+import (
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+// ListItem は一覧 1 行分。Expired / ExpiringSoon は handler 側で計算した
+// 表示用フラグ (期限 90 日以内 = ExpiringSoon)。
+type ListItem struct {
+	License      repository.ListLicensesRow
+	Expired      bool
+	ExpiringSoon bool
+}
+
+templ List(role middleware.Role, includeExpired bool, items []ListItem) {
+	@layout.Base(layout.BaseProps{
+		Title:     "ライセンス一覧",
+		Role:      role,
+		CSRFToken: middleware.CSRFTokenFrom(ctx),
+	}) {
+		<section class="page-licenses-list">
+			<header class="page-header">
+				<h1>ライセンス</h1>
+				if canEdit(role) {
+					<a class="btn btn-primary" href="/licenses/new">新規ライセンス</a>
+				}
+			</header>
+
+			<p class="list-toggle">
+				if includeExpired {
+					<a href="/licenses">現役のみ表示</a>
+				} else {
+					<a href="/licenses?expired=1">満了を含めて表示</a>
+				}
+			</p>
+
+			if len(items) == 0 {
+				<p class="empty">ライセンスはありません。</p>
+			} else {
+				<table class="data-table">
+					<thead>
+						<tr>
+							<th>表示名</th>
+							<th>製品</th>
+							<th>ベンダー</th>
+							<th>所管部署</th>
+							<th>本数</th>
+							<th>期限</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, it := range items {
+							if it.Expired {
+								<tr class="row-inactive">
+									@licenseRow(it)
+								</tr>
+							} else {
+								<tr>
+									@licenseRow(it)
+								</tr>
+							}
+						}
+					</tbody>
+				</table>
+			}
+		</section>
+	}
+}
+
+templ licenseRow(it ListItem) {
+	<td><a href={ templ.SafeURL("/licenses/" + itoa(it.License.ID)) }>{ it.License.DisplayName }</a></td>
+	<td>{ it.License.ProductName }</td>
+	<td>{ it.License.VendorName }</td>
+	<td>{ it.License.DepartmentName }</td>
+	<td>{ formatCount(it.License.TotalCount) } { countUnitLabel(it.License.CountUnit) }</td>
+	<td>
+		if it.License.ExpiresAt == nil {
+			<span class="empty">無期限</span>
+		} else if it.Expired {
+			<span class="badge-inactive">満了 ({ formatDate(it.License.ExpiresAt) })</span>
+		} else if it.ExpiringSoon {
+			<span class="warn">期限接近 ({ formatDate(it.License.ExpiresAt) })</span>
+		} else {
+			{ formatDate(it.License.ExpiresAt) }
+		}
+	</td>
+}
