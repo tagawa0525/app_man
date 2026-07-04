@@ -94,6 +94,43 @@ func TestMetaExists_ReportsExistence(t *testing.T) {
 	}
 }
 
+// TestMetaExists_PropagatesStatFailures は ENOENT 以外の stat エラーや
+// meta.yml が通常ファイルでないケースを「存在しない」と誤答せず error に
+// することを確認する (dry-run の would_create 誤集計防止)。
+func TestMetaExists_PropagatesStatFailures(t *testing.T) {
+	t.Parallel()
+	base, _ := newBase(t)
+
+	// meta.yml がディレクトリ → error (通常ファイルではない)
+	const dirMeta = "licenses/v/p/dirmeta"
+	if err := os.MkdirAll(filepath.Join(base, filepath.FromSlash(dirMeta), "meta.yml"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if _, err := licensefs.MetaExists(base, dirMeta); err == nil {
+		t.Error("MetaExists should return error when meta.yml is a directory")
+	}
+
+	// 親ディレクトリの権限で stat が EACCES → error (ENOENT ではない)
+	if os.Getuid() == 0 {
+		t.Skip("permission test is meaningless as root")
+	}
+	const denied = "licenses/v/p/denied"
+	deniedAbs := filepath.Join(base, filepath.FromSlash(denied))
+	if err := os.MkdirAll(deniedAbs, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(deniedAbs, "meta.yml"), []byte("x\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := os.Chmod(deniedAbs, 0o000); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(deniedAbs, 0o755) })
+	if _, err := licensefs.MetaExists(base, denied); err == nil {
+		t.Error("MetaExists should return error on permission-denied stat")
+	}
+}
+
 // TestMetaExists_RejectsBaseEscape は脱出する fs_dir_path が false では
 // なくエラーになることを確認する (汚染行が「meta 無し = would_create」と
 // して黙って集計されるのを防ぎ、呼び出し側が failed としてログできる)。
