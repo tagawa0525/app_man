@@ -57,8 +57,11 @@ type defaultApprovalChangeDiff struct {
 
 // list は GET /approvals。?department_id= で現役部署を選び、全製品について
 // approval.Evaluate の結果を表示する。specific_* スコープは部署単位表示の
-// ため InScope を評価しない (rec の status/scope をそのまま渡し InScope=false
-// → 表示上は未承認)。代わりに行へ scope_type を注記する。
+// ため個別対象の InScope を評価できないが、仕様 §5.5 で scope が効くのは
+// status=approved のみ: approved + specific_* は InScope=false のため
+// 表示上「未承認」になり (個々の対象は許可されうる)、conditional /
+// prohibited は scope に関係なくその Verdict のまま。誤解を避けるため
+// specific_* の行には scope_type を注記する。
 func (h *approvalHandlers) list(w http.ResponseWriter, r *http.Request) {
 	q := repository.New(h.db)
 	depts, err := q.ListActiveDepartments(r.Context())
