@@ -61,7 +61,12 @@ type Record struct {
 	Status string
 	// ScopeType は department_wide / specific_users / specific_devices。
 	ScopeType string
-	// ExpiresAt は承認の有効期限。nil なら無期限。
+	// ExpiresAt は承認の有効期限。nil なら無期限。判定は日付粒度
+	// (UTC): 期限日当日は終日有効で、翌日 0 時 (UTC) から期限切れ。
+	// <input type=date> の値が当日 0 時 (UTC) で保存されるため時刻
+	// 比較だと期限日の開始時点から失効してしまう。L-1 licenses の
+	// 「expires_at 当日はまだ現役 (expires_at >= date('now'))」と同じ
+	// 日付包含セマンティクスに揃えている (PR #31 Copilot 指摘)。
 	ExpiresAt *time.Time
 	// InScope は specific_users / specific_devices のとき、評価対象の
 	// user / device が approval_scope_users / approval_scope_devices に
@@ -76,10 +81,13 @@ type Record struct {
 //     unknown → 未審査。department_discretion のみ 2 へ。
 //     想定外の値は未審査に倒す (審査されていないものを許可しない)
 //  2. rec (アクティブ承認レコード、なければ nil) を評価:
-//     nil → 未承認。expires_at <= now → 期限切れ (status に関わらず
-//     効力を失う)。approved は scope_type と InScope で許可 / 未承認、
-//     conditional → 条件付き許可、prohibited → 禁止。
-//     想定外の status / scope_type は未承認に倒す
+//     nil → 未承認。expires_at は日付粒度 (UTC) で判定し、期限日の
+//     翌日 0 時以降なら期限切れ (status に関わらず効力を失う。期限日
+//     当日は終日有効 — 仕様 §5.5 の expires_at <= now() の字義とは
+//     ズレるが、licenses の満了と同じ日付包含セマンティクスに揃える。
+//     Record.ExpiresAt のコメント参照)。approved は scope_type と
+//     InScope で許可 / 未承認、conditional → 条件付き許可、
+//     prohibited → 禁止。想定外の status / scope_type は未承認に倒す
 func Evaluate(defaultStatus string, rec *Record, now time.Time) Verdict {
 	switch defaultStatus {
 	case DefaultGloballyApproved:
@@ -96,8 +104,13 @@ func Evaluate(defaultStatus string, rec *Record, now time.Time) Verdict {
 	if rec == nil {
 		return VerdictUnapproved
 	}
-	if rec.ExpiresAt != nil && !rec.ExpiresAt.After(now) {
-		return VerdictExpired
+	if rec.ExpiresAt != nil {
+		// 日付粒度: 期限日の翌日 0 時 (UTC) 以降で期限切れ。
+		y, m, d := rec.ExpiresAt.UTC().Date()
+		expiryEnd := time.Date(y, m, d+1, 0, 0, 0, 0, time.UTC)
+		if !now.Before(expiryEnd) {
+			return VerdictExpired
+		}
 	}
 	switch rec.Status {
 	case StatusApproved:

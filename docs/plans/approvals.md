@@ -25,7 +25,7 @@
 | /admin/global-approvals | 製品一覧 + default_approval_status の変更 (globally_approved / globally_prohibited / unknown / department_discretion) | §6.1、system_admin。products テーブルの既存カラム更新 |
 | audit_logs | approval.grant / approval.revoke / product.default_approval_change を記録 (recordAudit 再利用)。diff_json に主要フィールド | 承認は内部統制の中核。audit 網羅 (フェーズ 15) を待たず今入れる |
 | 認可 | ロール階層のみ (dept_security_admin 以上 / system_admin)。部署スコープは継続負債 | 既存方針と同じ |
-| 期限切れの扱い | Evaluate が expires_at <= now で expired を返す。DB の行は触らない (バッチ不要) | 仕様「期限切れ (未承認扱い)」は評価時判定で足りる |
+| 期限切れの扱い | Evaluate が**日付粒度 (UTC)** で expired を判定: 期限日の翌日 0 時以降で期限切れ、期限日当日は終日有効。DB の行は触らない (バッチ不要) | 仕様「期限切れ (未承認扱い)」は評価時判定で足りる。当初は仕様 §5.5 の字義どおり expires_at <= now の時刻比較だったが、`<input type=date>` の値が当日 0 時 (UTC) で保存され、期限日の開始時点から失効してしまう (PR #31 Copilot 指摘)。L-1 licenses の「expires_at 当日はまだ現役 (expires_at >= date('now'))」と同じ日付包含セマンティクスに全体を揃えた |
 
 ## 対象スコープ
 
