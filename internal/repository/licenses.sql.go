@@ -192,6 +192,50 @@ func (q *Queries) GetLicenseByID(ctx context.Context, id int64) (GetLicenseByIDR
 	return i, err
 }
 
+const getLicenseByKey = `-- name: GetLicenseByKey :one
+SELECT id, product_id, owning_department_id, license_slug, display_name, total_count, count_unit, contract_type, purchased_at, started_at, expires_at, vendor_order_no, purchaser, unit_price, currency, product_keys, fs_dir_path, note, created_at, updated_at FROM licenses
+WHERE product_id = ? AND owning_department_id = ? AND license_slug = ?
+LIMIT 1
+`
+
+type GetLicenseByKeyParams struct {
+	ProductID          int64
+	OwningDepartmentID int64
+	LicenseSlug        string
+}
+
+// GetLicenseByKey resolves a license by its natural key
+// (product_id, owning_department_id, license_slug), matching the UNIQUE
+// constraint on licenses. Used by appmgr-import-bootstrap to resolve
+// CSV rows that reference licenses by name instead of by id.
+func (q *Queries) GetLicenseByKey(ctx context.Context, arg GetLicenseByKeyParams) (License, error) {
+	row := q.db.QueryRowContext(ctx, getLicenseByKey, arg.ProductID, arg.OwningDepartmentID, arg.LicenseSlug)
+	var i License
+	err := row.Scan(
+		&i.ID,
+		&i.ProductID,
+		&i.OwningDepartmentID,
+		&i.LicenseSlug,
+		&i.DisplayName,
+		&i.TotalCount,
+		&i.CountUnit,
+		&i.ContractType,
+		&i.PurchasedAt,
+		&i.StartedAt,
+		&i.ExpiresAt,
+		&i.VendorOrderNo,
+		&i.Purchaser,
+		&i.UnitPrice,
+		&i.Currency,
+		&i.ProductKeys,
+		&i.FsDirPath,
+		&i.Note,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listLicenses = `-- name: ListLicenses :many
 
 SELECT

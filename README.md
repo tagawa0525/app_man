@@ -171,6 +171,29 @@ appmgr-prune-logs -config config.yml -dry-run   # 対象件数をログに出す
 
 値が不正（非整数・0 以下）な場合は exit 1 で全体を中断し、どのテーブルも削除しない（保持期間の解釈ミスによる大量削除の防止）。なお `import_logs` は `raw_installations` から参照されている行を削除対象から除外するため、`import_logs` の保持期間を `raw_installations` より短く設定しても FK 違反で失敗しない。
 
+## 初期データ移行（import-bootstrap）
+
+`appmgr-import-bootstrap` は既存 Excel から書き出した CSV（UTF-8・ヘッダ行あり）を検証し、一括投入する。全行を検証してエラーが 1 件でもあれば行番号付きで列挙して 1 行も投入しない（1 トランザクション）。`--commit` を付けない限り dry-run（検証のみ）で、commit 成功時は `audit_logs` に `bootstrap_import` として記録される。
+
+```sh
+appmgr-import-bootstrap -config config.yml -kind vendors -file vendors.csv           # dry-run（検証のみ）
+appmgr-import-bootstrap -config config.yml -kind vendors -file vendors.csv -commit   # 実投入
+```
+
+CSV は参照先を ID ではなく自然キー（ベンダー名・製品名 + エディション・部署コード・従業員コード・資産コードなど）で指すため、**参照先が先に存在するよう次の順で投入する**。
+
+1. `vendors`
+2. `products`（＋必要なら `product_aliases`）
+3. `departments`
+4. `users`
+5. `devices`
+6. `licenses`
+7. `user_assignments` / `device_assignments`
+
+`licenses` は契約フォルダのパス（`fs_dir_path`）を DB に保存するのみで、物理ディレクトリと `meta.yml` は作らない。**全件の投入が終わったら `appmgr-generate-meta` を 1 回実行**して契約フォルダを一括生成する（次節参照）。パス衝突は検証エラーになるため、CSV（Excel）側でスラッグを直して解消する。
+
+割当（`user_assignments` / `device_assignments`）では、退職者・退役端末への割当、既にアクティブな割当との重複（CSV 内の重複を含む）が検証エラーになる。Web 画面の 400 / 409 と同じ基準である。
+
 ## meta.yml 一括再生成（generate-meta）
 
 `appmgr-generate-meta` は全ライセンス（満了含む）の契約フォルダについて、物理ディレクトリを確保し `meta.yml` を DB の現在内容で一括再生成する。スケジューラ登録は不要で、フォルダ未作成行の backfill や `meta.yml` の破損復旧が必要になったときに手動で実行する（exit code の意味は「バックアップ」節と同じ。1 件でも失敗すると exit 1 だが、残りの行は処理される）。`meta.yml` は本システムが自動生成するファイルであり、手動編集はこの実行で上書きされる。証書ファイル自体には触れない。

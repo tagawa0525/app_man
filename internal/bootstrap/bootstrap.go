@@ -1,15 +1,17 @@
 // Package bootstrap は appmgr-import-bootstrap の本体ロジックを集める。
 //
 // 要件書 §9 で MVP 必須と規定された CSV 一括投入バイナリのうち、本パッケージ
-// では「コア機能」(検証 / dry-run / --commit / 1 トランザクション) を扱う。
-// audit_logs 書き込み / alias-resolve / Shift_JIS / licenses+assignments は
-// 別 PR で本パッケージに kind を足す形で拡張する想定。
+// では「コア機能」(検証 / dry-run / --commit / 1 トランザクション) と
+// commit 成功後の audit_logs 記録 (受け入れ基準 15) を扱う。
+// alias-resolve / Shift_JIS は別 PR で本パッケージに kind を足す形で
+// 拡張する想定。
 package bootstrap
 
 import (
 	"context"
 	"database/sql"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -96,9 +98,30 @@ func Run(ctx context.Context, db *sql.DB, csvPath string, importer Importer, dry
 	if err != nil {
 		return fmt.Errorf("insert: %w", err)
 	}
+
+	// audit_logs への記録 (受け入れ基準 15) は投入と同一トランザクションで
+	// 行い、「投入は成功したが監査記録が無い」状態を作らない。dry-run /
+	// 検証エラー / rollback では記録されない。CLI 実行のため app_user_id
+	// は NULL (実行者は OS レベルの監査に委ねる)。
+	diff, err := json.Marshal(struct {
+		File string `json:"file"`
+		Rows int    `json:"rows"`
+	}{File: csvPath, Rows: n})
+	if err != nil {
+		return fmt.Errorf("marshal audit diff: %w", err)
+	}
+	diffJSON := string(diff)
+	if _, err := txQ.CreateAuditLog(ctx, repository.CreateAuditLogParams{
+		Action:     "bootstrap_import",
+		EntityType: importer.Kind(),
+		DiffJson:   &diffJSON,
+	}); err != nil {
+		return fmt.Errorf("write audit log: %w", err)
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}
+
 	_, _ = fmt.Fprintf(out, "%d 行投入\n", n)
 	return nil
 }
