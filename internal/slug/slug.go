@@ -29,10 +29,12 @@ func Slugify(s string) string {
 	}
 	out := strings.Map(func(r rune) rune {
 		switch r {
-		case '/', '\\', ':', '*', '?', '"', '<', '>', '|', ' ':
+		case '/', '\\', ':', '*', '?', '"', '<', '>', '|':
 			return '_'
 		}
-		if unicode.IsControl(r) {
+		// 空白は unicode.IsSpace 全般 (全角スペース・NBSP 含む) を対象に
+		// する。TrimSpace が Unicode 空白を落とすのと基準を揃えるため。
+		if unicode.IsControl(r) || unicode.IsSpace(r) {
 			return '_'
 		}
 		return r
