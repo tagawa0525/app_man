@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/tagawa0525/app_man/internal/filestore"
 	"github.com/tagawa0525/app_man/internal/handler/handlertest"
 	"github.com/tagawa0525/app_man/internal/handler/middleware"
 	"github.com/tagawa0525/app_man/internal/handler/web"
@@ -41,9 +42,14 @@ func newWebRouter(t *testing.T) (http.Handler, *sql.DB, session.Store, *reposito
 		Logger: slog.New(slog.DiscardHandler),
 	}))
 	r.Use(middleware.CSRFMiddleware)
+	// licenses の create / update は FS 処理 (物理ディレクトリ + meta.yml)
+	// を伴うため、t.TempDir() を base にした filestore を常に注入する。
+	fsCfg := docsFSCfg(t)
 	web.RegisterRoutes(r, web.Deps{
-		Logger: slog.New(slog.DiscardHandler),
-		DB:     sqlDB,
+		Logger:       slog.New(slog.DiscardHandler),
+		DB:           sqlDB,
+		FileStore:    filestore.New(fsCfg),
+		FileStoreCfg: fsCfg,
 	})
 	return r, sqlDB, store, repository.New(sqlDB)
 }

@@ -10,6 +10,26 @@ import (
 	"time"
 )
 
+const countLicensesByFsDirPath = `-- name: CountLicensesByFsDirPath :one
+SELECT COUNT(*) FROM licenses
+WHERE fs_dir_path = ? AND id != ?
+`
+
+type CountLicensesByFsDirPathParams struct {
+	FsDirPath string
+	ID        int64
+}
+
+// CountLicensesByFsDirPath counts licenses already using fs_dir_path,
+// excluding the given id (pass 0 when creating a new license). Used by
+// the web layer for suffix-based collision avoidance (spec 3.2).
+func (q *Queries) CountLicensesByFsDirPath(ctx context.Context, arg CountLicensesByFsDirPathParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countLicensesByFsDirPath, arg.FsDirPath, arg.ID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createLicense = `-- name: CreateLicense :one
 INSERT INTO licenses (
   product_id,

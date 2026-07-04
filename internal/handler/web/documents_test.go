@@ -131,7 +131,7 @@ func fetchAuditLogs(t *testing.T, db *sql.DB) []auditRow {
 	if err != nil {
 		t.Fatalf("select audit_logs: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []auditRow
 	for rows.Next() {
 		var r auditRow

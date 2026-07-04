@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tagawa0525/app_man/internal/config"
+	"github.com/tagawa0525/app_man/internal/filestore"
 	"github.com/tagawa0525/app_man/internal/handler/middleware"
 	"github.com/tagawa0525/app_man/internal/repository"
 	"github.com/tagawa0525/app_man/internal/slug"
@@ -23,6 +25,10 @@ import (
 type licenseHandlers struct {
 	db     *sql.DB
 	logger *slog.Logger
+	// store / fsCfg は証書ファイルの物理配置 (L-3)。store が保存・オープン、
+	// fsCfg.BasePath がディレクトリ作成・rename・meta.yml の書込み先。
+	store *filestore.Store
+	fsCfg config.FileStoreConfig
 }
 
 // expiringSoonDays は一覧で「期限接近」警告を出すしきい値 (90 日)。
@@ -96,6 +102,13 @@ func (h *licenseHandlers) show(w http.ResponseWriter, r *http.Request) {
 // 超えたときのみ (NULL = 無制限は警告なし)。超過してもブロックはしない
 // (本システムの思想は可視化)。
 func (h *licenseHandlers) renderShow(w http.ResponseWriter, r *http.Request, id int64, status int, flash string) {
+	h.renderShowKeys(w, r, id, status, flash, "")
+}
+
+// renderShowKeys は renderShow の実体。revealedKeys が非空のとき (キー閲覧
+// POST の応答のみ) だけ平文キーを view に渡す。呼び出し側で audit_logs への
+// INSERT 成功を確認してから渡すこと。
+func (h *licenseHandlers) renderShowKeys(w http.ResponseWriter, r *http.Request, id int64, status int, flash, revealedKeys string) {
 	q := repository.New(h.db)
 	row, err := q.GetLicenseByID(r.Context(), id)
 	if err != nil {
@@ -120,6 +133,12 @@ func (h *licenseHandlers) renderShow(w http.ResponseWriter, r *http.Request, id 
 	deviceAsgs, err := q.ListActiveDeviceAssignmentsByLicense(r.Context(), id)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "list device assignments", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	docs, err := q.ListLicenseDocumentsByLicense(r.Context(), id)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "list license documents", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -162,7 +181,9 @@ func (h *licenseHandlers) renderShow(w http.ResponseWriter, r *http.Request, id 
 	if err := licenseview.Show(role, licenseview.ShowProps{
 		License:           row,
 		HasKeys:           hasKeys,
+		RevealedKeys:      revealedKeys,
 		Flash:             flash,
+		Documents:         docs,
 		UserAssignments:   userAsgs,
 		DeviceAssignments: deviceAsgs,
 		AssignableUsers:   activeUsers,
@@ -250,6 +271,16 @@ func (h *licenseHandlers) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// fs_dir_path は他ライセンスとの重複 (DB) と空でない既存物理ディレクトリ
+	// の両方を見て _2, _3... サフィックスで衝突回避する (仕様 §3.2)。
+	fsDir, err := h.resolveLicenseFsDir(r.Context(), q,
+		licenseFsDirPath(parsed.VendorName, parsed.ProductName, parsed.LicenseSlug), 0)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "resolve fs_dir_path for create license", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
 	lic, err := q.CreateLicense(r.Context(), repository.CreateLicenseParams{
 		ProductID:          parsed.ProductID,
 		OwningDepartmentID: parsed.DepartmentID,
@@ -266,7 +297,7 @@ func (h *licenseHandlers) create(w http.ResponseWriter, r *http.Request) {
 		UnitPrice:          parsed.UnitPrice,
 		Currency:           &parsed.Currency,
 		ProductKeys:        nilIfEmpty(parsed.ProductKeys),
-		FsDirPath:          licenseFsDirPath(parsed.VendorName, parsed.ProductName, parsed.LicenseSlug),
+		FsDirPath:          fsDir,
 		Note:               parsed.Note,
 	})
 	if err != nil {
@@ -280,6 +311,14 @@ func (h *licenseHandlers) create(w http.ResponseWriter, r *http.Request) {
 		h.logger.ErrorContext(r.Context(), "create license", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
+	}
+
+	// 物理ディレクトリ + meta.yml。失敗しても作成自体は成立させる
+	// (FS/DB のズレは警告のみでブロックしない思想。appmgr-generate-meta で
+	// 回復可能)。
+	if err := h.regenerateLicenseFS(r.Context(), q, lic.ID); err != nil {
+		h.logger.ErrorContext(r.Context(), "materialize license dir/meta after create",
+			"license_id", lic.ID, "err", err)
 	}
 
 	http.Redirect(w, r, "/licenses/"+strconv.FormatInt(lic.ID, 10), http.StatusSeeOther)
@@ -388,6 +427,24 @@ func (h *licenseHandlers) update(w http.ResponseWriter, r *http.Request) {
 		keys = &parsed.ProductKeys
 	}
 
+	// fs_dir_path が変わる場合は DB 更新前に物理ディレクトリを追随させる
+	// (rename 失敗時に DB と FS がズレない順序。仕様 §3.2 / Plan の決定)。
+	fsDir := existing.FsDirPath
+	if want := licenseFsDirPath(parsed.VendorName, parsed.ProductName, parsed.LicenseSlug); want != existing.FsDirPath {
+		fsDir, err = h.resolveLicenseFsDir(r.Context(), q, want, id)
+		if err != nil {
+			h.logger.ErrorContext(r.Context(), "resolve fs_dir_path for update license", "err", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if err := h.renameLicenseDir(existing.FsDirPath, fsDir); err != nil {
+			h.logger.ErrorContext(r.Context(), "rename license dir", "err", err,
+				"from", existing.FsDirPath, "to", fsDir)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	affected, err := q.UpdateLicense(r.Context(), repository.UpdateLicenseParams{
 		ProductID:          parsed.ProductID,
 		OwningDepartmentID: parsed.DepartmentID,
@@ -404,7 +461,7 @@ func (h *licenseHandlers) update(w http.ResponseWriter, r *http.Request) {
 		UnitPrice:          parsed.UnitPrice,
 		Currency:           &parsed.Currency,
 		ProductKeys:        keys,
-		FsDirPath:          licenseFsDirPath(parsed.VendorName, parsed.ProductName, parsed.LicenseSlug),
+		FsDirPath:          fsDir,
 		Note:               parsed.Note,
 		ID:                 id,
 	})
@@ -437,6 +494,13 @@ func (h *licenseHandlers) update(w http.ResponseWriter, r *http.Request) {
 	if affected == 0 {
 		http.NotFound(w, r)
 		return
+	}
+
+	// 更新後の内容で meta.yml を再生成 (ディレクトリが無ければ MkdirAll で
+	// 自然回復)。失敗は error ログのみでブロックしない。
+	if err := h.regenerateLicenseFS(r.Context(), q, id); err != nil {
+		h.logger.ErrorContext(r.Context(), "regenerate license dir/meta after update",
+			"license_id", id, "err", err)
 	}
 
 	http.Redirect(w, r, "/licenses/"+strconv.FormatInt(id, 10), http.StatusSeeOther)

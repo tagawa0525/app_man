@@ -83,6 +83,34 @@ func formatPrice(price *int64, currency *string) string {
 	return s
 }
 
+// docTypeLabel は license_documents.doc_type の表示名。
+func docTypeLabel(v string) string {
+	switch v {
+	case "certificate":
+		return "証書"
+	case "order":
+		return "注文書"
+	case "other":
+		return "その他"
+	default:
+		return v
+	}
+}
+
+// formatSizeBytes はファイルサイズの表示 (1024 基数で 1 桁小数まで)。
+func formatSizeBytes(n int64) string {
+	const unit = int64(1024)
+	if n < unit {
+		return strconv.FormatInt(n, 10) + " B"
+	}
+	div, exp := unit, 0
+	for m := n / unit; m >= unit; m /= unit {
+		div *= unit
+		exp++
+	}
+	return strconv.FormatFloat(float64(n)/float64(div), 'f', 1, 64) + " " + []string{"KiB", "MiB", "GiB", "TiB"}[exp]
+}
+
 // deviceOptionLabel は端末割当 select の表示名 (資産コード [ホスト名])。
 func deviceOptionLabel(d repository.ListActiveDevicesForSelectRow) string {
 	label := d.AssetCode

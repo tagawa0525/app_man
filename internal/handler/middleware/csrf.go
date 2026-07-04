@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"net/http"
+	"strings"
 )
 
 // CSRFTokenFrom は SessionFrom(ctx) から CSRF token を取り出す。
@@ -47,6 +48,16 @@ func CSRFMiddleware(next http.Handler) http.Handler {
 			// form 値の参照は ParseForm が必要。Content-Type が
 			// application/x-www-form-urlencoded のときだけ意味がある。
 			if err := r.ParseForm(); err == nil {
+				token = r.PostFormValue("_csrf")
+			}
+		}
+		if token == "" && strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+			// multipart form (証書アップロード等) の hidden _csrf は
+			// ParseForm では読めないため multipart をパースする。ここで
+			// パース済みになった body は後段ハンドラの ParseMultipartForm
+			// ではキャッシュが返る (ファイル本体のサイズ上限はハンドラ /
+			// filestore 層が担う)。maxMemory 超過分は一時ファイルに落ちる。
+			if err := r.ParseMultipartForm(32 << 20); err == nil {
 				token = r.PostFormValue("_csrf")
 			}
 		}

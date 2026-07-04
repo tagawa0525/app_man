@@ -18,7 +18,12 @@ import (
 type ShowProps struct {
 	License repository.GetLicenseByIDRow
 	HasKeys bool
-	Flash   string
+	// RevealedKeys はキー閲覧 POST の応答でのみ非空になる平文キー。
+	// handler 側で audit_logs INSERT の成功を確認してから渡される。
+	RevealedKeys string
+	Flash        string
+	// Documents は証書ファイル一覧 (アップロード順)。
+	Documents []repository.LicenseDocument
 	// UserAssignments / DeviceAssignments はアクティブ割当の一覧。
 	UserAssignments   []repository.ListActiveUserAssignmentsByLicenseRow
 	DeviceAssignments []repository.ListActiveDeviceAssignmentsByLicenseRow
@@ -103,6 +108,15 @@ templ Show(role middleware.Role, props ShowProps) {
 				<dd>
 					if props.HasKeys {
 						登録あり
+						if canEdit(role) && props.RevealedKeys == "" {
+							<form method="post" action={ templ.SafeURL("/licenses/" + itoa(props.License.ID) + "/keys/reveal") } class="inline">
+								@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
+								<button type="submit" class="btn btn-xs">キーを表示</button>
+							</form>
+						}
+						if props.RevealedKeys != "" {
+							<pre class="revealed-keys">{ props.RevealedKeys }</pre>
+						}
 					} else {
 						登録なし
 					}
@@ -120,6 +134,43 @@ templ Show(role middleware.Role, props ShowProps) {
 				<dt>更新日時</dt>
 				<dd>{ props.License.UpdatedAt.Format("2006-01-02 15:04") }</dd>
 			</dl>
+
+			<h2>証書ファイル</h2>
+			if len(props.Documents) == 0 {
+				<p class="empty">証書ファイルはありません。</p>
+			} else {
+				<ul class="document-list">
+					for _, d := range props.Documents {
+						<li>
+							<span class="doc-type">{ docTypeLabel(d.DocType) }</span>
+							<a href={ templ.SafeURL("/licenses/" + itoa(props.License.ID) + "/documents/" + itoa(d.ID) + "/download") }>
+								{ d.OriginalFilename }
+							</a>
+							if d.SizeBytes != nil {
+								<span class="size">{ formatSizeBytes(*d.SizeBytes) }</span>
+							}
+							<span class="uploaded-at">{ d.UploadedAt.Format("2006-01-02 15:04") }</span>
+							if d.Note != nil && *d.Note != "" {
+								<span class="note">{ *d.Note }</span>
+							}
+						</li>
+					}
+				</ul>
+			}
+			if canEdit(role) {
+				<form method="post" action={ templ.SafeURL("/licenses/" + itoa(props.License.ID) + "/documents") } enctype="multipart/form-data" class="document-upload">
+					@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
+					<label for="doc_file">証書アップロード</label>
+					<input id="doc_file" type="file" name="file" accept=".pdf,.png,.jpg,.jpeg" required/>
+					<select name="doc_type">
+						<option value="certificate">証書</option>
+						<option value="order">注文書</option>
+						<option value="other">その他</option>
+					</select>
+					<input type="text" name="note" placeholder="メモ (任意)"/>
+					<button type="submit" class="btn">アップロード</button>
+				</form>
+			}
 
 			<h2>割当状況</h2>
 			<p class="assignment-count">
