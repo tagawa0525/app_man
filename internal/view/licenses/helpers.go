@@ -103,12 +103,14 @@ func formatSizeBytes(n int64) string {
 	if n < unit {
 		return strconv.FormatInt(n, 10) + " B"
 	}
+	units := []string{"KiB", "MiB", "GiB", "TiB"}
 	div, exp := unit, 0
-	for m := n / unit; m >= unit; m /= unit {
+	// units を超える巨大値は最大単位 (TiB) にクランプする (範囲外 panic 防止)
+	for m := n / unit; m >= unit && exp < len(units)-1; m /= unit {
 		div *= unit
 		exp++
 	}
-	return strconv.FormatFloat(float64(n)/float64(div), 'f', 1, 64) + " " + []string{"KiB", "MiB", "GiB", "TiB"}[exp]
+	return strconv.FormatFloat(float64(n)/float64(div), 'f', 1, 64) + " " + units[exp]
 }
 
 // deviceOptionLabel は端末割当 select の表示名 (資産コード [ホスト名])。
