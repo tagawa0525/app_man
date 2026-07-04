@@ -171,6 +171,15 @@ appmgr-prune-logs -config config.yml -dry-run   # 対象件数をログに出す
 
 値が不正（非整数・0 以下）な場合は exit 1 で全体を中断し、どのテーブルも削除しない（保持期間の解釈ミスによる大量削除の防止）。なお `import_logs` は `raw_installations` から参照されている行を削除対象から除外するため、`import_logs` の保持期間を `raw_installations` より短く設定しても FK 違反で失敗しない。
 
+## meta.yml 一括再生成（generate-meta）
+
+`appmgr-generate-meta` は全ライセンス（満了含む）の契約フォルダについて、物理ディレクトリを確保し `meta.yml` を DB の現在内容で一括再生成する。スケジューラ登録は不要で、フォルダ未作成行の backfill や `meta.yml` の破損復旧が必要になったときに手動で実行する（exit code の意味は「バックアップ」節と同じ。1 件でも失敗すると exit 1 だが、残りの行は処理される）。`meta.yml` は本システムが自動生成するファイルであり、手動編集はこの実行で上書きされる。証書ファイル自体には触れない。
+
+```sh
+appmgr-generate-meta -config config.yml            # 一括再生成
+appmgr-generate-meta -config config.yml -dry-run   # 対象件数（total / would_create）をログに出すのみ（FS には触れない）
+```
+
 ## 開発ルール
 
 - main ブランチへの直接コミットは禁止。必ず feature ブランチを切って PR を出す
