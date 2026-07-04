@@ -168,7 +168,10 @@ func scanDocuments(ctx context.Context, q *repository.Queries, basePath string, 
 		if err != nil {
 			rep.Findings = append(rep.Findings, Finding{
 				Kind: KindInvalidPath, LicenseID: row.ID,
-				Path: doc.StoredPath, Detail: err.Error(),
+				Path: doc.StoredPath,
+				// DirAbs のエラー文言は fs_dir_path を主語にするため、
+				// stored_path 由来だと分かる補足を付ける
+				Detail: "stored_path: " + err.Error(),
 			})
 			continue
 		}
@@ -201,7 +204,7 @@ func scanUnregistered(basePath, dirAbs string, row repository.ListLicensesRow, r
 	metaRel := path.Join(path.Clean(filepath.ToSlash(row.FsDirPath)), "meta.yml")
 	return filepath.WalkDir(dirAbs, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return fmt.Errorf("walk license dir %s: %w", dirAbs, err)
+			return fmt.Errorf("walk license dir %s (entry %s): %w", dirAbs, p, err)
 		}
 		if !d.Type().IsRegular() {
 			return nil
