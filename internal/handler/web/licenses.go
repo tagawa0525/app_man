@@ -476,6 +476,8 @@ func (h *licenseHandlers) update(w http.ResponseWriter, r *http.Request) {
 		// 移動した証書を指す stored_path (base 相対) も新しい接頭辞に
 		// 付け替える。旧接頭辞に一致しない行 (手動修正済み等) は触らない。
 		if err := h.reprefixDocumentPaths(r.Context(), qtx, id, existing.FsDirPath, fsDir); err != nil {
+			// FS 復元中に tx (接続) を保持し続けないよう先に閉じる
+			_ = tx.Rollback()
 			restoreRename()
 			h.logger.ErrorContext(r.Context(), "reprefix document stored_path", "err", err,
 				"from", existing.FsDirPath, "to", fsDir)
@@ -541,6 +543,8 @@ func (h *licenseHandlers) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := tx.Commit(); err != nil {
+		// commit 失敗後に tx が open のまま残る実装に備えて明示的に解放
+		_ = tx.Rollback()
 		restoreRename()
 		h.logger.ErrorContext(r.Context(), "commit update license", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
