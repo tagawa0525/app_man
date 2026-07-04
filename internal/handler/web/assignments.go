@@ -76,7 +76,7 @@ func (h *licenseHandlers) assignUser(w http.ResponseWriter, r *http.Request) {
 		LicenseID:         id,
 		UserID:            uid,
 		ExternalAccountID: nilIfEmpty(strings.TrimSpace(r.PostFormValue("external_account_id"))),
-		Note:              nilIfEmpty(r.PostFormValue("note")),
+		Note:              nilIfEmpty(strings.TrimSpace(r.PostFormValue("note"))),
 	}); err != nil {
 		if isUniqueConstraintErr(err) {
 			// 事前チェック後のレース (並行 POST) は uniq_user_assignments_active
@@ -173,7 +173,7 @@ func (h *licenseHandlers) assignDevice(w http.ResponseWriter, r *http.Request) {
 	if _, err := q.CreateDeviceAssignment(r.Context(), repository.CreateDeviceAssignmentParams{
 		LicenseID: id,
 		DeviceID:  did,
-		Note:      nilIfEmpty(r.PostFormValue("note")),
+		Note:      nilIfEmpty(strings.TrimSpace(r.PostFormValue("note"))),
 	}); err != nil {
 		if isUniqueConstraintErr(err) {
 			// 事前チェック後のレース (並行 POST) は uniq_device_assignments_active
