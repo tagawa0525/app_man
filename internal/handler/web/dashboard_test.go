@@ -244,3 +244,33 @@ func TestDashboard_Usage_UnlimitedIsNotOverAllocated(t *testing.T) {
 		t.Errorf("unlimited-only product should not be flagged as over-allocated:\n%s", body)
 	}
 }
+
+// 当日満了 (expires_at = 今日) のライセンスは「期限日当日は有効」の全体
+// 方針どおり保有数に数えられ、偽の超過バッジが出ない。v_license_usage が
+// > date('now') だと当日満了分が owned から消え、満了間近一覧 (>=) との
+// 不整合で幻の超過が出る (PR #32 Copilot 指摘)。
+func TestDashboard_Usage_CountsLicenseExpiringToday(t *testing.T) {
+	t.Parallel()
+	r, db, store, q := newWebRouter(t)
+
+	s := seedLicenseCatalog(t, q, "TodayVendor", "TodayApp", "DEPT201", "総務部")
+	nowUTC := time.Now().UTC()
+	todayUTC := time.Date(nowUTC.Year(), nowUTC.Month(), nowUTC.Day(), 0, 0, 0, 0, time.UTC)
+	lic := seedAssignLicense(t, q, s, "today", "当日満了契約", "user", int64Ptr(5))
+	// 日付のみの TEXT 値 (手動 SQL 編集や外部投入で入りうる形式) を使う。
+	// Go ドライバ経由の時刻成分付き値は文字列比較の偶然で > date('now') を
+	// 通過するが、日付のみだと除外され、偽の超過が出る (これが本バグ)。
+	if _, err := db.Exec(`UPDATE licenses SET expires_at = ? WHERE id = ?`, todayUTC.Format("2006-01-02"), lic.ID); err != nil {
+		t.Fatalf("set expires_at: %v", err)
+	}
+	u := seedActiveUser(t, q, "E951", "当日満了利用者")
+	seedDashboardUserAssignment(t, q, lic.ID, u.ID)
+
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/", middleware.RoleViewer, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	handlertest.AssertStatus(t, rec, http.StatusOK)
+	if body := rec.Body.String(); contains(body, "超過") {
+		t.Errorf("license expiring today (owned 5, assigned 1) must not show over-allocation:\n%s", body)
+	}
+}
