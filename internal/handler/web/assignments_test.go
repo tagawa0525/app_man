@@ -549,6 +549,31 @@ func TestAssignments_AssignDevice_Retired_400AndNotInOptions(t *testing.T) {
 	}
 }
 
+func TestAssignments_Options_NotTruncatedAt200(t *testing.T) {
+	t.Parallel()
+	r, db, store, q := newWebRouter(t)
+
+	s := seedLicenseCatalog(t, q, "Adobe", "Acrobat Pro", "DEPT001", "情報システム部")
+	lic := seedAssignLicense(t, q, s, "base", "Acrobat 年間契約", "user", nil)
+
+	// 在職ユーザ・現役端末を 201 件ずつ投入する。コード・名前をゼロ埋め
+	// 連番にして、201 件目がどの並び順でも末尾に来るようにする。選択肢
+	// クエリに LIMIT があると 201 件目が option に出ず、そのユーザ/端末は
+	// 画面から割当不能になる。
+	for i := 1; i <= 201; i++ {
+		seedActiveUser(t, q, fmt.Sprintf("SEL-%03d", i), fmt.Sprintf("選択肢ユーザ%03d", i))
+		seedActiveDevice(t, q, fmt.Sprintf("OPT-%03d", i))
+	}
+
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, fmt.Sprintf("/licenses/%d", lic.ID), middleware.RoleLicenseManager, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	handlertest.AssertStatus(t, rec, http.StatusOK)
+	handlertest.AssertContains(t, rec, "選択肢ユーザ201")
+	handlertest.AssertContains(t, rec, "OPT-201")
+}
+
 func TestAssignments_Viewer_403(t *testing.T) {
 	t.Parallel()
 	r, db, store, q := newWebRouter(t)
