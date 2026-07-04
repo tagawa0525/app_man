@@ -142,5 +142,10 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 		r.Post("/licenses", lic.create)
 		r.Get("/licenses/{id}/edit", lic.editForm)
 		r.Post("/licenses/{id}", lic.update)
+		// 割当の追加・解除 (L-2)。解除は revoked_at の論理解除で物理 DELETE なし。
+		r.Post("/licenses/{id}/assignments/users", lic.assignUser)
+		r.Post("/licenses/{id}/assignments/users/{aid}/revoke", lic.revokeUserAssignment)
+		r.Post("/licenses/{id}/assignments/devices", lic.assignDevice)
+		r.Post("/licenses/{id}/assignments/devices/{aid}/revoke", lic.revokeDeviceAssignment)
 	})
 }

@@ -83,6 +83,15 @@ func formatPrice(price *int64, currency *string) string {
 	return s
 }
 
+// deviceOptionLabel は端末割当 select の表示名 (資産コード [ホスト名])。
+func deviceOptionLabel(d repository.Device) string {
+	label := d.AssetCode
+	if d.Hostname != nil && *d.Hostname != "" {
+		label += " (" + *d.Hostname + ")"
+	}
+	return label
+}
+
 // productLabel は product select の表示名 (ベンダー / 製品名 [エディション])。
 func productLabel(p repository.ListProductsRow) string {
 	label := p.VendorName + " / " + p.CanonicalName
