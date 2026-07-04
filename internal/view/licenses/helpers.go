@@ -84,7 +84,7 @@ func formatPrice(price *int64, currency *string) string {
 }
 
 // deviceOptionLabel は端末割当 select の表示名 (資産コード [ホスト名])。
-func deviceOptionLabel(d repository.Device) string {
+func deviceOptionLabel(d repository.ListActiveDevicesForSelectRow) string {
 	label := d.AssetCode
 	if d.Hostname != nil && *d.Hostname != "" {
 		label += " (" + *d.Hostname + ")"

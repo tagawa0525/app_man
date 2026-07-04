@@ -228,6 +228,45 @@ func (q *Queries) ListActiveDeviceAssignmentsByLicense(ctx context.Context, lice
 	return items, nil
 }
 
+const listActiveDevicesForSelect = `-- name: ListActiveDevicesForSelect :many
+SELECT id, asset_code, hostname
+FROM devices
+WHERE retired_at IS NULL
+ORDER BY asset_code
+`
+
+type ListActiveDevicesForSelectRow struct {
+	ID        int64
+	AssetCode string
+	Hostname  *string
+}
+
+// ListActiveDevicesForSelect returns every active device for the
+// assignment form options. No LIMIT for the same reason as
+// ListActiveUsersForSelect.
+func (q *Queries) ListActiveDevicesForSelect(ctx context.Context) ([]ListActiveDevicesForSelectRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveDevicesForSelect)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListActiveDevicesForSelectRow
+	for rows.Next() {
+		var i ListActiveDevicesForSelectRow
+		if err := rows.Scan(&i.ID, &i.AssetCode, &i.Hostname); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listActiveUserAssignmentsByLicense = `-- name: ListActiveUserAssignmentsByLicense :many
 
 SELECT
@@ -278,6 +317,46 @@ func (q *Queries) ListActiveUserAssignmentsByLicense(ctx context.Context, licens
 			&i.AssignedAt,
 			&i.Note,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listActiveUsersForSelect = `-- name: ListActiveUsersForSelect :many
+SELECT id, employee_code, name
+FROM users
+WHERE deactivated_at IS NULL
+ORDER BY name, id
+`
+
+type ListActiveUsersForSelectRow struct {
+	ID           int64
+	EmployeeCode string
+	Name         string
+}
+
+// ListActiveUsersForSelect returns every active user for the
+// assignment form options. No LIMIT on purpose: a row missing from
+// the options means that user cannot be assigned at all (the LIMIT
+// 200 list queries are for list pages only).
+func (q *Queries) ListActiveUsersForSelect(ctx context.Context) ([]ListActiveUsersForSelectRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveUsersForSelect)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListActiveUsersForSelectRow
+	for rows.Next() {
+		var i ListActiveUsersForSelectRow
+		if err := rows.Scan(&i.ID, &i.EmployeeCode, &i.Name); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

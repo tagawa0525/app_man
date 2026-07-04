@@ -23,8 +23,8 @@ type ShowProps struct {
 	UserAssignments   []repository.ListActiveUserAssignmentsByLicenseRow
 	DeviceAssignments []repository.ListActiveDeviceAssignmentsByLicenseRow
 	// AssignableUsers / AssignableDevices は割当フォームの選択肢。
-	AssignableUsers   []repository.User
-	AssignableDevices []repository.Device
+	AssignableUsers   []repository.ListActiveUsersForSelectRow
+	AssignableDevices []repository.ListActiveDevicesForSelectRow
 	// AssignedCount は count_unit に一致する側のアクティブ割当数。
 	AssignedCount int64
 	// OverAllocated は AssignedCount > total_count (非 NULL) のとき true。

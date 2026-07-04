@@ -123,19 +123,31 @@ func (h *licenseHandlers) renderShow(w http.ResponseWriter, r *http.Request, id 
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	role := middleware.RoleFrom(r.Context())
+
 	// 割当フォームの選択肢: ユーザ = 在職者のみ、端末 = 現役のみ
-	// (退職者・退役端末への新規割当は事故)。
-	activeUsers, err := q.ListActiveUsers(r.Context())
-	if err != nil {
-		h.logger.ErrorContext(r.Context(), "list active users", "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	activeDevices, err := q.ListDevices(r.Context())
-	if err != nil {
-		h.logger.ErrorContext(r.Context(), "list active devices", "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
+	// (退職者・退役端末への新規割当は事故)。フォームは編集ロールにしか
+	// 表示しないので、選択肢クエリも編集ロールのときだけ実行する
+	// (viewer 等では空スライスのまま)。専用クエリは LIMIT なし —
+	// 選択肢から漏れた対象は画面から割当不能になるため、一覧画面向けの
+	// LIMIT 200 クエリ (ListActiveUsers / ListDevices) は使わない。
+	var (
+		activeUsers   []repository.ListActiveUsersForSelectRow
+		activeDevices []repository.ListActiveDevicesForSelectRow
+	)
+	if isEditorRole(role) {
+		activeUsers, err = q.ListActiveUsersForSelect(r.Context())
+		if err != nil {
+			h.logger.ErrorContext(r.Context(), "list active users for select", "err", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		activeDevices, err = q.ListActiveDevicesForSelect(r.Context())
+		if err != nil {
+			h.logger.ErrorContext(r.Context(), "list active devices for select", "err", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	assigned := int64(len(deviceAsgs))
@@ -143,8 +155,6 @@ func (h *licenseHandlers) renderShow(w http.ResponseWriter, r *http.Request, id 
 		assigned = int64(len(userAsgs))
 	}
 	over := row.TotalCount != nil && assigned > *row.TotalCount
-
-	role := middleware.RoleFrom(r.Context())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if status != http.StatusOK {
 		w.WriteHeader(status)

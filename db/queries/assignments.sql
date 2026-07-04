@@ -97,3 +97,22 @@ WHERE license_id = ? AND revoked_at IS NULL;
 SELECT * FROM v_license_usage
 WHERE product_id = ?
 LIMIT 1;
+
+-- ListActiveUsersForSelect returns every active user for the
+-- assignment form options. No LIMIT on purpose: a row missing from
+-- the options means that user cannot be assigned at all (the LIMIT
+-- 200 list queries are for list pages only).
+-- name: ListActiveUsersForSelect :many
+SELECT id, employee_code, name
+FROM users
+WHERE deactivated_at IS NULL
+ORDER BY name, id;
+
+-- ListActiveDevicesForSelect returns every active device for the
+-- assignment form options. No LIMIT for the same reason as
+-- ListActiveUsersForSelect.
+-- name: ListActiveDevicesForSelect :many
+SELECT id, asset_code, hostname
+FROM devices
+WHERE retired_at IS NULL
+ORDER BY asset_code;

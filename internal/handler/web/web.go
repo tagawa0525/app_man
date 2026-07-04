@@ -51,6 +51,19 @@ var editors = []mw.Role{
 	mw.RoleSystemAdmin,
 }
 
+// isEditorRole は role が editors (license_manager 以上) に含まれるか。
+// ルート認可は RequireRole(editors...) が担うが、閲覧もできるページの
+// 中で編集ロール限定の部品 (割当フォームの選択肢取得等) を出し分ける
+// ときに使う。
+func isEditorRole(role mw.Role) bool {
+	for _, r := range editors {
+		if r == role {
+			return true
+		}
+	}
+	return false
+}
+
 // departmentViewers は /departments 系の閲覧権限。要件書 §11 で
 // 「viewer 以上」と規定されており、general_user は除外する
 // (vendors / products の viewers より厳しい)。
