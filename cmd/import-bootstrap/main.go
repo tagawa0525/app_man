@@ -1,14 +1,16 @@
 // appmgr-import-bootstrap: 既存 Excel / CSV からの一括投入。要件書 §9。
 //
-// 本実装は MVP コア機能のみ:
-//   - --kind { vendors | products | product_aliases | departments | users | devices }
+//   - --kind { vendors | products | product_aliases | departments | users |
+//     devices | licenses | user_assignments | device_assignments }
 //   - --file <path>      CSV ファイルへのパス (UTF-8、ヘッダ行あり)
 //   - --commit           実投入する (省略時は dry-run)
 //
+// commit 成功時は audit_logs に bootstrap_import として記録される。
+// licenses は fs_dir_path を DB に保存するのみで物理 FS には触れない —
+// 投入後に appmgr-generate-meta を 1 回実行する (README「初期データ移行」)。
+//
 // 範囲外 (別 PR):
-//   - audit_logs への記録
 //   - --kind alias-resolve
-//   - --kind licenses / assignments
 //   - Shift_JIS 入力
 package main
 
@@ -53,7 +55,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(binaryName, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", "config.yml", "path to config.yml")
-	kind := fs.String("kind", "", "kind to import (vendors / products / product_aliases / departments / users / devices)")
+	kind := fs.String("kind", "", "kind to import (vendors / products / product_aliases / departments / users / devices / licenses / user_assignments / device_assignments)")
 	file := fs.String("file", "", "path to CSV file")
 	commit := fs.Bool("commit", false, "actually insert rows (default: dry-run)")
 	if err := fs.Parse(args); err != nil {
@@ -145,6 +147,12 @@ func importerByKind(kind string) (bootstrap.Importer, bool) {
 		return bootstrap.UsersImporter{}, true
 	case "devices":
 		return bootstrap.DevicesImporter{}, true
+	case "licenses":
+		return bootstrap.LicensesImporter{}, true
+	case "user_assignments":
+		return bootstrap.UserAssignmentsImporter{}, true
+	case "device_assignments":
+		return bootstrap.DeviceAssignmentsImporter{}, true
 	default:
 		return nil, false
 	}
