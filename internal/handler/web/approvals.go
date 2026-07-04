@@ -21,7 +21,8 @@ import (
 //   - GET  /approvals/{deptID}/{productID}         登録・編集画面 (履歴 + フォーム)
 //   - POST /approvals/{deptID}/{productID}         登録 (既存アクティブは 409)
 //   - POST /approvals/{deptID}/{productID}/revoke  取消 (revoke_reason 必須)
-//   - GET/POST /admin/global-approvals             全社既定の変更 (system_admin)
+//   - GET /admin/global-approvals                  全社既定の一覧 (system_admin)
+//   - POST /admin/global-approvals/{productID}     全社既定の変更 (system_admin)
 //
 // 変更 = 取消 + 新規 (uniq_dept_product_approvals_active のため)。
 // 登録・取消・全社変更は audit_logs への記録と同一トランザクションで行い、

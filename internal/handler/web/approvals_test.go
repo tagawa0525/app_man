@@ -154,8 +154,9 @@ func itoa64(n int64) string {
 
 // --- 認可 -------------------------------------------------------------
 
-// /approvals は dept_security_admin 以上 (仕様 §6.1)。viewer はもちろん、
-// license_manager もロール階層で dept_security_admin より下位のため 403。
+// /approvals は dept_security_admin 以上 (仕様 §6.1)。RequireRole は許可
+// 集合の包含判定のみで、viewer も license_manager も securityAdmins 束に
+// 含まれないため 403。
 func TestApprovals_List_Authorization(t *testing.T) {
 	t.Parallel()
 	r, db, store, _ := newWebRouter(t)
