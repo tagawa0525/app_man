@@ -27,7 +27,7 @@ web 層の regenerateLicenseFS) が存在する。本 PR は仕様 §9「meta.ym
 ### 範囲内
 
 - `internal/licensefs/licensefs.go` + テスト: `Regenerate` (web からの移動)
-  と `MetaExists(basePath, fsDirPath) bool` (dry-run の would_create 判定)
+  と `MetaExists(basePath, fsDirPath) (bool, error)` (dry-run の would_create 判定。basePath 脱出や ENOENT 以外の stat エラーは error を返し、呼び出し側が failed として予告する)
 - `internal/handler/web/documents.go`: regenerateLicenseFS を licensefs
   呼び出しに置換 (挙動不変、既存テストが回帰網)
 - `cmd/generate-meta/main.go` + `runner.go` + `runner_test.go`
@@ -48,7 +48,9 @@ web 層の regenerateLicenseFS) が存在する。本 PR は仕様 §9「meta.ym
 1. cfg.FileStore.BasePath == "" なら error
 2. db.Open → defer close
 3. rows := ListLicenses(ctx, 1)   // 満了含む全件
-4. dry-run なら: 各行の MetaExists を見て would_create / total をログ → return
+4. dry-run なら: 各行の MetaExists を見て would_create / total / failed を
+   ログ (MetaExists が error の行 = 実行しても失敗する行として failed に
+   数える) → failed > 0 なら error return
 5. 各行: licensefs.Regenerate(...)。失敗は error ログ + failed++ で続行
 6. ログ: total / succeeded / failed。failed > 0 なら error return (exit 1)
 ```
