@@ -47,8 +47,21 @@ func MetaExists(basePath, fsDirPath string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	fi, err := os.Stat(filepath.Join(dirAbs, "meta.yml"))
-	return err == nil && fi.Mode().IsRegular(), nil
+	metaPath := filepath.Join(dirAbs, "meta.yml")
+	fi, err := os.Stat(metaPath)
+	switch {
+	case err == nil && fi.Mode().IsRegular():
+		return true, nil
+	case err == nil:
+		// ディレクトリ等が meta.yml の名前を占有している。「存在しない =
+		// would_create」と誤答すると実行時に必ず失敗する行を予告できない
+		return false, fmt.Errorf("meta path %s exists but is not a regular file", metaPath)
+	case errors.Is(err, os.ErrNotExist):
+		return false, nil
+	default:
+		// EACCES 等。存在不明を「無し」に倒さずエラーとして可視化する
+		return false, fmt.Errorf("stat %s: %w", metaPath, err)
+	}
 }
 
 // Regenerate は物理ディレクトリを確保して meta.yml を現在の DB 内容で

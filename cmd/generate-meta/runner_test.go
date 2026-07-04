@@ -332,11 +332,12 @@ func TestGenerateAll_PartialFailureContinues(t *testing.T) {
 
 	// 失敗した 1 件以外は処理されている。
 	readMeta(t, basePath, licOK.FsDirPath)
-	exists, err := licensefs.MetaExists(basePath, licBroken.FsDirPath)
-	if err != nil {
-		t.Fatalf("MetaExists: %v", err)
+	// 壊れた行の MetaExists は ENOTDIR を「存在しない」に倒さず error に
+	// する (実行時に必ず失敗する行を dry-run でも failed として予告する)。
+	if _, err := licensefs.MetaExists(basePath, licBroken.FsDirPath); err == nil {
+		t.Error("MetaExists on a blocked fs_dir_path should return error, got nil")
 	}
-	if exists {
-		t.Error("broken license must not gain a meta.yml")
+	if fi, statErr := os.Stat(brokenAbs); statErr != nil || !fi.Mode().IsRegular() {
+		t.Error("blocking file must remain untouched")
 	}
 }
