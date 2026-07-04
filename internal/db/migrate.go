@@ -72,7 +72,7 @@ func MigrateDown(sqlDB *sql.DB) error {
 // スキーマ版数を返す。マイグレーションファイルを追加した際は
 // この値も更新する。
 func RequiredMigrationVersion() uint {
-	return 8
+	return 7
 }
 
 // CheckVersion は現在の DB スキーマ版数が RequiredMigrationVersion
