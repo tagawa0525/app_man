@@ -157,7 +157,7 @@ func Nav(role middleware.Role, csrfToken string) templ.Component {
 			templ_7745c5c3_Var6 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<nav class=\"appbar\"><span class=\"brand\">社内アプリ管理</span><ul class=\"appbar-menu\"><li><a href=\"/products\">製品</a></li><li><a href=\"/vendors\">ベンダー</a></li><li><a href=\"/departments\">部署</a></li><li><a href=\"/users\">ユーザ</a></li><li><a href=\"/devices\">端末</a></li></ul><form class=\"logout-form\" method=\"post\" action=\"/logout\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<nav class=\"appbar\"><span class=\"brand\">社内アプリ管理</span><ul class=\"appbar-menu\"><li><a href=\"/\">ダッシュボード</a></li><li><a href=\"/products\">製品</a></li><li><a href=\"/vendors\">ベンダー</a></li><li><a href=\"/departments\">部署</a></li><li><a href=\"/users\">ユーザ</a></li><li><a href=\"/devices\">端末</a></li></ul><form class=\"logout-form\" method=\"post\" action=\"/logout\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -204,7 +204,7 @@ func CSRFInput(token string) templ.Component {
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(token)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/layout/base.templ`, Line: 72, Col: 48}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/layout/base.templ`, Line: 73, Col: 48}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 		if templ_7745c5c3_Err != nil {

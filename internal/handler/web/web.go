@@ -110,6 +110,7 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 	dev := &deviceHandlers{db: deps.DB, logger: deps.Logger}
 	lic := &licenseHandlers{db: deps.DB, logger: deps.Logger, store: deps.FileStore, fsCfg: deps.FileStoreCfg}
 	ap := &approvalHandlers{db: deps.DB, logger: deps.Logger}
+	dash := &dashboardHandlers{db: deps.DB, logger: deps.Logger}
 
 	// /login / /logout は role 不問。Authenticator / SessionStore が注入
 	// されている場合のみ登録する (テストで nil を渡したときに panic
@@ -129,6 +130,9 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 	}
 
 	r.With(mw.RequireRole(viewers...)).Group(func(r chi.Router) {
+		// ダッシュボード (GET /) は認証済み全ロール。ウィジェット単位の
+		// 出し分け (§5.6) は handler / view 側で行う。
+		r.Get("/", dash.index)
 		r.Get("/vendors", v.list)
 		r.Get("/vendors/{id}", v.show)
 		r.Get("/products", p.list)

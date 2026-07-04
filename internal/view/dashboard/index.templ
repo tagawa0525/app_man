@@ -1,0 +1,155 @@
+package dashboard
+
+import (
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+// Props は GET / の描画引数。ShowExpiring / ShowLeavers は §5.6 の
+// ロール別出し分け (handler 側で決定): 満了間近は general_user 以外、
+// 退職者の未解除割当は license_manager 以上のときだけ true になる。
+type Props struct {
+	Usage          []repository.ListLicenseUsageRow
+	ApprovalCounts []repository.CountProductsByDefaultApprovalStatusRow
+	ShowExpiring   bool
+	Expiring       []repository.ListExpiringLicensesRow
+	ShowLeavers    bool
+	Leavers        []repository.ListDeactivatedUserAssignmentsRow
+}
+
+templ Index(role middleware.Role, props Props) {
+	@layout.Base(layout.BaseProps{
+		Title:     "ダッシュボード",
+		Role:      role,
+		CSRFToken: middleware.CSRFTokenFrom(ctx),
+	}) {
+		<section class="page-dashboard">
+			<header class="page-header">
+				<h1>ダッシュボード</h1>
+			</header>
+
+			<section class="widget widget-usage">
+				<h2>ライセンス保有・過不足</h2>
+				if len(props.Usage) == 0 {
+					<p class="empty">製品が登録されていません。</p>
+				} else {
+					<table class="data-table">
+						<thead>
+							<tr>
+								<th>ベンダー</th>
+								<th>製品</th>
+								<th>保有</th>
+								<th>割当</th>
+								<th>過不足</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, u := range props.Usage {
+								<tr>
+									<td>{ u.VendorName }</td>
+									<td>{ u.CanonicalName }</td>
+									<td>{ ownedLabel(u) }</td>
+									<td>{ itoa(assignedTotal(u)) }</td>
+									<td>
+										if overAllocated(u) {
+											<span class="badge badge-over">超過 { itoa(assignedTotal(u) - u.TotalOwned) }</span>
+										} else {
+											{ diffLabel(u) }
+										}
+									</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				}
+			</section>
+
+			<section class="widget widget-approval">
+				<h2>承認状況サマリ</h2>
+				if len(props.ApprovalCounts) == 0 {
+					<p class="empty">製品が登録されていません。</p>
+				} else {
+					<table class="data-table">
+						<thead>
+							<tr>
+								<th>全社設定</th>
+								<th>製品数</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, c := range props.ApprovalCounts {
+								<tr>
+									<td>{ defaultStatusLabel(c.DefaultApprovalStatus) }</td>
+									<td>{ itoa(c.ProductCount) }</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				}
+			</section>
+
+			if props.ShowExpiring {
+				<section class="widget widget-expiring">
+					<h2>満了間近ライセンス</h2>
+					if len(props.Expiring) == 0 {
+						<p class="empty">90 日以内に満了するライセンスはありません。</p>
+					} else {
+						<table class="data-table">
+							<thead>
+								<tr>
+									<th>ベンダー</th>
+									<th>製品</th>
+									<th>契約</th>
+									<th>所管部署</th>
+									<th>満了日</th>
+								</tr>
+							</thead>
+							<tbody>
+								for _, e := range props.Expiring {
+									<tr>
+										<td>{ e.VendorName }</td>
+										<td>{ e.ProductName }</td>
+										<td><a href={ templ.SafeURL("/licenses/" + itoa(e.ID)) }>{ e.DisplayName }</a></td>
+										<td>{ e.DepartmentName }</td>
+										<td>{ fmtDatePtr(e.ExpiresAt) }</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					}
+				</section>
+			}
+
+			if props.ShowLeavers {
+				<section class="widget widget-leavers">
+					<h2>退職者の未解除割当</h2>
+					if len(props.Leavers) == 0 {
+						<p class="empty">退職者の未解除割当はありません。</p>
+					} else {
+						<table class="data-table">
+							<thead>
+								<tr>
+									<th>ユーザ</th>
+									<th>部署 ID</th>
+									<th>製品</th>
+									<th>割当日</th>
+								</tr>
+							</thead>
+							<tbody>
+								for _, l := range props.Leavers {
+									<tr>
+										<td>{ l.Name }</td>
+										<td>{ deptIDLabel(l.DepartmentID) }</td>
+										<td>{ l.CanonicalName }</td>
+										<td>{ fmtDate(l.AssignedAt) }</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					}
+				</section>
+			}
+		</section>
+	}
+}
