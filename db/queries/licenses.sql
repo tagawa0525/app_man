@@ -85,6 +85,15 @@ SET
   updated_at = CURRENT_TIMESTAMP
 WHERE id = ?;
 
+-- GetLicenseByKey resolves a license by its natural key
+-- (product_id, owning_department_id, license_slug), matching the UNIQUE
+-- constraint on licenses. Used by appmgr-import-bootstrap to resolve
+-- CSV rows that reference licenses by name instead of by id.
+-- name: GetLicenseByKey :one
+SELECT * FROM licenses
+WHERE product_id = ? AND owning_department_id = ? AND license_slug = ?
+LIMIT 1;
+
 -- CountLicensesByFsDirPath counts licenses already using fs_dir_path,
 -- excluding the given id (pass 0 when creating a new license). Used by
 -- the web layer for suffix-based collision avoidance (spec 3.2).
