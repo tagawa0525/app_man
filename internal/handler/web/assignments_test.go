@@ -110,6 +110,62 @@ func TestAssignments_AssignUser_RedirectsAndPersists(t *testing.T) {
 	handlertest.AssertContains(t, showRec, "割当先ユーザ甲")
 }
 
+// 空白のみの note / external_account_id は NULL として保存される
+// (空文字判定だけだと "   " がそのまま残る)。
+func TestAssignments_Assign_WhitespaceOnlyOptionalFieldsBecomeNull(t *testing.T) {
+	t.Parallel()
+	r, db, store, q := newWebRouter(t)
+
+	s := seedLicenseCatalog(t, q, "WSVendor", "WSProduct", "DEPTWS", "空白検証部")
+	lic := seedAssignLicense(t, q, s, "ws", "空白検証契約", "user", nil)
+	u := seedActiveUser(t, q, "E900", "空白検証ユーザ")
+	d := seedActiveDevice(t, q, "WS-001")
+
+	uform := url.Values{
+		"user_id":             {strconv.FormatInt(u.ID, 10)},
+		"external_account_id": {"   "},
+		"note":                {"  \t "},
+	}
+	req := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/licenses/%d/assignments/users", lic.ID), middleware.RoleLicenseManager, uform)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	handlertest.AssertStatus(t, rec, http.StatusSeeOther)
+
+	urows, err := q.ListActiveUserAssignmentsByLicense(context.Background(), lic.ID)
+	if err != nil {
+		t.Fatalf("ListActiveUserAssignmentsByLicense: %v", err)
+	}
+	if len(urows) != 1 {
+		t.Fatalf("active user assignments = %d, want 1", len(urows))
+	}
+	if urows[0].ExternalAccountID != nil {
+		t.Errorf("external_account_id = %q, want NULL", *urows[0].ExternalAccountID)
+	}
+	if urows[0].Note != nil {
+		t.Errorf("user note = %q, want NULL", *urows[0].Note)
+	}
+
+	dform := url.Values{
+		"device_id": {strconv.FormatInt(d.ID, 10)},
+		"note":      {"   "},
+	}
+	dreq := handlertest.AuthenticatedPostForm(t, db, store, fmt.Sprintf("/licenses/%d/assignments/devices", lic.ID), middleware.RoleLicenseManager, dform)
+	drec := httptest.NewRecorder()
+	r.ServeHTTP(drec, dreq)
+	handlertest.AssertStatus(t, drec, http.StatusSeeOther)
+
+	drows, err := q.ListActiveDeviceAssignmentsByLicense(context.Background(), lic.ID)
+	if err != nil {
+		t.Fatalf("ListActiveDeviceAssignmentsByLicense: %v", err)
+	}
+	if len(drows) != 1 {
+		t.Fatalf("active device assignments = %d, want 1", len(drows))
+	}
+	if drows[0].Note != nil {
+		t.Errorf("device note = %q, want NULL", *drows[0].Note)
+	}
+}
+
 func TestAssignments_AssignUser_MissingUserID_400(t *testing.T) {
 	t.Parallel()
 	r, db, store, q := newWebRouter(t)
