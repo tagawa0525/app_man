@@ -140,6 +140,83 @@ func TestRun_InsertError_RollsBack(t *testing.T) {
 	}
 }
 
+func TestRun_Commit_RecordsAuditLog(t *testing.T) {
+	t.Parallel()
+	db := handlertest.NewTestDB(t)
+	imp := &fakeImporter{kind: "vendors", header: []string{"name", "url", "note"}}
+
+	csv := writeCSV(t, "name,url,note\nA,,\nB,,\n")
+	var out bytes.Buffer
+	if err := bootstrap.Run(context.Background(), db, csv, imp, false, &out); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	// commit 成功後に action=bootstrap_import / entity_type=kind の 1 行が
+	// 記録される (受け入れ基準 15)。CLI 実行のため app_user_id は NULL。
+	var (
+		n        int
+		diffJSON string
+	)
+	if err := db.QueryRow(
+		`SELECT count(*) FROM audit_logs
+		 WHERE action = 'bootstrap_import' AND entity_type = 'vendors'
+		   AND app_user_id IS NULL AND entity_id IS NULL`,
+	).Scan(&n); err != nil {
+		t.Fatalf("count audit_logs: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("got %d audit rows, want 1", n)
+	}
+	if err := db.QueryRow(
+		`SELECT diff_json FROM audit_logs WHERE action = 'bootstrap_import'`,
+	).Scan(&diffJSON); err != nil {
+		t.Fatalf("read diff_json: %v", err)
+	}
+	if !strings.Contains(diffJSON, csv) {
+		t.Errorf("diff_json = %q, want contains file path %q", diffJSON, csv)
+	}
+	if !strings.Contains(diffJSON, `"rows":2`) {
+		t.Errorf("diff_json = %q, want contains \"rows\":2", diffJSON)
+	}
+}
+
+func TestRun_DryRunOrFailure_DoesNotRecordAuditLog(t *testing.T) {
+	t.Parallel()
+	db := handlertest.NewTestDB(t)
+
+	// dry-run は記録しない
+	imp := &fakeImporter{kind: "vendors", header: []string{"name", "url", "note"}}
+	csv := writeCSV(t, "name,url,note\nA,,\n")
+	var out bytes.Buffer
+	if err := bootstrap.Run(context.Background(), db, csv, imp, true, &out); err != nil {
+		t.Fatalf("Run dry-run: %v", err)
+	}
+
+	// 検証エラーでも Insert 失敗 (rollback) でも記録しない
+	vimp := &fakeImporter{
+		kind: "vendors", header: []string{"name", "url", "note"},
+		validateErrors: []bootstrap.ValidationError{{Line: 1, Column: "name", Message: "x"}},
+	}
+	if err := bootstrap.Run(context.Background(), db, csv, vimp, false, &out); err == nil {
+		t.Fatal("Run returned nil, want validation error")
+	}
+	fimp := &fakeImporter{
+		kind: "vendors", header: []string{"name", "url", "note"},
+		insertErr: errors.New("simulated db error"),
+	}
+	if err := bootstrap.Run(context.Background(), db, csv, fimp, false, &out); err == nil {
+		t.Fatal("Run returned nil, want insert error")
+	}
+
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM audit_logs`).Scan(&n); err != nil {
+		t.Fatalf("count audit_logs: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("got %d audit rows, want 0", n)
+	}
+}
+
 func TestRun_HeaderMismatch_ReturnsError(t *testing.T) {
 	t.Parallel()
 	db := handlertest.NewTestDB(t)
