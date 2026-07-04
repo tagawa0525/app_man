@@ -5,6 +5,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -222,6 +224,72 @@ func TestGenerateAll_DryRun(t *testing.T) {
 	}
 	if got := readMeta(t, basePath, licC.FsDirPath); !bytes.Equal(got, existingMeta) {
 		t.Error("dry-run must not rewrite existing meta.yml")
+	}
+}
+
+// TestGenerateAll_DryRunReportsEscapingFsDirPath は汚染された fs_dir_path
+// (basePath を脱出する行) が dry-run で黙って無視されず、failed として
+// カウント・ログされ error が返る (exit 1 相当で運用者に見える) ことを
+// 確認する。would_create は正常な未作成行のみを数える。
+func TestGenerateAll_DryRunReportsEscapingFsDirPath(t *testing.T) {
+	t.Parallel()
+
+	sqlDB, q, basePath := newGenerateEnv(t)
+	ctx := context.Background()
+	productID, deptID := seedCatalog(t, q)
+	seedLicense(t, q, productID, deptID, "2024-jouki") // 正常な未作成行
+	// 汚染行: fs_dir_path が basePath の外を指す。
+	if _, err := q.CreateLicense(ctx, repository.CreateLicenseParams{
+		ProductID:          productID,
+		OwningDepartmentID: deptID,
+		LicenseSlug:        "poisoned",
+		DisplayName:        "汚染行",
+		CountUnit:          "device",
+		ContractType:       "subscription",
+		FsDirPath:          "../evil",
+	}); err != nil {
+		t.Fatalf("CreateLicense (poisoned): %v", err)
+	}
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	err := generateAll(ctx, sqlDB, basePath, logger, fixedNow, true)
+	if err == nil {
+		t.Fatal("dry-run with escaping fs_dir_path: want error, got nil")
+	}
+
+	// dry-run の集計行 (would_create を含む行) を探して検証する。
+	var entry struct {
+		Total       *int64 `json:"total"`
+		WouldCreate *int64 `json:"would_create"`
+		Failed      *int64 `json:"failed"`
+	}
+	found := false
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		if !strings.Contains(line, "would_create") {
+			continue
+		}
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("parse dry-run log %q: %v", line, err)
+		}
+		found = true
+	}
+	if !found {
+		t.Fatalf("dry-run summary log missing, got: %s", buf.String())
+	}
+	if entry.Total == nil || *entry.Total != 2 {
+		t.Errorf("total: want 2, got %v (log: %s)", entry.Total, buf.String())
+	}
+	if entry.WouldCreate == nil || *entry.WouldCreate != 1 {
+		t.Errorf("would_create: want 1 (clean row only), got %v (log: %s)", entry.WouldCreate, buf.String())
+	}
+	if entry.Failed == nil || *entry.Failed != 1 {
+		t.Errorf("failed: want 1 (poisoned row), got %v (log: %s)", entry.Failed, buf.String())
+	}
+
+	// basePath の外 (親ディレクトリ) に evil が作られていない。
+	if _, statErr := os.Stat(filepath.Join(filepath.Dir(basePath), "evil")); !errors.Is(statErr, fs.ErrNotExist) {
+		t.Errorf("nothing must exist outside basePath, stat err = %v", statErr)
 	}
 }
 
