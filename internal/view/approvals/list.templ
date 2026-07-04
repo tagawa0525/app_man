@@ -72,7 +72,7 @@ templ List(role middleware.Role, props ListProps) {
 								<td>{ it.Product.VendorName }</td>
 								<td>
 									{ it.Product.CanonicalName }
-									if it.Product.Edition != nil {
+									if it.Product.Edition != nil && *it.Product.Edition != "" {
 										{ " " + *it.Product.Edition }
 									}
 								</td>

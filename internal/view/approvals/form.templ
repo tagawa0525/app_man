@@ -49,7 +49,7 @@ templ Detail(role middleware.Role, props DetailProps) {
 				<dt>製品</dt>
 				<dd>
 					{ props.Product.VendorName } / { props.Product.CanonicalName }
-					if props.Product.Edition != nil {
+					if props.Product.Edition != nil && *props.Product.Edition != "" {
 						{ " " + *props.Product.Edition }
 					}
 				</dd>

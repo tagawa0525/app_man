@@ -185,7 +185,7 @@ func List(role middleware.Role, props ListProps) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					if it.Product.Edition != nil {
+					if it.Product.Edition != nil && *it.Product.Edition != "" {
 						var templ_7745c5c3_Var9 string
 						templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(" " + *it.Product.Edition)
 						if templ_7745c5c3_Err != nil {

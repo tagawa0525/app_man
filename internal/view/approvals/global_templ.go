@@ -99,7 +99,7 @@ func Global(role middleware.Role, props GlobalProps) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					if p.Edition != nil {
+					if p.Edition != nil && *p.Edition != "" {
 						var templ_7745c5c3_Var5 string
 						templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(" " + *p.Edition)
 						if templ_7745c5c3_Err != nil {

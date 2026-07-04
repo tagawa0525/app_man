@@ -128,7 +128,7 @@ func Detail(role middleware.Role, props DetailProps) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if props.Product.Edition != nil {
+			if props.Product.Edition != nil && *props.Product.Edition != "" {
 				var templ_7745c5c3_Var7 string
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(" " + *props.Product.Edition)
 				if templ_7745c5c3_Err != nil {

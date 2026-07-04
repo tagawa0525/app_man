@@ -44,7 +44,7 @@ templ Global(role middleware.Role, props GlobalProps) {
 								<td>{ p.VendorName }</td>
 								<td>
 									{ p.CanonicalName }
-									if p.Edition != nil {
+									if p.Edition != nil && *p.Edition != "" {
 										{ " " + *p.Edition }
 									}
 								</td>
