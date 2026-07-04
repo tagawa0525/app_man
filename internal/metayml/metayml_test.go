@@ -145,6 +145,44 @@ last_updated_by_app: 2026-01-01T12:00:00+09:00
 	}
 }
 
+// TestWrite_multilineNoteWithoutTrailingNewline_UsesBlockStyle は末尾改行の
+// ない複数行 note も仕様例と同じリテラルブロック表記になることを検証する
+// (末尾改行なしは chomping indicator 付きの |- が yaml として正しい)。
+//
+// 現状は yaml.v3 encoder の自動スタイル選択が複数行文字列に literal を
+// 選ぶため出力は既に |- になっている (= このテストは追加時点で green の
+// 回帰固定)。encoder のヒューリスティクス頼みを排し、noteNode 側で
+// 改行含有により明示的に LiteralStyle を立てる変更の網にする。
+func TestWrite_multilineNoteWithoutTrailingNewline_UsesBlockStyle(t *testing.T) {
+	m := metayml.Meta{
+		Product:          "7-Zip",
+		Vendor:           "Igor Pavlov",
+		LicenseSlug:      "サイトライセンス",
+		DisplayName:      "全社 7-Zip",
+		CountUnit:        "device",
+		ContractType:     "perpetual",
+		OwningDepartment: "情報システム部",
+		Note:             strPtr("ボリュームライセンス\n更新は毎年 4 月"),
+		LastUpdatedByApp: time.Date(2026, 1, 1, 3, 0, 0, 0, time.UTC),
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "meta.yml")
+	if err := metayml.Write(path, m); err != nil {
+		t.Fatalf("Write() unexpected error: %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read meta.yml: %v", err)
+	}
+
+	want := "note: |-\n  ボリュームライセンス\n  更新は毎年 4 月\nlast_updated_by_app:"
+	if !strings.Contains(string(got), want) {
+		t.Errorf("meta.yml note is not block style\n--- want fragment ---\n%s\n--- got ---\n%s", want, got)
+	}
+}
+
 // TestWrite_tmpRename は tmp + rename 書込みを検証する: 書込み後に
 // .tmp 等の一時ファイルが残らず、既存 meta.yml の上書きもできること。
 func TestWrite_tmpRename(t *testing.T) {
