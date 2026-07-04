@@ -30,6 +30,12 @@ func TestSlugify(t *testing.T) {
 		{"ドット2つはアンダースコア", "..", "_"},
 		{"trim 後にドット2つはアンダースコア", " .. ", "_"},
 		{"ドット3つはそのまま", "...", "..."},
+		// TrimSpace は Unicode 空白全般を落とすのに、置換側が ASCII
+		// スペースだけだと文中の全角スペース等が残り非対称になる。
+		// 空白は unicode.IsSpace 全般を _ に置換する。
+		{"全角スペースも置換", "契約　2024", "契約_2024"},
+		{"NBSP も置換", "a b", "a_b"},
+		{"前後の全角スペースは trim", "　x　", "x"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
