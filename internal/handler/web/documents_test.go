@@ -26,6 +26,7 @@ import (
 	"github.com/tagawa0525/app_man/internal/handler/handlertest"
 	"github.com/tagawa0525/app_man/internal/handler/middleware"
 	"github.com/tagawa0525/app_man/internal/handler/web"
+	"github.com/tagawa0525/app_man/internal/integrity"
 	"github.com/tagawa0525/app_man/internal/repository"
 	"github.com/tagawa0525/app_man/internal/session"
 )
@@ -774,5 +775,79 @@ func TestLicenses_Update_SlugChange_RenamesPhysicalDir(t *testing.T) {
 	}
 	if got.FsDirPath != "licenses/Adobe/Acrobat_Pro/改名後" {
 		t.Errorf("fs_dir_path = %q, want licenses/Adobe/Acrobat_Pro/改名後", got.FsDirPath)
+	}
+}
+
+// TestLicenses_Update_SlugChange_UpdatesDocumentStoredPaths は slug 変更で
+// 物理ディレクトリが rename された後も、配下の証書を指す
+// license_documents.stored_path が新 fs_dir_path 接頭辞に追随することを
+// 検証する (check-integrity の実データ検証で発見したバグの修正網)。
+// 追随しないと DB は旧パスを指したまま → ダウンロード不能、integrity.Scan
+// では file_missing + unregistered_file の対として現れる。
+func TestLicenses_Update_SlugChange_UpdatesDocumentStoredPaths(t *testing.T) {
+	t.Parallel()
+	fsCfg := docsFSCfg(t)
+	r, db, store, q := newDocsRouter(t, fsCfg)
+
+	s := seedLicenseCatalog(t, q, "Adobe", "Acrobat Pro", "DEPT001", "情報システム部")
+	form := validLicenseForm(s)
+	form.Set("license_slug", "改名前")
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/licenses", middleware.RoleLicenseManager, form)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("create status = %d, want 303 (body: %s)", rec.Code, rec.Body.String())
+	}
+	id := locationID(t, rec)
+
+	uploadTestDocument(t, r, db, store, q, id, "証書 2024.pdf", pdfContent)
+
+	upd := validLicenseForm(s)
+	upd.Set("license_slug", "改名後")
+	req = handlertest.AuthenticatedPostForm(t, db, store,
+		fmt.Sprintf("/licenses/%d", id), middleware.RoleLicenseManager, upd)
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("update status = %d, want 303 (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	// (a) DB の stored_path が新 fs_dir_path 接頭辞に付け替わっている。
+	docs, err := q.ListLicenseDocumentsByLicense(context.Background(), id)
+	if err != nil {
+		t.Fatalf("ListLicenseDocumentsByLicense: %v", err)
+	}
+	if len(docs) != 1 {
+		t.Fatalf("documents = %d, want 1", len(docs))
+	}
+	doc := docs[0]
+	wantPrefix := "licenses/Adobe/Acrobat_Pro/改名後/"
+	if !strings.HasPrefix(doc.StoredPath, wantPrefix) {
+		t.Errorf("stored_path = %q, want prefix %q", doc.StoredPath, wantPrefix)
+	}
+
+	// (b) rename 後もダウンロードできて同一バイト列が返る。
+	dlReq := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet,
+		fmt.Sprintf("/licenses/%d/documents/%d/download", id, doc.ID),
+		middleware.RoleViewer, nil)
+	dlRec := httptest.NewRecorder()
+	r.ServeHTTP(dlRec, dlReq)
+	if dlRec.Code != http.StatusOK {
+		t.Errorf("download status = %d, want 200 (body: %s)", dlRec.Code, dlRec.Body.String())
+	} else if !bytes.Equal(dlRec.Body.Bytes(), pdfContent) {
+		t.Errorf("downloaded bytes differ from uploaded content")
+	}
+
+	// (c) FS↔DB が整合している = integrity.Scan の所見 0。追随漏れだと
+	// file_missing (旧パス) + unregistered_file (新パスの実体) が出る。
+	rep, err := integrity.Scan(context.Background(), q, fsCfg.BasePath, true, time.Now())
+	if err != nil {
+		t.Fatalf("integrity.Scan: %v", err)
+	}
+	if len(rep.Findings) != 0 {
+		t.Errorf("integrity findings = %d, want 0:", len(rep.Findings))
+		for _, f := range rep.Findings {
+			t.Errorf("  finding: kind=%s license_id=%d path=%s detail=%s", f.Kind, f.LicenseID, f.Path, f.Detail)
+		}
 	}
 }
