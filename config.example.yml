@@ -14,6 +14,14 @@ database:
   path: ./data/app.db
   wal: true
 
+file_store:
+  base_path: ./data/files     # 仕様 §3.2 レイアウトのルート。appmgr-server 起動時に必須
+  upload_max_bytes: 20971520  # アップロード上限 (20 MiB)。0 = 既定値 20971520、負値はエラー
+  allowed_mime_types:         # 未指定なら以下 3 種にフォールバック
+    - application/pdf
+    - image/png
+    - image/jpeg
+
 locks:
   base_dir: ./data/locks
 

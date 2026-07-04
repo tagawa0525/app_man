@@ -9,12 +9,13 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	Database DatabaseConfig `yaml:"database"`
-	Locks    LocksConfig    `yaml:"locks"`
-	Logging  LoggingConfig  `yaml:"logging"`
-	Auth     AuthConfig     `yaml:"auth"`
-	Backup   BackupConfig   `yaml:"backup"`
+	Server    ServerConfig    `yaml:"server"`
+	Database  DatabaseConfig  `yaml:"database"`
+	FileStore FileStoreConfig `yaml:"file_store"`
+	Locks     LocksConfig     `yaml:"locks"`
+	Logging   LoggingConfig   `yaml:"logging"`
+	Auth      AuthConfig      `yaml:"auth"`
+	Backup    BackupConfig    `yaml:"backup"`
 }
 
 type ServerConfig struct {
@@ -34,6 +35,23 @@ type AuthConfig struct {
 	// 仕様書 §7.3 のサンプル値は 8。未指定 (= 0) なら 8 にフォールバック、
 	// 負値はエラー。
 	SessionMaxAgeHours int `yaml:"session_max_age_hours"`
+}
+
+// FileStoreConfig はファイルストア (証書ファイル等の物理配置) の設定。
+type FileStoreConfig struct {
+	// BasePath は仕様 §3.2 のレイアウトのルート (<base>)。appmgr-server
+	// 起動時に必須。バッチ系バイナリは file_store を使わないため、validate
+	// では必須チェックせず消費者側 (server) で検査する (backup.output_dir
+	// と同じ配置)。
+	BasePath string `yaml:"base_path"`
+	// UploadMaxBytes はアップロードのサイズ上限 (バイト)。仕様 §10 の
+	// サンプル値は 20971520 (20 MiB)。未指定 (= 0) なら 20971520 に
+	// フォールバック、負値はエラー。
+	UploadMaxBytes int64 `yaml:"upload_max_bytes"`
+	// AllowedMimeTypes は許可する MIME タイプ (仕様 §8.3。マジックバイト
+	// 判定の結果と照合する)。未指定なら application/pdf / image/png /
+	// image/jpeg にフォールバック。
+	AllowedMimeTypes []string `yaml:"allowed_mime_types"`
 }
 
 // BackupConfig は appmgr-backup の設定。
@@ -105,6 +123,15 @@ func (c *Config) validate() error {
 	}
 	if c.Backup.Generations < 0 {
 		return fmt.Errorf("backup.generations must be >= 0 (0 means keep all)")
+	}
+	if c.FileStore.UploadMaxBytes < 0 {
+		return fmt.Errorf("file_store.upload_max_bytes must be >= 0 (0 means default 20971520)")
+	}
+	if c.FileStore.UploadMaxBytes == 0 {
+		c.FileStore.UploadMaxBytes = 20971520
+	}
+	if len(c.FileStore.AllowedMimeTypes) == 0 {
+		c.FileStore.AllowedMimeTypes = []string{"application/pdf", "image/png", "image/jpeg"}
 	}
 	return nil
 }
