@@ -425,11 +425,17 @@ func (h *licenseHandlers) reprefixDocumentPaths(ctx context.Context, q *reposito
 			continue
 		}
 		newPath := newDir + "/" + strings.TrimPrefix(d.StoredPath, prefix)
-		if _, err := q.UpdateLicenseDocumentStoredPath(ctx, repository.UpdateLicenseDocumentStoredPathParams{
+		affected, err := q.UpdateLicenseDocumentStoredPath(ctx, repository.UpdateLicenseDocumentStoredPathParams{
 			StoredPath: newPath,
 			ID:         d.ID,
-		}); err != nil {
+		})
+		if err != nil {
 			return fmt.Errorf("update stored_path for document %d: %w", d.ID, err)
+		}
+		if affected != 1 {
+			// 直前に列挙した行が消えている等の想定外。黙って進めると
+			// 旧パスのままの行が残るためエラーにする
+			return fmt.Errorf("update stored_path for document %d: affected %d rows, want 1", d.ID, affected)
 		}
 	}
 	return nil
