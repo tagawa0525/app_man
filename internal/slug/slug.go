@@ -16,12 +16,18 @@ import (
 // 前後の空白を trim した後、禁止文字 (/ \ : * ? " < > |)・
 // 制御文字・スペースを _ に置換する。結果が空文字になった場合は
 // パス成分の欠落を防ぐため "_" を返す。
+//
+// 置換結果が "." / ".." になった場合も "_" を返す。slug は
+// path.Join("licenses", vendor_slug, product_slug, license_slug) の
+// パス成分として使われるため、".." を素通しすると licenses/ 配下から
+// 脱出するパスが組み立てられてしまう (パストラバーサル防止)。
+// "..." 以上はパス上特別な意味を持たないのでそのまま保持する。
 func Slugify(s string) string {
 	trimmed := strings.TrimSpace(s)
 	if trimmed == "" {
 		return "_"
 	}
-	return strings.Map(func(r rune) rune {
+	out := strings.Map(func(r rune) rune {
 		switch r {
 		case '/', '\\', ':', '*', '?', '"', '<', '>', '|', ' ':
 			return '_'
@@ -31,4 +37,8 @@ func Slugify(s string) string {
 		}
 		return r
 	}, trimmed)
+	if out == "." || out == ".." {
+		return "_"
+	}
+	return out
 }
