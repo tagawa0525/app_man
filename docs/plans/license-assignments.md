@@ -17,6 +17,12 @@ v_license_usage (migration 000006) による過不足の可視化。
   重複チェックはアプリ側で行う必要がある (INSERT 前に既存アクティブ割当を
   確認)。スキーマ変更 (部分 UNIQUE インデックス) はマイグレーション追加に
   なるため本 PR で対応する (下記)
+- **訂正 (2026-07-04, PR #25 Copilot レビューで発覚)**: 上記の NULL 問題
+  自体は正しいが、**migration 000006 が既に部分 UNIQUE インデックス
+  `uniq_user_assignments_active` / `uniq_device_assignments_active` で
+  対処済み**だった。本 PR で追加した migration 000008 は完全に冗長のため
+  撤去し、既存インデックスを前提にする。見落としの経緯: 000002 のテーブル
+  定義だけを見て 000006 のインデックス定義を確認しなかった
 - v_license_usage は product 単位の集計 (total_owned は期限内のみ /
   installed_count / user_assigned_count / device_assigned_count)
 
@@ -25,7 +31,7 @@ v_license_usage (migration 000006) による過不足の可視化。
 | 項目 | 決定 | 判断 |
 |------|------|------|
 | UI の場所 | ライセンス詳細に「ユーザ割当」「端末割当」セクション。追加フォーム + 各行の解除ボタン | §6.1 に専用画面なし。割当はライセンスに従属する情報 |
-| アクティブ重複の防止 | migration 000008 で部分 UNIQUE インデックス `CREATE UNIQUE INDEX ... ON user_assignments(license_id, user_id) WHERE revoked_at IS NULL` (device も同様) を追加し、handler でも事前チェックして 409 + フォームエラー | 既存 UNIQUE は NULL で効かない (上記)。DB 制約で根本を塞ぎ、handler チェックでユーザ向けエラーメッセージを出す 2 層。解除→再割当は revoked_at 埋めで部分インデックス対象外になり可能 |
+| アクティブ重複の防止 | 既存の部分 UNIQUE インデックス `uniq_user_assignments_active` / `uniq_device_assignments_active` (migration 000006) を前提にし、handler でも事前チェックして 409 + フォームエラー | 既存のテーブル UNIQUE は NULL で効かないが、000006 の部分 UNIQUE が根本を塞いでいる。handler チェックでユーザ向けエラーメッセージを出す 2 層。解除→再割当は revoked_at 埋めで部分インデックス対象外になり可能 |
 | 解除 | `revoked_at = CURRENT_TIMESTAMP` の論理解除 (:execrows、`WHERE id = ? AND revoked_at IS NULL`)。物理 DELETE なし | 論理削除の日時カラム規約。監査情報 |
 | 超過割当 | ブロックしない。license 詳細に「割当数 / 保有数」を表示し、count_unit 側の合計が total_count を超えたら警告表示 | 本システムの思想は可視化 (整合性チェックも警告のみ)。total_count NULL = 無制限は警告なし |
 | user/device 両割当 | count_unit に関わらず両方許可。警告判定は count_unit に一致する側の割当数で行う | 契約実態は混在しうる。v_license_usage も両方を別々に数える設計 |
@@ -39,8 +45,8 @@ v_license_usage (migration 000006) による過不足の可視化。
 
 ### 範囲内
 
-- `db/migrations/000008_assignment_unique_active.up.sql` / `.down.sql`:
-  アクティブ割当の部分 UNIQUE インデックス 2 本
+- アクティブ割当の重複防止は既存 `uniq_*_assignments_active` (000006)
+  を前提にする (migration 追加なし。当初の 000008 は冗長だったため撤去)
 - `db/queries/assignments.sql` + 生成物:
   - `ListActiveUserAssignmentsByLicense` / `ListActiveDeviceAssignmentsByLicense`
     (users / devices を JOIN、状態カラム含む)
@@ -72,20 +78,21 @@ v_license_usage (migration 000006) による過不足の可視化。
 
 ## 内部設計
 
-### migration 000008
+### アクティブ重複の DB 制約 (migration 000006 に既存)
 
 ```sql
--- Active assignments must be unique per (license, user). The base table
--- UNIQUE(license_id, user_id, revoked_at) does not enforce this because
--- SQLite treats NULLs as distinct.
-CREATE UNIQUE INDEX idx_user_assignments_active_unique
-  ON user_assignments(license_id, user_id) WHERE revoked_at IS NULL;
-CREATE UNIQUE INDEX idx_device_assignments_active_unique
-  ON device_assignments(license_id, device_id) WHERE revoked_at IS NULL;
+CREATE UNIQUE INDEX uniq_user_assignments_active
+  ON user_assignments(license_id, user_id)
+  WHERE revoked_at IS NULL;
+CREATE UNIQUE INDEX uniq_device_assignments_active
+  ON device_assignments(license_id, device_id)
+  WHERE revoked_at IS NULL;
 ```
 
-down は DROP INDEX 2 本。migrate の必須スキーマ版数を 8 に更新
-(internal/db の版数チェック定数を確認して追随)。
+migration 追加は不要 (必須スキーマ版数は 7 のまま)。当初 migration
+000008 として同一の部分 UNIQUE を追加したが冗長のため撤去した。
+handler の事前チェック後のレースはこの既存インデックスの UNIQUE 違反
+として現れるので 409 に変換する。
 
 ### 超過警告の判定 (handler)
 
@@ -104,10 +111,14 @@ over      = capacity != NULL && assigned > capacity
 
 1. `docs(plans): ライセンス割当 (L-2) の Plan ファイル`
 2. `feat(db): アクティブ割当の部分 UNIQUE インデックス (migration 000008)`
+   — **後に冗長と判明し 8 で撤去**
 3. `feat(repository): 割当と利用状況のクエリ (sqlc)`
 4. `test(web): 割当の追加/重複/解除/再割当/警告 (RED)`
 5. `feat(web): 割当ハンドラと詳細画面の割当セクション (GREEN)`
 6. `feat(web): products 詳細にライセンス利用状況サマリ`
+7. `docs(plans): 000006 に既存の部分 UNIQUE を見落としていた記録 (000008 撤去)`
+8. `revert(db): 冗長な migration 000008 を撤去 (000006 に既存)`
+9. `fix: 割当まわりのコメントを実挙動と既存インデックスに合わせる (Copilot 指摘)`
 
 GREEN ごとに `make test` / `make lint` 緑。migration 追加後は
 `make migrate-up` 相当のテスト DB 更新 (handlertest が embed 適用なら自動)。
@@ -124,8 +135,9 @@ GREEN ごとに `make test` / `make lint` 緑。migration 追加後は
   - 退職者 (deactivated_at NOT NULL) が割当選択肢に出ない
   - viewer は割当 POST が 403
   - products 詳細に total_owned / 割当数 / installed (0) が表示される
-- migration: 直接 SQL で同一 (license, user) のアクティブ割当を 2 行
-  INSERT すると UNIQUE 違反になる
+- DB 制約: 直接 SQL で同一 (license, user) のアクティブ割当を 2 行
+  INSERT すると `uniq_user_assignments_active` (000006) の UNIQUE 違反
+  になる (device 側は `uniq_device_assignments_active`)
 
 ## 想定リスク
 
