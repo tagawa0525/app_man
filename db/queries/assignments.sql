@@ -91,8 +91,7 @@ SELECT count(*) FROM device_assignments
 WHERE license_id = ? AND revoked_at IS NULL;
 
 -- GetLicenseUsageByProduct returns the per-product usage summary
--- (owned versus installed versus assigned) from the v_license_usage
--- v_license_usage view.
+-- (owned versus installed versus assigned) from the v_license_usage view.
 -- name: GetLicenseUsageByProduct :one
 SELECT * FROM v_license_usage
 WHERE product_id = ?

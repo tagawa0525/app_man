@@ -153,8 +153,7 @@ LIMIT 1
 `
 
 // GetLicenseUsageByProduct returns the per-product usage summary
-// (owned versus installed versus assigned) from the v_license_usage
-// v_license_usage view.
+// (owned versus installed versus assigned) from the v_license_usage view.
 func (q *Queries) GetLicenseUsageByProduct(ctx context.Context, productID int64) (VLicenseUsage, error) {
 	row := q.db.QueryRowContext(ctx, getLicenseUsageByProduct, productID)
 	var i VLicenseUsage
