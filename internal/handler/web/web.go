@@ -84,9 +84,11 @@ var departmentViewers = []mw.Role{
 	mw.RoleSystemAdmin,
 }
 
-// securityAdmins は「承認管理」権限ロール集合 (dept_security_admin 以上、
-// 仕様 §6.1)。ロール階層 (AllRoles 順) で license_manager は
-// dept_security_admin より下位のため含めない。
+// securityAdmins は「承認管理」権限ロール集合 (仕様 §6.1 の
+// dept_security_admin 以上 = dept_security_admin と system_admin)。
+// RequireRole は許可集合の包含判定のみでロール間の上下関係を解釈しない
+// ため、「以上」はこの列挙で表現する。license_manager は仕様上対象外
+// なので集合に含めない (= 403)。
 var securityAdmins = []mw.Role{
 	mw.RoleDepartmentSecurityAdmin,
 	mw.RoleSystemAdmin,

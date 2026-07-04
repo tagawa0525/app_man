@@ -31,6 +31,30 @@ type approvalHandlers struct {
 	logger *slog.Logger
 }
 
+// approvalGrantDiff は approval.grant の diff_json (Plan「diff_json に
+// 主要フィールド」)。expires_at は入力の YYYY-MM-DD 文字列のまま、
+// 未入力の任意項目は omitempty で省略する。
+type approvalGrantDiff struct {
+	Status     string `json:"status"`
+	ScopeType  string `json:"scope_type"`
+	ExpiresAt  string `json:"expires_at,omitempty"`
+	Conditions string `json:"conditions,omitempty"`
+}
+
+// approvalRevokeDiff は approval.revoke の diff_json。理由のみ:
+// 取消者は audit_logs.app_user_id、取消時刻は occurred_at が持つため
+// 冗長に含めない。
+type approvalRevokeDiff struct {
+	RevokeReason string `json:"revoke_reason"`
+}
+
+// defaultApprovalChangeDiff は product.default_approval_change の
+// diff_json。対象の product_id は entity_id が持つ。
+type defaultApprovalChangeDiff struct {
+	Old string `json:"old"`
+	New string `json:"new"`
+}
+
 // list は GET /approvals。?department_id= で現役部署を選び、全製品について
 // approval.Evaluate の結果を表示する。specific_* スコープは部署単位表示の
 // ため InScope を評価しない (rec の status/scope をそのまま渡し InScope=false
@@ -310,7 +334,13 @@ func (h *approvalHandlers) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 記録なしの承認を作らない: audit INSERT 失敗時は登録ごとロールバック。
-	if err := recordAudit(r.Context(), qtx, r, "approval.grant", "department_product_approval", created.ID); err != nil {
+	if err := recordAuditDiff(r.Context(), qtx, r, "approval.grant", "department_product_approval", created.ID,
+		approvalGrantDiff{
+			Status:     created.Status,
+			ScopeType:  created.ScopeType,
+			ExpiresAt:  input.ExpiresAt,
+			Conditions: input.Conditions,
+		}); err != nil {
 		h.logger.ErrorContext(r.Context(), "record audit for approval grant", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -385,7 +415,8 @@ func (h *approvalHandlers) revoke(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if err := recordAudit(r.Context(), qtx, r, "approval.revoke", "department_product_approval", active.ID); err != nil {
+	if err := recordAuditDiff(r.Context(), qtx, r, "approval.revoke", "department_product_approval", active.ID,
+		approvalRevokeDiff{RevokeReason: reason}); err != nil {
 		h.logger.ErrorContext(r.Context(), "record audit for approval revoke", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -454,6 +485,19 @@ func (h *approvalHandlers) globalUpdate(w http.ResponseWriter, r *http.Request) 
 	defer func() { _ = tx.Rollback() }()
 	qtx := repository.New(h.db).WithTx(tx)
 
+	// diff_json の old を取るため、同一 tx 内で変更前の値を読む。
+	old, err := qtx.GetProduct(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			_ = tx.Rollback()
+			http.NotFound(w, r)
+			return
+		}
+		h.logger.ErrorContext(r.Context(), "get product for global approval change", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
 	affected, err := qtx.UpdateProductDefaultApprovalStatus(r.Context(), repository.UpdateProductDefaultApprovalStatusParams{
 		DefaultApprovalStatus: value,
 		ID:                    id,
@@ -468,7 +512,8 @@ func (h *approvalHandlers) globalUpdate(w http.ResponseWriter, r *http.Request) 
 		http.NotFound(w, r)
 		return
 	}
-	if err := recordAudit(r.Context(), qtx, r, "product.default_approval_change", "product", id); err != nil {
+	if err := recordAuditDiff(r.Context(), qtx, r, "product.default_approval_change", "product", id,
+		defaultApprovalChangeDiff{Old: old.DefaultApprovalStatus, New: value}); err != nil {
 		h.logger.ErrorContext(r.Context(), "record audit for global approval change", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

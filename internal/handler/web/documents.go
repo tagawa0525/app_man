@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -237,19 +238,37 @@ func (h *licenseHandlers) revealKeys(w http.ResponseWriter, r *http.Request) {
 	h.renderShowKeys(w, r, id, http.StatusOK, "", keys)
 }
 
-// recordAudit は audit_logs へ 1 行追記する (仕様 §5.2 / §8.5)。
-// app_user_id はセッションから取る。監査記録の網羅 (フェーズ 15) までは
-// license_keys.view が唯一の呼び出し元。
+// recordAudit は diff なし (diff_json = NULL) の recordAuditDiff。
+// 変更内容を持たない閲覧系アクション (license_keys.view) が使う。
 func recordAudit(ctx context.Context, q *repository.Queries, r *http.Request, action, entityType string, entityID int64) error {
+	return recordAuditDiff(ctx, q, r, action, entityType, entityID, nil)
+}
+
+// recordAuditDiff は audit_logs へ 1 行追記する (仕様 §5.2 / §8.5)。
+// app_user_id はセッションから取る。diff が non-nil なら json.Marshal して
+// diff_json に格納する (変更の主要フィールド。呼び出し側が json タグ付き
+// struct を渡す)。呼び出し元はキー閲覧 (license_keys.view) と承認系
+// (approval.grant / approval.revoke / product.default_approval_change)。
+func recordAuditDiff(ctx context.Context, q *repository.Queries, r *http.Request, action, entityType string, entityID int64, diff any) error {
 	var appUserID *int64
 	if sess := middleware.SessionFrom(r.Context()); sess != nil {
 		appUserID = sess.AppUserID
+	}
+	var diffJSON *string
+	if diff != nil {
+		b, err := json.Marshal(diff)
+		if err != nil {
+			return fmt.Errorf("marshal audit diff for %s: %w", action, err)
+		}
+		s := string(b)
+		diffJSON = &s
 	}
 	_, err := q.CreateAuditLog(ctx, repository.CreateAuditLogParams{
 		AppUserID:  appUserID,
 		Action:     action,
 		EntityType: entityType,
 		EntityID:   &entityID,
+		DiffJson:   diffJSON,
 	})
 	return err
 }
