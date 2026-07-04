@@ -53,7 +53,9 @@ var Kinds = []string{
 	KindMetaGenerateFailed,
 }
 
-// Finding は 1 件の所見。Path は basePath 相対 (/ 区切り)。orphan_dir の
+// Finding は 1 件の所見。Path は原則 basePath 相対 (/ 区切り) だが、
+// invalid_path では DB に入っていた不正値 (../ や絶対パス) をそのまま
+// 保持する (原因調査のため加工しない)。orphan_dir の
 // ように対応ライセンスが無い所見は LicenseID = 0。
 type Finding struct {
 	Kind      string
@@ -78,6 +80,11 @@ type Report struct {
 // 等) のみ。
 func Scan(ctx context.Context, q *repository.Queries, basePath string, dryRun bool, now time.Time) (Report, error) {
 	var rep Report
+	// 再利用側 (CLI / 画面) の検証漏れで CWD 相対に meta.yml を書く事故を
+	// 防ぐ多層防御。
+	if basePath == "" {
+		return Report{}, errors.New("file store base path must not be empty")
+	}
 
 	rows, err := q.ListLicenses(ctx, 1) // 1 = 満了含む全件
 	if err != nil {
