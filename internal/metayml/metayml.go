@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -176,13 +177,18 @@ func datetimeNode(t time.Time) *yaml.Node {
 	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!timestamp", Value: t.In(jst).Format("2006-01-02T15:04:05-07:00")}
 }
 
-// noteNode は note を出す。複数行はリテラルブロック (|) 表記 (仕様の例)。
+// noteNode は note を出す。複数行はリテラルブロック表記 (仕様の例。
+// 末尾改行ありは |、なしは chomping indicator 付きの |-)。判定は改行の
+// 含有で行う — yaml.v3 encoder は複数行文字列に literal を自動選択するが、
+// ヒューリスティクス頼みにせず明示的にスタイルを指定する (リテラルで
+// 表現できない内容、たとえば行末スペースを含む場合は encoder が
+// 引用符付きへ安全にフォールバックする)。
 func noteNode(s *string) *yaml.Node {
 	if s == nil {
 		return nullNode()
 	}
 	n := strNode(*s)
-	if len(*s) > 0 && (*s)[len(*s)-1] == '\n' {
+	if strings.Contains(*s, "\n") {
 		n.Style = yaml.LiteralStyle
 	}
 	return n
