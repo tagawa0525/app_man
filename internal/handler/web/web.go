@@ -70,6 +70,7 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 	d := &departmentHandlers{db: deps.DB, logger: deps.Logger}
 	u := &userHandlers{db: deps.DB, logger: deps.Logger}
 	dev := &deviceHandlers{db: deps.DB, logger: deps.Logger}
+	lic := &licenseHandlers{db: deps.DB, logger: deps.Logger}
 
 	// /login / /logout は role 不問。Authenticator / SessionStore が注入
 	// されている場合のみ登録する (テストで nil を渡したときに panic
@@ -101,6 +102,9 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 		r.Get("/users/{id}", u.show)
 		r.Get("/devices", dev.list)
 		r.Get("/devices/{id}", dev.show)
+		// /licenses の閲覧は要件書 §6.1 で「viewer 以上」(general_user 除外)。
+		r.Get("/licenses", lic.list)
+		r.Get("/licenses/{id}", lic.show)
 	})
 	r.With(mw.RequireRole(editors...)).Group(func(r chi.Router) {
 		r.Get("/vendors/new", v.newForm)
@@ -133,5 +137,10 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 		r.Post("/devices/{id}", dev.update)
 		r.Post("/devices/{id}/retire", dev.retire)
 		r.Post("/devices/{id}/restore", dev.restore)
+		// licenses に削除ルートは無い — 満了 = expires_at (論理削除規約)。
+		r.Get("/licenses/new", lic.newForm)
+		r.Post("/licenses", lic.create)
+		r.Get("/licenses/{id}/edit", lic.editForm)
+		r.Post("/licenses/{id}", lic.update)
 	})
 }

@@ -1,0 +1,111 @@
+package licenses
+
+import (
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+// ShowProps は GET /licenses/:id 表示で必要な集約。
+//
+// License.ProductKeys は handler 側で nil に落として渡す (write-only 運用。
+// 平文の閲覧 + audit_logs 記録は L-3 で実装)。画面には HasKeys による
+// 「登録あり / 登録なし」のみ出す。
+type ShowProps struct {
+	License repository.GetLicenseByIDRow
+	HasKeys bool
+	Flash   string
+}
+
+templ Show(role middleware.Role, props ShowProps) {
+	@layout.Base(layout.BaseProps{
+		Title:     props.License.DisplayName,
+		Role:      role,
+		Flash:     props.Flash,
+		CSRFToken: middleware.CSRFTokenFrom(ctx),
+	}) {
+		<section class="page-licenses-show">
+			<header class="page-header">
+				<h1>{ props.License.DisplayName }</h1>
+				if canEdit(role) {
+					<div class="page-actions">
+						<a class="btn" href={ templ.SafeURL("/licenses/" + itoa(props.License.ID) + "/edit") }>編集</a>
+					</div>
+				}
+			</header>
+
+			<dl class="details">
+				<dt>製品</dt>
+				<dd>
+					<a href={ templ.SafeURL("/products/" + itoa(props.License.ProductID)) }>
+						{ props.License.ProductName }
+					</a>
+				</dd>
+
+				<dt>ベンダー</dt>
+				<dd>{ props.License.VendorName }</dd>
+
+				<dt>所管部署</dt>
+				<dd>
+					<a href={ templ.SafeURL("/departments/" + itoa(props.License.OwningDepartmentID)) }>
+						{ props.License.DepartmentName }
+					</a>
+				</dd>
+
+				<dt>スラッグ</dt>
+				<dd>{ props.License.LicenseSlug }</dd>
+
+				<dt>本数</dt>
+				<dd>{ formatCount(props.License.TotalCount) } { countUnitLabel(props.License.CountUnit) }</dd>
+
+				<dt>契約形態</dt>
+				<dd>{ contractTypeLabel(props.License.ContractType) }</dd>
+
+				<dt>購入日</dt>
+				<dd>{ formatDate(props.License.PurchasedAt) }</dd>
+
+				<dt>利用開始日</dt>
+				<dd>{ formatDate(props.License.StartedAt) }</dd>
+
+				<dt>満了日</dt>
+				<dd>
+					if props.License.ExpiresAt != nil {
+						{ formatDate(props.License.ExpiresAt) }
+					} else {
+						<span class="empty">無期限</span>
+					}
+				</dd>
+
+				<dt>発注番号</dt>
+				<dd>{ derefOrEmpty(props.License.VendorOrderNo) }</dd>
+
+				<dt>購入者</dt>
+				<dd>{ derefOrEmpty(props.License.Purchaser) }</dd>
+
+				<dt>単価</dt>
+				<dd>{ formatPrice(props.License.UnitPrice, props.License.Currency) }</dd>
+
+				<dt>ライセンスキー</dt>
+				<dd>
+					if props.HasKeys {
+						登録あり
+					} else {
+						登録なし
+					}
+				</dd>
+
+				<dt>保存先ディレクトリ</dt>
+				<dd><code>{ props.License.FsDirPath }</code></dd>
+
+				<dt>メモ</dt>
+				<dd>{ derefOrEmpty(props.License.Note) }</dd>
+
+				<dt>作成日時</dt>
+				<dd>{ props.License.CreatedAt.Format("2006-01-02 15:04") }</dd>
+
+				<dt>更新日時</dt>
+				<dd>{ props.License.UpdatedAt.Format("2006-01-02 15:04") }</dd>
+			</dl>
+		</section>
+	}
+}
