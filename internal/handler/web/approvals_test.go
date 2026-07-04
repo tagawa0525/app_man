@@ -3,6 +3,7 @@ package web_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -100,6 +101,27 @@ func countAuditLogs(t *testing.T, db *sql.DB, action, entityType string, entityI
 		t.Fatalf("count audit_logs: %v", err)
 	}
 	return n
+}
+
+// auditDiff は (action, entity_type, entity_id) 一致行の diff_json を JSON
+// パースして返す。NULL・不正 JSON は fail (Plan「diff_json に主要フィールド」)。
+func auditDiff(t *testing.T, db *sql.DB, action, entityType string, entityID int64) map[string]any {
+	t.Helper()
+	var diff sql.NullString
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT diff_json FROM audit_logs WHERE action = ? AND entity_type = ? AND entity_id = ?`,
+		action, entityType, entityID).Scan(&diff); err != nil {
+		t.Fatalf("select diff_json for %s %s/%d: %v", action, entityType, entityID, err)
+	}
+	if !diff.Valid {
+		t.Fatalf("diff_json for %s %s/%d is NULL, want JSON with main fields", action, entityType, entityID)
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(diff.String), &m); err != nil {
+		t.Fatalf("diff_json for %s %s/%d is not valid JSON: %v (raw: %s)",
+			action, entityType, entityID, err, diff.String)
+	}
+	return m
 }
 
 func approvalDetailPath(deptID, productID int64) string {
@@ -313,6 +335,22 @@ func TestApprovals_Create_Success_RecordsRowAndAudit(t *testing.T) {
 	if got := countAuditLogs(t, db, "approval.grant", "department_product_approval", row.ID); got != 1 {
 		t.Errorf("audit approval.grant count = %d, want 1", got)
 	}
+
+	// diff_json に主要フィールド (Plan approvals.md)。conditions は
+	// 未入力なので省略される。
+	diff := auditDiff(t, db, "approval.grant", "department_product_approval", row.ID)
+	if got := diff["status"]; got != "approved" {
+		t.Errorf("grant diff status = %v, want approved", got)
+	}
+	if got := diff["scope_type"]; got != "department_wide" {
+		t.Errorf("grant diff scope_type = %v, want department_wide", got)
+	}
+	if got := diff["expires_at"]; got != "2030-12-31" {
+		t.Errorf("grant diff expires_at = %v, want 2030-12-31", got)
+	}
+	if got, ok := diff["conditions"]; ok {
+		t.Errorf("grant diff conditions = %v, want omitted (未入力)", got)
+	}
 }
 
 // 既存アクティブがある場合の登録は 409 (取消して再登録の変更方式)。
@@ -449,6 +487,12 @@ func TestApprovals_RevokeThenRecreate(t *testing.T) {
 	if got := countAuditLogs(t, db, "approval.revoke", "department_product_approval", old.ID); got != 1 {
 		t.Errorf("audit approval.revoke count = %d, want 1", got)
 	}
+	// revoke の diff_json は理由のみ (revoked_by は app_user_id カラム、
+	// revoked_at は occurred_at が持つため冗長に含めない)。
+	revokeDiff := auditDiff(t, db, "approval.revoke", "department_product_approval", old.ID)
+	if got := revokeDiff["revoke_reason"]; got != "部署方針変更" {
+		t.Errorf("revoke diff revoke_reason = %v, want 部署方針変更", got)
+	}
 
 	// 履歴 (取消済み行 + 理由) が登録・編集画面に残る。
 	req = handlertest.AuthenticatedRequest(t, db, store,
@@ -481,6 +525,18 @@ func TestApprovals_RevokeThenRecreate(t *testing.T) {
 	if row.Status != "conditional" {
 		t.Errorf("status = %q, want conditional", row.Status)
 	}
+	// conditional の grant diff には conditions が含まれる (expires_at は
+	// 未入力なので省略)。
+	grantDiff := auditDiff(t, db, "approval.grant", "department_product_approval", row.ID)
+	if got := grantDiff["status"]; got != "conditional" {
+		t.Errorf("grant diff status = %v, want conditional", got)
+	}
+	if got := grantDiff["conditions"]; got != "検証環境のみで利用" {
+		t.Errorf("grant diff conditions = %v, want 検証環境のみで利用", got)
+	}
+	if got, ok := grantDiff["expires_at"]; ok {
+		t.Errorf("grant diff expires_at = %v, want omitted (未入力)", got)
+	}
 }
 
 // --- 全社設定 -----------------------------------------------------------
@@ -507,6 +563,14 @@ func TestGlobalApprovals_Update_RecordsChangeAndAudit(t *testing.T) {
 	}
 	if n := countAuditLogs(t, db, "product.default_approval_change", "product", p.ID); n != 1 {
 		t.Errorf("audit product.default_approval_change count = %d, want 1", n)
+	}
+	// diff_json は old / new (product_id は entity_id が持つ)。
+	diff := auditDiff(t, db, "product.default_approval_change", "product", p.ID)
+	if got := diff["old"]; got != "department_discretion" {
+		t.Errorf("global diff old = %v, want department_discretion", got)
+	}
+	if got := diff["new"]; got != "globally_prohibited" {
+		t.Errorf("global diff new = %v, want globally_prohibited", got)
 	}
 }
 
