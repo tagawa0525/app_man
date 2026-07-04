@@ -11,10 +11,24 @@ import (
 // License.ProductKeys は handler 側で nil に落として渡す (write-only 運用。
 // 平文の閲覧 + audit_logs 記録は L-3 で実装)。画面には HasKeys による
 // 「登録あり / 登録なし」のみ出す。
+//
+// 割当セクション: 一覧はアクティブ割当のみ (解除済みは出さない)。
+// 選択肢は在職ユーザ / 現役端末のみだが、既存割当の行は退職者・退役端末
+// でも注記付きで表示する (未解除割当の可視化)。
 type ShowProps struct {
 	License repository.GetLicenseByIDRow
 	HasKeys bool
 	Flash   string
+	// UserAssignments / DeviceAssignments はアクティブ割当の一覧。
+	UserAssignments   []repository.ListActiveUserAssignmentsByLicenseRow
+	DeviceAssignments []repository.ListActiveDeviceAssignmentsByLicenseRow
+	// AssignableUsers / AssignableDevices は割当フォームの選択肢。
+	AssignableUsers   []repository.ListActiveUsersForSelectRow
+	AssignableDevices []repository.ListActiveDevicesForSelectRow
+	// AssignedCount は count_unit に一致する側のアクティブ割当数。
+	AssignedCount int64
+	// OverAllocated は AssignedCount > total_count (非 NULL) のとき true。
+	OverAllocated bool
 }
 
 templ Show(role middleware.Role, props ShowProps) {
@@ -106,6 +120,104 @@ templ Show(role middleware.Role, props ShowProps) {
 				<dt>更新日時</dt>
 				<dd>{ props.License.UpdatedAt.Format("2006-01-02 15:04") }</dd>
 			</dl>
+
+			<h2>割当状況</h2>
+			<p class="assignment-count">
+				{ "割当数: " + itoa(props.AssignedCount) + " / 保有数: " + formatCount(props.License.TotalCount) + " (" + countUnitLabel(props.License.CountUnit) + ")" }
+			</p>
+			if props.OverAllocated {
+				<p class="warning">割当数が保有数を超過しています。</p>
+			}
+
+			<h2>ユーザ割当</h2>
+			if len(props.UserAssignments) == 0 {
+				<p class="empty">ユーザ割当はありません。</p>
+			} else {
+				<ul class="assignment-list">
+					for _, a := range props.UserAssignments {
+						<li>
+							<a href={ templ.SafeURL("/users/" + itoa(a.UserID)) }>{ a.UserName }</a>
+							<span class="code">({ a.EmployeeCode })</span>
+							if a.DeactivatedAt != nil {
+								<span class="badge badge-warn">退職</span>
+							}
+							if a.ExternalAccountID != nil && *a.ExternalAccountID != "" {
+								<span class="external-account">{ *a.ExternalAccountID }</span>
+							}
+							if a.Note != nil && *a.Note != "" {
+								<span class="note">{ *a.Note }</span>
+							}
+							<span class="assigned-at">{ a.AssignedAt.Format("2006-01-02") }</span>
+							if canEdit(role) {
+								<form method="post" action={ templ.SafeURL("/licenses/" + itoa(props.License.ID) + "/assignments/users/" + itoa(a.ID) + "/revoke") }
+									onsubmit="return confirm('この割当を解除しますか?');" class="inline">
+									@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
+									<button type="submit" class="btn btn-xs btn-danger">解除</button>
+								</form>
+							}
+						</li>
+					}
+				</ul>
+			}
+			if canEdit(role) {
+				<form method="post" action={ templ.SafeURL("/licenses/" + itoa(props.License.ID) + "/assignments/users") } class="assignment-add">
+					@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
+					<label for="assign_user_id">ユーザ割当追加</label>
+					<select id="assign_user_id" name="user_id" required>
+						<option value="">選択してください</option>
+						for _, u := range props.AssignableUsers {
+							<option value={ itoa(u.ID) }>{ u.Name + " (" + u.EmployeeCode + ")" }</option>
+						}
+					</select>
+					<input type="text" name="external_account_id" placeholder="外部アカウント ID (任意)"/>
+					<input type="text" name="note" placeholder="メモ (任意)"/>
+					<button type="submit" class="btn">追加</button>
+				</form>
+			}
+
+			<h2>端末割当</h2>
+			if len(props.DeviceAssignments) == 0 {
+				<p class="empty">端末割当はありません。</p>
+			} else {
+				<ul class="assignment-list">
+					for _, a := range props.DeviceAssignments {
+						<li>
+							<a href={ templ.SafeURL("/devices/" + itoa(a.DeviceID)) }>{ a.AssetCode }</a>
+							if a.Hostname != nil && *a.Hostname != "" {
+								<span class="hostname">{ *a.Hostname }</span>
+							}
+							if a.RetiredAt != nil {
+								<span class="badge badge-warn">退役</span>
+							}
+							if a.Note != nil && *a.Note != "" {
+								<span class="note">{ *a.Note }</span>
+							}
+							<span class="assigned-at">{ a.AssignedAt.Format("2006-01-02") }</span>
+							if canEdit(role) {
+								<form method="post" action={ templ.SafeURL("/licenses/" + itoa(props.License.ID) + "/assignments/devices/" + itoa(a.ID) + "/revoke") }
+									onsubmit="return confirm('この割当を解除しますか?');" class="inline">
+									@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
+									<button type="submit" class="btn btn-xs btn-danger">解除</button>
+								</form>
+							}
+						</li>
+					}
+				</ul>
+			}
+			if canEdit(role) {
+				<form method="post" action={ templ.SafeURL("/licenses/" + itoa(props.License.ID) + "/assignments/devices") } class="assignment-add">
+					@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
+					<label for="assign_device_id">端末割当追加</label>
+					<select id="assign_device_id" name="device_id" required>
+						<option value="">選択してください</option>
+						for _, d := range props.AssignableDevices {
+							<option value={ itoa(d.ID) }>{ deviceOptionLabel(d) }</option>
+						}
+					</select>
+					<input type="text" name="note" placeholder="メモ (任意)"/>
+					<button type="submit" class="btn">追加</button>
+				</form>
+			}
 		</section>
 	}
 }

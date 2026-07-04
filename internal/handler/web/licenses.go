@@ -87,7 +87,15 @@ func (h *licenseHandlers) show(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	h.renderShow(w, r, id, http.StatusOK, "")
+}
 
+// renderShow は license 詳細 (基本情報 + 割当セクション) を status /
+// flash 付きで描画する。割当の追加エラー (400 / 409) の再描画にも使う。
+// 超過警告は count_unit に一致する側のアクティブ割当数が total_count を
+// 超えたときのみ (NULL = 無制限は警告なし)。超過してもブロックはしない
+// (本システムの思想は可視化)。
+func (h *licenseHandlers) renderShow(w http.ResponseWriter, r *http.Request, id int64, status int, flash string) {
 	q := repository.New(h.db)
 	row, err := q.GetLicenseByID(r.Context(), id)
 	if err != nil {
@@ -103,11 +111,64 @@ func (h *licenseHandlers) show(w http.ResponseWriter, r *http.Request) {
 	hasKeys := row.ProductKeys != nil && strings.TrimSpace(*row.ProductKeys) != ""
 	row.ProductKeys = nil // 平文を view に渡さない
 
+	userAsgs, err := q.ListActiveUserAssignmentsByLicense(r.Context(), id)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "list user assignments", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	deviceAsgs, err := q.ListActiveDeviceAssignmentsByLicense(r.Context(), id)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "list device assignments", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	role := middleware.RoleFrom(r.Context())
+
+	// 割当フォームの選択肢: ユーザ = 在職者のみ、端末 = 現役のみ
+	// (退職者・退役端末への新規割当は事故)。フォームは編集ロールにしか
+	// 表示しないので、選択肢クエリも編集ロールのときだけ実行する
+	// (viewer 等では空スライスのまま)。専用クエリは LIMIT なし —
+	// 選択肢から漏れた対象は画面から割当不能になるため、一覧画面向けの
+	// LIMIT 200 クエリ (ListActiveUsers / ListDevices) は使わない。
+	var (
+		activeUsers   []repository.ListActiveUsersForSelectRow
+		activeDevices []repository.ListActiveDevicesForSelectRow
+	)
+	if isEditorRole(role) {
+		activeUsers, err = q.ListActiveUsersForSelect(r.Context())
+		if err != nil {
+			h.logger.ErrorContext(r.Context(), "list active users for select", "err", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		activeDevices, err = q.ListActiveDevicesForSelect(r.Context())
+		if err != nil {
+			h.logger.ErrorContext(r.Context(), "list active devices for select", "err", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	assigned := int64(len(deviceAsgs))
+	if row.CountUnit == "user" {
+		assigned = int64(len(userAsgs))
+	}
+	over := row.TotalCount != nil && assigned > *row.TotalCount
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if status != http.StatusOK {
+		w.WriteHeader(status)
+	}
 	if err := licenseview.Show(role, licenseview.ShowProps{
-		License: row,
-		HasKeys: hasKeys,
+		License:           row,
+		HasKeys:           hasKeys,
+		Flash:             flash,
+		UserAssignments:   userAsgs,
+		DeviceAssignments: deviceAsgs,
+		AssignableUsers:   activeUsers,
+		AssignableDevices: activeDevices,
+		AssignedCount:     assigned,
+		OverAllocated:     over,
 	}).Render(r.Context(), w); err != nil {
 		h.logger.ErrorContext(r.Context(), "render license show", "err", err)
 	}

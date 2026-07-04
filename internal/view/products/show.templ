@@ -7,9 +7,13 @@ import (
 )
 
 // ShowProps は GET /products/:id の表示集約。
+//
+// Usage は v_license_usage の該当 product 1 行 (保有 / 割当 / インストール
+// の集計)。ライセンスが 1 件もない製品でも 0 集計で埋まる。
 type ShowProps struct {
 	Product repository.GetProductRow
 	Aliases []repository.ProductAlias
+	Usage   repository.VLicenseUsage
 	Flash   string
 }
 
@@ -74,6 +78,15 @@ templ Show(role middleware.Role, props ShowProps) {
 					}
 				</dd>
 			</dl>
+
+			<h2>ライセンス利用状況</h2>
+			<ul class="usage-summary">
+				// installed_count は SKYSEA 取込前は常に 0 (取込後に自然に埋まる)。
+				<li>{ "保有数: " + itoa(props.Usage.TotalOwned) }</li>
+				<li>{ "ユーザ割当: " + itoa(props.Usage.UserAssignedCount) }</li>
+				<li>{ "端末割当: " + itoa(props.Usage.DeviceAssignedCount) }</li>
+				<li>{ "インストール数: " + itoa(props.Usage.InstalledCount) }</li>
+			</ul>
 
 			<h2>エイリアス</h2>
 			if len(props.Aliases) == 0 {

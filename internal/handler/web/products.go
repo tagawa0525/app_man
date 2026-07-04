@@ -309,12 +309,18 @@ func (h *productHandlers) showWithFlash(w http.ResponseWriter, r *http.Request, 
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	usage, err := h.licenseUsage(r, q, p.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	role := middleware.RoleFrom(r.Context())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	if err := productview.Show(role, productview.ShowProps{
 		Product: p,
 		Aliases: aliases,
+		Usage:   usage,
 		Flash:   flash,
 	}).Render(r.Context(), w); err != nil {
 		h.logger.ErrorContext(r.Context(), "render product show on conflict", "err", err)
@@ -551,13 +557,35 @@ func (h *productHandlers) show(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	usage, err := h.licenseUsage(r, q, p.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 
 	role := middleware.RoleFrom(r.Context())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := productview.Show(role, productview.ShowProps{
 		Product: p,
 		Aliases: aliases,
+		Usage:   usage,
 	}).Render(r.Context(), w); err != nil {
 		h.logger.ErrorContext(r.Context(), "render product show", "err", err)
 	}
+}
+
+// licenseUsage は v_license_usage の該当 product 1 行を返す。view は
+// products への LEFT JOIN 集計なので、ライセンスが 1 件もない製品でも
+// 0 集計の行が返る。sql.ErrNoRows は product 削除とのレースでのみ
+// 起きうるため、ゼロ値 (全項目 0) に落として表示を壊さない。
+func (h *productHandlers) licenseUsage(r *http.Request, q *repository.Queries, productID int64) (repository.VLicenseUsage, error) {
+	usage, err := q.GetLicenseUsageByProduct(r.Context(), productID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return repository.VLicenseUsage{ProductID: productID}, nil
+		}
+		h.logger.ErrorContext(r.Context(), "get license usage", "err", err)
+		return repository.VLicenseUsage{}, err
+	}
+	return usage, nil
 }
