@@ -7,7 +7,7 @@
 -- NULL total_count (= unlimited) licenses into total_owned as 0, which
 -- would make an unlimited product look over-allocated. The expiry
 -- condition matches the view's active-license condition
--- (expires_at > date('now')).
+-- (expires_at IS NULL OR expires_at > date('now')).
 -- name: ListLicenseUsage :many
 SELECT
   u.product_id,
