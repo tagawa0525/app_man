@@ -56,15 +56,31 @@ func generateAll(ctx context.Context, sqlDB *sql.DB, basePath string, logger *sl
 
 	if dryRun {
 		wouldCreate := 0
+		failed := 0
 		for _, row := range rows {
-			if !licensefs.MetaExists(basePath, row.FsDirPath) {
+			exists, err := licensefs.MetaExists(basePath, row.FsDirPath)
+			if err != nil {
+				// 汚染された fs_dir_path (basePath 脱出等) を黙って無視しない。
+				// 実行時も同じ行が失敗するため、failed として予告する。
+				logger.Error("resolve license dir",
+					slog.Int64("license_id", row.ID),
+					slog.Any("error", err),
+				)
+				failed++
+				continue
+			}
+			if !exists {
 				wouldCreate++
 			}
 		}
 		logger.Info("generate-meta dry-run",
 			slog.Int("total", len(rows)),
 			slog.Int("would_create", wouldCreate),
+			slog.Int("failed", failed),
 		)
+		if failed > 0 {
+			return fmt.Errorf("generate-meta dry-run: %d of %d licenses failed", failed, len(rows))
+		}
 		return nil
 	}
 
@@ -86,7 +102,7 @@ func generateAll(ctx context.Context, sqlDB *sql.DB, basePath string, logger *sl
 		slog.Int("failed", failed),
 	)
 	if failed > 0 {
-		return fmt.Errorf("generate meta: %d of %d licenses failed", failed, len(rows))
+		return fmt.Errorf("generate-meta: %d of %d licenses failed", failed, len(rows))
 	}
 	return nil
 }

@@ -6,10 +6,12 @@ package licensefs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/tagawa0525/app_man/internal/metayml"
@@ -17,15 +19,36 @@ import (
 )
 
 // DirAbs は fs_dir_path (/ 区切り相対) を basePath 配下の絶対パスにする。
-func DirAbs(basePath, fsDirPath string) string {
-	return filepath.Join(basePath, filepath.FromSlash(fsDirPath))
+// fs_dir_path は DB 由来 (アプリが自前生成) だが、汚染で basePath の外を
+// 指す値 (絶対パス・Clean 後に .. で脱出・空) は拒否する
+// (filestore.Store.Open と同じ多層防御)。
+func DirAbs(basePath, fsDirPath string) (string, error) {
+	if fsDirPath == "" {
+		return "", errors.New("fs_dir_path must not be empty")
+	}
+	p := filepath.FromSlash(fsDirPath)
+	if filepath.IsAbs(p) {
+		return "", fmt.Errorf("fs_dir_path must be relative to base, got absolute path %q", fsDirPath)
+	}
+	clean := filepath.Clean(p)
+	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("fs_dir_path %q escapes the file store base", fsDirPath)
+	}
+	return filepath.Join(basePath, clean), nil
 }
 
 // MetaExists は fsDirPath 配下に meta.yml が通常ファイルとして存在するかを
 // 返す (generate-meta の dry-run が would_create を数えるための判定)。
-func MetaExists(basePath, fsDirPath string) bool {
-	fi, err := os.Stat(filepath.Join(DirAbs(basePath, fsDirPath), "meta.yml"))
-	return err == nil && fi.Mode().IsRegular()
+// fsDirPath が basePath を脱出する場合は false ではなく error を返す
+// (汚染行が「meta 無し = would_create」として黙って集計されるのを防ぎ、
+// 呼び出し側が failed としてログできる)。
+func MetaExists(basePath, fsDirPath string) (bool, error) {
+	dirAbs, err := DirAbs(basePath, fsDirPath)
+	if err != nil {
+		return false, err
+	}
+	fi, err := os.Stat(filepath.Join(dirAbs, "meta.yml"))
+	return err == nil && fi.Mode().IsRegular(), nil
 }
 
 // Regenerate は物理ディレクトリを確保して meta.yml を現在の DB 内容で
@@ -46,7 +69,10 @@ func Regenerate(ctx context.Context, q *repository.Queries, basePath string, lic
 		return fmt.Errorf("list documents for meta: %w", err)
 	}
 
-	dirAbs := DirAbs(basePath, row.FsDirPath)
+	dirAbs, err := DirAbs(basePath, row.FsDirPath)
+	if err != nil {
+		return fmt.Errorf("resolve license dir: %w", err)
+	}
 	if err := os.MkdirAll(dirAbs, 0o755); err != nil {
 		return fmt.Errorf("create license dir %s: %w", dirAbs, err)
 	}

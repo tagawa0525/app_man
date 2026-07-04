@@ -76,10 +76,20 @@ func newGenerateEnv(t *testing.T) (*sql.DB, *repository.Queries, string) {
 	return sqlDB, repository.New(sqlDB), t.TempDir()
 }
 
+// mustDirAbs は licensefs.DirAbs の失敗しない前提版 (テスト内の正常パス用)。
+func mustDirAbs(t *testing.T, basePath, fsDirPath string) string {
+	t.Helper()
+	p, err := licensefs.DirAbs(basePath, fsDirPath)
+	if err != nil {
+		t.Fatalf("DirAbs(%q): %v", fsDirPath, err)
+	}
+	return p
+}
+
 // readMeta は license の meta.yml を読む。存在しなければ Fatal。
 func readMeta(t *testing.T, basePath, fsDirPath string) []byte {
 	t.Helper()
-	p := filepath.Join(licensefs.DirAbs(basePath, fsDirPath), "meta.yml")
+	p := filepath.Join(mustDirAbs(t, basePath, fsDirPath), "meta.yml")
 	data, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatalf("read meta.yml %s: %v", p, err)
@@ -130,7 +140,7 @@ func TestGenerateAll_RestoresBrokenMeta(t *testing.T) {
 	}
 	want := readMeta(t, basePath, lic.FsDirPath)
 
-	metaPath := filepath.Join(licensefs.DirAbs(basePath, lic.FsDirPath), "meta.yml")
+	metaPath := filepath.Join(mustDirAbs(t, basePath, lic.FsDirPath), "meta.yml")
 	if err := os.WriteFile(metaPath, []byte("broken: [\n"), 0o644); err != nil {
 		t.Fatalf("break meta.yml: %v", err)
 	}
@@ -153,7 +163,7 @@ func TestGenerateAll_DoesNotTouchDocuments(t *testing.T) {
 	productID, deptID := seedCatalog(t, q)
 	lic := seedLicense(t, q, productID, deptID, "2024-jouki")
 
-	dirAbs := licensefs.DirAbs(basePath, lic.FsDirPath)
+	dirAbs := mustDirAbs(t, basePath, lic.FsDirPath)
 	if err := os.MkdirAll(dirAbs, 0o755); err != nil {
 		t.Fatalf("mkdir license dir: %v", err)
 	}
@@ -307,7 +317,7 @@ func TestGenerateAll_PartialFailureContinues(t *testing.T) {
 
 	// licBroken の fs_dir_path の位置に同名の通常ファイルを置く →
 	// MkdirAll が ENOTDIR で失敗する。
-	brokenAbs := licensefs.DirAbs(basePath, licBroken.FsDirPath)
+	brokenAbs := mustDirAbs(t, basePath, licBroken.FsDirPath)
 	if err := os.MkdirAll(filepath.Dir(brokenAbs), 0o755); err != nil {
 		t.Fatalf("mkdir parent: %v", err)
 	}
@@ -322,7 +332,11 @@ func TestGenerateAll_PartialFailureContinues(t *testing.T) {
 
 	// 失敗した 1 件以外は処理されている。
 	readMeta(t, basePath, licOK.FsDirPath)
-	if licensefs.MetaExists(basePath, licBroken.FsDirPath) {
+	exists, err := licensefs.MetaExists(basePath, licBroken.FsDirPath)
+	if err != nil {
+		t.Fatalf("MetaExists: %v", err)
+	}
+	if exists {
 		t.Error("broken license must not gain a meta.yml")
 	}
 }

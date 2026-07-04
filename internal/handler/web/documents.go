@@ -274,7 +274,11 @@ func (h *licenseHandlers) resolveLicenseFsDir(ctx context.Context, q *repository
 		if n > 0 {
 			continue
 		}
-		entries, err := os.ReadDir(h.licenseDirAbs(cand))
+		candAbs, err := h.licenseDirAbs(cand)
+		if err != nil {
+			return "", fmt.Errorf("resolve fs dir candidate %s: %w", cand, err)
+		}
+		entries, err := os.ReadDir(candAbs)
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
 				return cand, nil
@@ -291,14 +295,20 @@ func (h *licenseHandlers) resolveLicenseFsDir(ctx context.Context, q *repository
 // renameLicenseDir はスラッグ変更に物理ディレクトリを追随させる。旧が
 // 無ければ何もしない (後続の regenerateLicenseFS が新パスで MkdirAll する)。
 func (h *licenseHandlers) renameLicenseDir(oldDir, newDir string) error {
-	oldAbs := h.licenseDirAbs(oldDir)
+	oldAbs, err := h.licenseDirAbs(oldDir)
+	if err != nil {
+		return fmt.Errorf("resolve old license dir: %w", err)
+	}
 	if _, err := os.Stat(oldAbs); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil
 		}
 		return fmt.Errorf("stat old license dir %s: %w", oldAbs, err)
 	}
-	newAbs := h.licenseDirAbs(newDir)
+	newAbs, err := h.licenseDirAbs(newDir)
+	if err != nil {
+		return fmt.Errorf("resolve new license dir: %w", err)
+	}
 	if err := os.MkdirAll(filepath.Dir(newAbs), 0o755); err != nil {
 		return fmt.Errorf("create parent of %s: %w", newAbs, err)
 	}
@@ -344,7 +354,9 @@ func (h *licenseHandlers) regenerateLicenseFS(ctx context.Context, q *repository
 }
 
 // licenseDirAbs は fs_dir_path (/ 区切り相対) を base 配下の絶対パスにする。
-func (h *licenseHandlers) licenseDirAbs(dir string) string {
+// base を脱出するパスはエラー (多層防御。web の通常フローでは fs_dir_path
+// を自前生成するため通らない)。
+func (h *licenseHandlers) licenseDirAbs(dir string) (string, error) {
 	return licensefs.DirAbs(h.fsCfg.BasePath, dir)
 }
 
