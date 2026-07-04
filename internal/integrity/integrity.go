@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -184,7 +185,10 @@ func scanDocuments(ctx context.Context, q *repository.Queries, basePath string, 
 		}
 		registered[path.Clean(filepath.ToSlash(doc.StoredPath))] = true
 
-		data, err := os.ReadFile(fileAbs)
+		// FS が手で差し替えられ極端に大きいファイルになっていても
+		// メモリ使用量が一定になるよう、全読みではなくストリーミングで
+		// ハッシュする。
+		got, err := hashFileSHA256(fileAbs)
 		if errors.Is(err, fs.ErrNotExist) {
 			rep.Findings = append(rep.Findings, Finding{
 				Kind: KindFileMissing, LicenseID: row.ID, Path: doc.StoredPath,
@@ -194,8 +198,7 @@ func scanDocuments(ctx context.Context, q *repository.Queries, basePath string, 
 		if err != nil {
 			return nil, fmt.Errorf("read document %s: %w", fileAbs, err)
 		}
-		sum := sha256.Sum256(data)
-		if got := hex.EncodeToString(sum[:]); !strings.EqualFold(got, doc.Sha256) {
+		if !strings.EqualFold(got, doc.Sha256) {
 			rep.Findings = append(rep.Findings, Finding{
 				Kind: KindSha256Mismatch, LicenseID: row.ID, Path: doc.StoredPath,
 				Detail: fmt.Sprintf("db=%s fs=%s", doc.Sha256, got),
@@ -203,6 +206,20 @@ func scanDocuments(ctx context.Context, q *repository.Queries, basePath string, 
 		}
 	}
 	return registered, nil
+}
+
+// hashFileSHA256 は path の sha256 を小さな固定バッファで計算する。
+func hashFileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // scanUnregistered は契約フォルダ内の実ファイルのうち、meta.yml でも
