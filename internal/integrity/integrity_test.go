@@ -357,3 +357,15 @@ func TestScan_DryRunDoesNotGenerateMeta(t *testing.T) {
 		t.Errorf("dry-run must not create meta.yml, stat err = %v", err)
 	}
 }
+
+// TestScan_RejectsEmptyBasePath は basePath 空での Scan をエラーにする
+// (CLI は runner 側で検証するが、/admin/integrity 等の再利用側が検証を
+// 忘れても CWD 相対で meta.yml が書かれる事故にならないための多層防御)。
+func TestScan_RejectsEmptyBasePath(t *testing.T) {
+	t.Parallel()
+	sqlDB := handlertest.NewTestDB(t)
+	q := repository.New(sqlDB)
+	if _, err := integrity.Scan(context.Background(), q, "", false, time.Now()); err == nil {
+		t.Error("Scan with empty basePath should return error, got nil")
+	}
+}
