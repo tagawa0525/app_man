@@ -72,8 +72,8 @@ func countViews(t *testing.T, sqlDB *sql.DB, name string) int {
 }
 
 func TestRequiredMigrationVersion(t *testing.T) {
-	if got := db.RequiredMigrationVersion(); got != 7 {
-		t.Errorf("RequiredMigrationVersion() = %d, want 7", got)
+	if got := db.RequiredMigrationVersion(); got != 8 {
+		t.Errorf("RequiredMigrationVersion() = %d, want 8", got)
 	}
 }
 
