@@ -178,7 +178,7 @@ SELECT
     SELECT 1 FROM licenses l
     WHERE l.product_id = u.product_id
       AND l.total_count IS NULL
-      AND (l.expires_at IS NULL OR l.expires_at > date('now'))
+      AND (l.expires_at IS NULL OR l.expires_at >= date('now'))
   ) AS has_unlimited
 FROM v_license_usage u
 ORDER BY u.vendor_name, u.canonical_name
@@ -203,7 +203,7 @@ type ListLicenseUsageRow struct {
 // NULL total_count (= unlimited) licenses into total_owned as 0, which
 // would make an unlimited product look over-allocated. The expiry
 // condition matches the view's active-license condition
-// (expires_at IS NULL OR expires_at > date('now')).
+// (expires_at IS NULL OR expires_at >= date('now')).
 func (q *Queries) ListLicenseUsage(ctx context.Context) ([]ListLicenseUsageRow, error) {
 	rows, err := q.db.QueryContext(ctx, listLicenseUsage)
 	if err != nil {

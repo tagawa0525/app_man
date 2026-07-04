@@ -10,6 +10,7 @@ sql:
       - "db/migrations/000005_app.up.sql"
       - "db/migrations/000006_indexes_views.up.sql"
       - "db/migrations/000007_sessions.up.sql"
+      - "db/migrations/000008_view_expiry_inclusive.up.sql"
     gen:
       go:
         package: "repository"
