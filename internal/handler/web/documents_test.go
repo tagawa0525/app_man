@@ -670,6 +670,62 @@ func TestLicenses_Create_FsDirPathCollision_AppendsSuffix(t *testing.T) {
 	}
 }
 
+// TestLicenses_Update_SlugChange_RenameSucceedsOverLeftoverEmptyDir は
+// rename の移動先に空ディレクトリが残っていても slug 変更が成功することを
+// 確認する (resolveLicenseFsDir は空ディレクトリを再利用可とするため
+// 実際に起きる形。Windows の os.Rename は既存ディレクトリ上への rename を
+// 失敗させるので、空なら除去してから rename する必要がある)。
+func TestLicenses_Update_SlugChange_RenameSucceedsOverLeftoverEmptyDir(t *testing.T) {
+	t.Parallel()
+	fsCfg := docsFSCfg(t)
+	r, db, store, q := newDocsRouter(t, fsCfg)
+
+	s := seedLicenseCatalog(t, q, "Adobe", "Acrobat Pro", "DEPT001", "情報システム部")
+	form := validLicenseForm(s)
+	form.Set("license_slug", "改名前")
+	req := handlertest.AuthenticatedPostForm(t, db, store, "/licenses", middleware.RoleLicenseManager, form)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("create status = %d, want 303 (body: %s)", rec.Code, rec.Body.String())
+	}
+	id := locationID(t, rec)
+
+	// 移動先に空ディレクトリだけが残っている状態を作る。
+	newDir := filepath.Join(fsCfg.BasePath, "licenses", "Adobe", "Acrobat_Pro", "改名後")
+	if err := os.MkdirAll(newDir, 0o755); err != nil {
+		t.Fatalf("pre-create empty target dir: %v", err)
+	}
+
+	upd := validLicenseForm(s)
+	upd.Set("license_slug", "改名後")
+	req = handlertest.AuthenticatedPostForm(t, db, store,
+		fmt.Sprintf("/licenses/%d", id), middleware.RoleLicenseManager, upd)
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("update status = %d, want 303 (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	// 旧ディレクトリの中身 (meta.yml) が移動先に来ている = 空の残骸が
+	// 上書きではなく除去 + rename されたことの観測。
+	if _, err := os.Stat(filepath.Join(newDir, "meta.yml")); err != nil {
+		t.Errorf("meta.yml missing in rename target: %v", err)
+	}
+	oldDir := filepath.Join(fsCfg.BasePath, "licenses", "Adobe", "Acrobat_Pro", "改名前")
+	if _, err := os.Stat(oldDir); !os.IsNotExist(err) {
+		t.Errorf("old dir %s still exists (want renamed away)", oldDir)
+	}
+
+	got, err := q.GetLicenseByID(context.Background(), id)
+	if err != nil {
+		t.Fatalf("GetLicenseByID: %v", err)
+	}
+	if got.FsDirPath != "licenses/Adobe/Acrobat_Pro/改名後" {
+		t.Errorf("fs_dir_path = %q, want licenses/Adobe/Acrobat_Pro/改名後 (no needless suffix)", got.FsDirPath)
+	}
+}
+
 func TestLicenses_Update_SlugChange_RenamesPhysicalDir(t *testing.T) {
 	t.Parallel()
 	fsCfg := docsFSCfg(t)
