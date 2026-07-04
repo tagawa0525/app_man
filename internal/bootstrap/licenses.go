@@ -249,6 +249,70 @@ func licenseFsDir(vendorName, productName, licenseSlug string) string {
 		slug.Slugify(licenseSlug))
 }
 
+// resolveLicenseRef は assignments CSV のライセンス参照 5 列
+// (vendor_name / product_name / edition / department_code / license_slug)
+// を DB のライセンスに解決する。成功時は (license, nil)。失敗時は行番号
+// 付きの検証エラーを返す (Validate からそのまま errs に連結できる)。
+//
+// licenses kind と違い、廃止部署 (valid_to NOT NULL) は拒否しない —
+// 既存ライセンスが廃止部署の所管のまま残っているのは正常な状態のため。
+func resolveLicenseRef(ctx context.Context, q *repository.Queries, r Row) (repository.License, []ValidationError) {
+	vendor := strings.TrimSpace(r.Fields["vendor_name"])
+	product := strings.TrimSpace(r.Fields["product_name"])
+	edition := strings.TrimSpace(r.Fields["edition"])
+	dept := strings.TrimSpace(r.Fields["department_code"])
+	licSlug := strings.TrimSpace(r.Fields["license_slug"])
+
+	var errs []ValidationError
+	if vendor == "" {
+		errs = append(errs, ValidationError{Line: r.Line, Column: "vendor_name", Message: "ベンダー名は必須です"})
+	}
+	if product == "" {
+		errs = append(errs, ValidationError{Line: r.Line, Column: "product_name", Message: "製品名は必須です"})
+	}
+	if dept == "" {
+		errs = append(errs, ValidationError{Line: r.Line, Column: "department_code", Message: "部署コードは必須です"})
+	}
+	if licSlug == "" {
+		errs = append(errs, ValidationError{Line: r.Line, Column: "license_slug", Message: "スラッグは必須です"})
+	}
+	if len(errs) > 0 {
+		return repository.License{}, errs
+	}
+
+	v, err := q.GetVendorByName(ctx, vendor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return repository.License{}, []ValidationError{{Line: r.Line, Column: "vendor_name", Message: "ベンダー '" + vendor + "' が見つかりません"}}
+	}
+	if err != nil {
+		return repository.License{}, []ValidationError{{Line: r.Line, Column: "vendor_name", Message: "lookup error: " + err.Error()}}
+	}
+	p, err := getProductByKeyForBootstrap(ctx, q, v.ID, product, edition)
+	if errors.Is(err, sql.ErrNoRows) {
+		return repository.License{}, []ValidationError{{Line: r.Line, Column: "product_name", Message: "製品 '" + product + "' が見つかりません"}}
+	}
+	if err != nil {
+		return repository.License{}, []ValidationError{{Line: r.Line, Column: "product_name", Message: "lookup error: " + err.Error()}}
+	}
+	d, err := q.GetDepartmentByCode(ctx, dept)
+	if errors.Is(err, sql.ErrNoRows) {
+		return repository.License{}, []ValidationError{{Line: r.Line, Column: "department_code", Message: "部署 '" + dept + "' が見つかりません"}}
+	}
+	if err != nil {
+		return repository.License{}, []ValidationError{{Line: r.Line, Column: "department_code", Message: "lookup error: " + err.Error()}}
+	}
+	lic, err := q.GetLicenseByKey(ctx, repository.GetLicenseByKeyParams{
+		ProductID: p.ID, OwningDepartmentID: d.ID, LicenseSlug: licSlug,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return repository.License{}, []ValidationError{{Line: r.Line, Column: "license_slug", Message: "ライセンス '" + licSlug + "' が見つかりません"}}
+	}
+	if err != nil {
+		return repository.License{}, []ValidationError{{Line: r.Line, Column: "license_slug", Message: "lookup error: " + err.Error()}}
+	}
+	return lic, nil
+}
+
 // parseNonNegativeOpt は "" / 0 以上の整数文字列を *int64 に変換する。
 // 空欄は (nil, true)。形式不正・負数は (nil, false)。
 func parseNonNegativeOpt(s string) (*int64, bool) {
