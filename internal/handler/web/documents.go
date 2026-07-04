@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/tagawa0525/app_man/internal/handler/middleware"
-	"github.com/tagawa0525/app_man/internal/metayml"
+	"github.com/tagawa0525/app_man/internal/licensefs"
 	"github.com/tagawa0525/app_man/internal/repository"
 )
 
@@ -338,60 +338,14 @@ func prepareRenameTarget(targetAbs string) error {
 // DB 内容で書き直す (仕様 §5.2 / §8.6)。ライセンス作成・更新・証書
 // アップロードの 3 トリガから呼ぶ。呼び出し側でエラーをログして
 // ブロックしない (FS/DB のズレは警告のみの思想)。
+// 本体は appmgr-generate-meta と共有するため licensefs にある。
 func (h *licenseHandlers) regenerateLicenseFS(ctx context.Context, q *repository.Queries, licenseID int64) error {
-	row, err := q.GetLicenseByID(ctx, licenseID)
-	if err != nil {
-		return fmt.Errorf("get license for meta: %w", err)
-	}
-	prod, err := q.GetProduct(ctx, row.ProductID)
-	if err != nil {
-		return fmt.Errorf("get product for meta: %w", err)
-	}
-	docs, err := q.ListLicenseDocumentsByLicense(ctx, licenseID)
-	if err != nil {
-		return fmt.Errorf("list documents for meta: %w", err)
-	}
-
-	dirAbs := h.licenseDirAbs(row.FsDirPath)
-	if err := os.MkdirAll(dirAbs, 0o755); err != nil {
-		return fmt.Errorf("create license dir %s: %w", dirAbs, err)
-	}
-
-	m := metayml.Meta{
-		Product:          row.ProductName,
-		Vendor:           row.VendorName,
-		Edition:          prod.Edition,
-		LicenseSlug:      row.LicenseSlug,
-		DisplayName:      row.DisplayName,
-		TotalCount:       row.TotalCount,
-		CountUnit:        row.CountUnit,
-		ContractType:     row.ContractType,
-		PurchasedAt:      row.PurchasedAt,
-		StartedAt:        row.StartedAt,
-		ExpiresAt:        row.ExpiresAt,
-		OwningDepartment: row.DepartmentName,
-		VendorOrderNo:    row.VendorOrderNo,
-		Purchaser:        row.Purchaser,
-		UnitPrice:        row.UnitPrice,
-		Currency:         row.Currency,
-		Note:             row.Note,
-		LastUpdatedByApp: time.Now(),
-	}
-	for _, d := range docs {
-		m.Documents = append(m.Documents, metayml.Document{
-			// meta.yml はファイルサーバを直接覗く人向けなので、フォルダ内に
-			// 実在する保存名を載せる (original_filename は DB が保持)。
-			Filename:   path.Base(d.StoredPath),
-			SHA256:     d.Sha256,
-			UploadedAt: d.UploadedAt,
-		})
-	}
-	return metayml.Write(filepath.Join(dirAbs, "meta.yml"), m)
+	return licensefs.Regenerate(ctx, q, h.fsCfg.BasePath, licenseID, time.Now())
 }
 
 // licenseDirAbs は fs_dir_path (/ 区切り相対) を base 配下の絶対パスにする。
 func (h *licenseHandlers) licenseDirAbs(dir string) string {
-	return filepath.Join(h.fsCfg.BasePath, filepath.FromSlash(dir))
+	return licensefs.DirAbs(h.fsCfg.BasePath, dir)
 }
 
 // contentDisposition は original_filename を RFC 6266 / RFC 5987 の形式で
