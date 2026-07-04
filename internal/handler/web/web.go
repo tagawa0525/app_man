@@ -84,6 +84,21 @@ var departmentViewers = []mw.Role{
 	mw.RoleSystemAdmin,
 }
 
+// securityAdmins は「承認管理」権限ロール集合 (仕様 §6.1 の
+// dept_security_admin 以上 = dept_security_admin と system_admin)。
+// RequireRole は許可集合の包含判定のみでロール間の上下関係を解釈しない
+// ため、「以上」はこの列挙で表現する。license_manager は仕様上対象外
+// なので集合に含めない (= 403)。
+var securityAdmins = []mw.Role{
+	mw.RoleDepartmentSecurityAdmin,
+	mw.RoleSystemAdmin,
+}
+
+// systemAdmins は system_admin 専用ルート (/admin/*) のロール集合。
+var systemAdmins = []mw.Role{
+	mw.RoleSystemAdmin,
+}
+
 // RegisterRoutes は本パッケージのルートを r に登録する。
 // 呼び出し側 (handler.NewRouter) で Session / Auth / CSRF middleware を
 // r に適用済みの前提。
@@ -94,6 +109,7 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 	u := &userHandlers{db: deps.DB, logger: deps.Logger}
 	dev := &deviceHandlers{db: deps.DB, logger: deps.Logger}
 	lic := &licenseHandlers{db: deps.DB, logger: deps.Logger, store: deps.FileStore, fsCfg: deps.FileStoreCfg}
+	ap := &approvalHandlers{db: deps.DB, logger: deps.Logger}
 
 	// /login / /logout は role 不問。Authenticator / SessionStore が注入
 	// されている場合のみ登録する (テストで nil を渡したときに panic
@@ -176,5 +192,18 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 		// audit_logs 記録を回避してキーを読める経路になるため POST のみ。
 		r.Post("/licenses/{id}/documents", lic.uploadDocument)
 		r.Post("/licenses/{id}/keys/reveal", lic.revealKeys)
+	})
+	// 承認管理 (仕様 §6.1) は dept_security_admin 以上。scope_type の設定は
+	// MVP では department_wide 固定 (specific_* は評価ロジックのみ実装)。
+	r.With(mw.RequireRole(securityAdmins...)).Group(func(r chi.Router) {
+		r.Get("/approvals", ap.list)
+		r.Get("/approvals/{deptID}/{productID}", ap.show)
+		r.Post("/approvals/{deptID}/{productID}", ap.create)
+		r.Post("/approvals/{deptID}/{productID}/revoke", ap.revoke)
+	})
+	// 全社承認設定は system_admin のみ。
+	r.With(mw.RequireRole(systemAdmins...)).Group(func(r chi.Router) {
+		r.Get("/admin/global-approvals", ap.globalList)
+		r.Post("/admin/global-approvals/{productID}", ap.globalUpdate)
 	})
 }
