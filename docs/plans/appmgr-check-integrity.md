@@ -15,7 +15,7 @@ generate-meta (PR #27) まで完了し、FS 側の実体と `internal/licensefs`
 
 | 項目 | 決定 | 判断 |
 |------|------|------|
-| 検出ロジックの配置 | `internal/integrity.Scan(ctx, q, basePath) (Report, error)` を新設。CLI はログ出力の器 | `/admin/integrity` 画面 (別 PR) が同じ Scan を使う予定。先に共有形にしておく |
+| 検出ロジックの配置 | `internal/integrity.Scan(ctx, q, basePath, dryRun, now) (*Report, error)` を新設 (dryRun は meta 自動生成の抑止、now は生成する meta.yml の last_updated_by_app に使う)。CLI はログ出力の器 | `/admin/integrity` 画面 (別 PR) が同じ Scan を使う予定。先に共有形にしておく |
 | 検査パターン | (1) stored_path が FS に無い (2) FS の licenses/ 配下にあるが DB に無いファイル (meta.yml は除外) (3) sha256 不一致 (4) meta.yml 欠落 (5) ディレクトリ不一致 = fs_dir_path のディレクトリが無い / どのライセンスにも属さない孤児ディレクトリ | 仕様 §5.12 の表をそのまま |
 | meta.yml 欠落の扱い | 唯一の自動修復。`licensefs.Regenerate` で生成し、結果は "auto-generated" として報告 | 仕様「自動生成」。他パターンは警告のみ |
 | exit code | 検出があっても **exit 0** (警告はブロックしない思想)。exit 1 は動作エラー (DB 不能・base_path 未設定・walk 失敗) のみ | 仕様「ブロックしない (FS が正本の思想)」。所見は正常な出力 |
@@ -25,7 +25,7 @@ generate-meta (PR #27) まで完了し、FS 側の実体と `internal/licensefs`
 | 孤児ディレクトリの判定 | licenses/ 直下 3 階層 (vendor/product/license) を走査し、末端ディレクトリが全ライセンスの fs_dir_path 集合に無ければ孤児。途中階層は末端が全て孤児のときのみ報告しない (ノイズ削減のため末端のみ報告) | §3.2 の構造前提。深さ不定の走査より誤検知が少ない |
 | 未登録ファイルの判定 | 各ライセンスの契約フォルダ内で、meta.yml と license_documents.stored_path 群に無いファイル | 「人が直接置く」運用 (仕様 §3.2) があるため正常系でも起こる。警告でなく info 寄りだが、仕様は「表示」対象なので所見として数える |
 | 汚染 fs_dir_path | licensefs.DirAbs のガードに任せ、該当行は所見 (kind=invalid_path) として報告し続行 | generate-meta と同じ隔離方針 |
-| 起動経路 | `clirun.Run(binaryName, lockfile.ModeShared, handler)` 維持。runCheckIntegrity(ctx, deps) → scan は下位関数分離 | skeleton どおり。時刻依存が無いため now 注入は不要 |
+| 起動経路 | `clirun.Run(binaryName, lockfile.ModeShared, handler)` 維持。runCheckIntegrity(ctx, deps, now) → scan は下位関数分離 | skeleton どおり。meta 自動生成が last_updated_by_app に時刻を使うため now を注入する (backup / generate-meta と同構成) |
 | README | 運用 1 段落 | 明記 |
 
 ## 対象スコープ
