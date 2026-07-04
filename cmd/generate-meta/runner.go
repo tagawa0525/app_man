@@ -3,13 +3,42 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
+	"github.com/tagawa0525/app_man/internal/clirun"
+	"github.com/tagawa0525/app_man/internal/db"
 	"github.com/tagawa0525/app_man/internal/licensefs"
 	"github.com/tagawa0525/app_man/internal/repository"
 )
+
+// runGenerateMeta は db.Open + generateAll の薄い合成。now は meta.yml の
+// last_updated_by_app に使う (main が time.Now() を渡す)。テストは
+// in-memory DB を注入できる generateAll を直接呼ぶため、この関数はテスト
+// 対象にしない。
+func runGenerateMeta(ctx context.Context, deps clirun.Deps, now time.Time) error {
+	// BasePath の必須チェックは config.validate ではなくここで行う。
+	// validate で必須化すると file_store 設定を持たないバッチ等が起動
+	// 不能になるため、バイナリ固有の前提条件として検査する
+	// (backup.output_dir と同じ消費者責務パターン)。
+	basePath := deps.Cfg.FileStore.BasePath
+	if basePath == "" {
+		return errors.New("file_store.base_path is required")
+	}
+
+	sqlDB, closeDB, err := db.Open(deps.Cfg.Database)
+	if err != nil {
+		return fmt.Errorf("open db: %w", err)
+	}
+	defer func() {
+		if cerr := closeDB(); cerr != nil {
+			deps.Logger.Error("close db", slog.Any("error", cerr))
+		}
+	}()
+	return generateAll(ctx, sqlDB, basePath, deps.Logger, now, deps.DryRun)
+}
 
 // generateAll は全ライセンス (満了含む。仕様 §5.2「満了レコードも証書・
 // meta.yml は保持」) の物理ディレクトリ確保と meta.yml 再生成の本体。
