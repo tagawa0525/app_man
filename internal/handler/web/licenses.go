@@ -505,6 +505,9 @@ func (h *licenseHandlers) update(w http.ResponseWriter, r *http.Request) {
 		ID:                 id,
 	})
 	if err != nil {
+		// テンプレ描画等の後続処理中に tx (接続) を保持し続けないよう、
+		// defer に頼らずこの時点で明示的に閉じる。
+		_ = tx.Rollback()
 		restoreRename()
 		if isUniqueConstraintErr(err) {
 			pinned, perr := resolvePinnedDepartment(r, q, depts, &existing.OwningDepartmentID)
@@ -532,6 +535,7 @@ func (h *licenseHandlers) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if affected == 0 {
+		_ = tx.Rollback()
 		restoreRename()
 		http.NotFound(w, r)
 		return
