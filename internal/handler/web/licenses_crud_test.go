@@ -386,11 +386,17 @@ func TestLicenses_Create_RejectsInvalidValues(t *testing.T) {
 	for _, tc := range cases {
 		form := validLicenseForm(s)
 		form.Set(tc.field, tc.value)
+		// write-only 方針: バリデーションエラーの再描画にも入力された
+		// キー平文がレスポンス本文に戻ってはならない
+		form.Set("product_keys", "ECHOED-SECRET-0000")
 		req := handlertest.AuthenticatedPostForm(t, db, store, "/licenses", middleware.RoleLicenseManager, form)
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, req)
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("%s: status = %d, want 400 (body: %s)", tc.name, rec.Code, rec.Body.String())
+		}
+		if strings.Contains(rec.Body.String(), "ECHOED-SECRET-0000") {
+			t.Errorf("%s: product_keys echoed back in error re-render", tc.name)
 		}
 	}
 
