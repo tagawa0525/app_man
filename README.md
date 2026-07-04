@@ -180,6 +180,15 @@ appmgr-generate-meta -config config.yml            # 一括再生成
 appmgr-generate-meta -config config.yml -dry-run   # 対象件数（total / would_create）をログに出すのみ（FS には触れない）
 ```
 
+## 整合性チェック（check-integrity）
+
+`appmgr-check-integrity` は全ライセンス（満了含む）について FS と DB を突合し、証書ファイルの欠落（`file_missing`）・内容改変（`sha256_mismatch`）・未登録ファイル（`unregistered_file`）・ディレクトリ不一致（`dir_missing` / `orphan_dir`）等を検出する。日次でタスクスケジューラから実行するほか、FS を直接操作した後などに手動で実行してもよい（登録手順は「バックアップ」節を参照）。所見は warn ログと kind 別サマリで報告するのみで、**所見があっても exit 0**（FS が正本・警告のみでブロックしない思想。exit 1 は DB 接続不能や `base_path` 未設定などの動作エラーのみ）。唯一の自動修復は `meta.yml` 欠落時の再生成で、証書ファイル自体には一切触れない。
+
+```sh
+appmgr-check-integrity -config config.yml            # チェック実行（meta.yml 欠落は自動生成）
+appmgr-check-integrity -config config.yml -dry-run   # meta.yml を生成せず件数（would_generate_meta）のみ報告（検査自体は読取専用）
+```
+
 ## 開発ルール
 
 - main ブランチへの直接コミットは禁止。必ず feature ブランチを切って PR を出す
