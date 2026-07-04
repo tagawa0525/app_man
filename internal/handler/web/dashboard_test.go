@@ -176,9 +176,14 @@ func TestDashboard_ExpiringLicenses_Window(t *testing.T) {
 	r, db, store, q := newWebRouter(t)
 
 	s := seedLicenseCatalog(t, q, "ExpVendor", "ExpApp", "DEPT200", "経理部")
-	seedLicense(t, q, s, "soon", "満了30日前契約", timePtr(time.Now().AddDate(0, 0, 30)), nil)
-	seedLicense(t, q, s, "far", "満了200日前契約", timePtr(time.Now().AddDate(0, 0, 200)), nil)
-	seedLicense(t, q, s, "past", "満了済み契約", timePtr(time.Now().AddDate(0, 0, -1)), nil)
+	// 実装の絞り込みは SQLite の date('now') (= UTC 日付) 基準。ローカル TZ の
+	// time.Now() をそのまま使うと日付境界付近で 90 日窓の判定がズレて
+	// フレークしうるため、UTC の日付 0 時を基準に組み立てる。
+	nowUTC := time.Now().UTC()
+	todayUTC := time.Date(nowUTC.Year(), nowUTC.Month(), nowUTC.Day(), 0, 0, 0, 0, time.UTC)
+	seedLicense(t, q, s, "soon", "満了30日前契約", timePtr(todayUTC.AddDate(0, 0, 30)), nil)
+	seedLicense(t, q, s, "far", "満了200日前契約", timePtr(todayUTC.AddDate(0, 0, 200)), nil)
+	seedLicense(t, q, s, "past", "満了済み契約", timePtr(todayUTC.AddDate(0, 0, -1)), nil)
 
 	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet, "/", middleware.RoleViewer, nil)
 	rec := httptest.NewRecorder()
