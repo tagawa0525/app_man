@@ -1,0 +1,80 @@
+package approvals
+
+import (
+	"github.com/tagawa0525/app_man/internal/approval"
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+// GlobalProps は GET /admin/global-approvals (system_admin 専用) の描画引数。
+type GlobalProps struct {
+	Items []repository.ListProductsRow
+	Flash string
+}
+
+templ Global(role middleware.Role, props GlobalProps) {
+	@layout.Base(layout.BaseProps{
+		Title:     "全社承認設定",
+		Role:      role,
+		Flash:     props.Flash,
+		CSRFToken: middleware.CSRFTokenFrom(ctx),
+	}) {
+		<section class="page-global-approvals">
+			<header class="page-header">
+				<h1>全社承認設定</h1>
+			</header>
+			<p>製品ごとの全社既定 (default_approval_status) を変更します。部署裁量の製品は部署別の承認 (/approvals) で判定されます。</p>
+
+			if len(props.Items) == 0 {
+				<p class="empty">製品が登録されていません。</p>
+			} else {
+				<table class="data-table">
+					<thead>
+						<tr>
+							<th>ベンダー</th>
+							<th>製品</th>
+							<th>現在の全社設定</th>
+							<th>変更</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, p := range props.Items {
+							<tr>
+								<td>{ p.VendorName }</td>
+								<td>
+									{ p.CanonicalName }
+									if p.Edition != nil {
+										{ " " + *p.Edition }
+									}
+								</td>
+								<td>{ defaultStatusLabel(p.DefaultApprovalStatus) }</td>
+								<td>
+									<form method="post" action={ templ.SafeURL("/admin/global-approvals/" + itoa(p.ID)) } class="inline-form">
+										@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
+										<select name="default_approval_status">
+											@defaultStatusOption(approval.DefaultGloballyApproved, p.DefaultApprovalStatus)
+											@defaultStatusOption(approval.DefaultGloballyProhibited, p.DefaultApprovalStatus)
+											@defaultStatusOption(approval.DefaultUnknown, p.DefaultApprovalStatus)
+											@defaultStatusOption(approval.DefaultDepartmentDiscretion, p.DefaultApprovalStatus)
+										</select>
+										<button type="submit" class="btn">更新</button>
+									</form>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			}
+		</section>
+	}
+}
+
+// defaultStatusOption は全社設定 select の 1 option。
+templ defaultStatusOption(value, selected string) {
+	if value == selected {
+		<option value={ value } selected>{ defaultStatusLabel(value) }</option>
+	} else {
+		<option value={ value }>{ defaultStatusLabel(value) }</option>
+	}
+}

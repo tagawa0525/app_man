@@ -1,0 +1,96 @@
+package approvals
+
+import (
+	"github.com/tagawa0525/app_man/internal/approval"
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+// ListItem は一覧の 1 行 (製品 × 選択部署の評価結果)。
+//
+// ScopeNote は specific_users / specific_devices のときの注記。一覧は
+// 部署単位表示のため InScope を評価せず (表示上は未承認)、代わりに
+// scope_type をそのまま出して個別スコープ承認の存在を示す。
+type ListItem struct {
+	Product   repository.ListProductsRow
+	Verdict   approval.Verdict
+	ScopeNote string
+}
+
+// ListProps は GET /approvals の描画引数。SelectedID = 0 は部署未選択。
+type ListProps struct {
+	Departments []repository.Department
+	SelectedID  int64
+	Items       []ListItem
+}
+
+templ List(role middleware.Role, props ListProps) {
+	@layout.Base(layout.BaseProps{
+		Title:     "承認管理",
+		Role:      role,
+		CSRFToken: middleware.CSRFTokenFrom(ctx),
+	}) {
+		<section class="page-approvals-list">
+			<header class="page-header">
+				<h1>承認管理</h1>
+			</header>
+
+			<form class="search-bar" method="get" action="/approvals">
+				<label for="department_id">部署</label>
+				<select id="department_id" name="department_id">
+					<option value="">選択してください</option>
+					for _, d := range props.Departments {
+						if d.ID == props.SelectedID {
+							<option value={ itoa(d.ID) } selected>{ d.Name }</option>
+						} else {
+							<option value={ itoa(d.ID) }>{ d.Name }</option>
+						}
+					}
+				</select>
+				<button type="submit">表示</button>
+			</form>
+
+			if props.SelectedID == 0 {
+				<p class="empty">部署を選択すると製品ごとの承認状態を表示します。</p>
+			} else if len(props.Items) == 0 {
+				<p class="empty">製品が登録されていません。</p>
+			} else {
+				<table class="data-table">
+					<thead>
+						<tr>
+							<th>ベンダー</th>
+							<th>製品</th>
+							<th>全社設定</th>
+							<th>判定</th>
+							<th></th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, it := range props.Items {
+							<tr>
+								<td>{ it.Product.VendorName }</td>
+								<td>
+									{ it.Product.CanonicalName }
+									if it.Product.Edition != nil {
+										{ " " + *it.Product.Edition }
+									}
+								</td>
+								<td>{ defaultStatusLabel(it.Product.DefaultApprovalStatus) }</td>
+								<td>
+									{ VerdictLabel(it.Verdict) }
+									if it.ScopeNote != "" {
+										<span class="note">({ it.ScopeNote })</span>
+									}
+								</td>
+								<td>
+									<a class="btn" href={ templ.SafeURL(detailPath(props.SelectedID, it.Product.ID)) }>登録・編集</a>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			}
+		</section>
+	}
+}

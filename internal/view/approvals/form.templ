@@ -1,0 +1,186 @@
+package approvals
+
+import (
+	"github.com/tagawa0525/app_man/internal/approval"
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+// FormInput は登録フォームの入力値 (バリデーション失敗時の再表示用に
+// 生の文字列のまま保持)。scope_type は MVP では department_wide 固定で
+// サーバ側が付与するため、フォーム項目にしない (Plan approvals.md)。
+type FormInput struct {
+	Status     string
+	Conditions string
+	ExpiresAt  string
+	Note       string
+}
+
+// DetailProps は GET/POST /approvals/{deptID}/{productID} の描画引数。
+//
+// Active が non-nil のときは登録フォームの代わりに取消フォームを出す
+// (変更 = 取消 + 新規。UNIQUE(dept, product, active) のため)。
+type DetailProps struct {
+	Department repository.Department
+	Product    repository.GetProductRow
+	Active     *repository.DepartmentProductApproval
+	History    []repository.ListApprovalHistoryForDeptProductRow
+	Input      FormInput
+	Errors     map[string]string
+	Flash      string
+}
+
+templ Detail(role middleware.Role, props DetailProps) {
+	@layout.Base(layout.BaseProps{
+		Title:     "承認登録・編集",
+		Role:      role,
+		Flash:     props.Flash,
+		CSRFToken: middleware.CSRFTokenFrom(ctx),
+	}) {
+		<section class="page-approvals-detail">
+			<header class="page-header">
+				<h1>承認登録・編集</h1>
+			</header>
+
+			<dl class="detail">
+				<dt>部署</dt>
+				<dd>{ props.Department.Name } ({ props.Department.Code })</dd>
+				<dt>製品</dt>
+				<dd>
+					{ props.Product.VendorName } / { props.Product.CanonicalName }
+					if props.Product.Edition != nil {
+						{ " " + *props.Product.Edition }
+					}
+				</dd>
+				<dt>全社設定</dt>
+				<dd>{ defaultStatusLabel(props.Product.DefaultApprovalStatus) }</dd>
+			</dl>
+
+			if props.Active != nil {
+				<h2>現在のアクティブ承認</h2>
+				<table class="data-table">
+					<thead>
+						<tr>
+							<th>状態</th>
+							<th>スコープ</th>
+							<th>条件</th>
+							<th>有効期限</th>
+							<th>メモ</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr>
+							<td>{ statusLabel(props.Active.Status) }</td>
+							<td>{ props.Active.ScopeType }</td>
+							<td>{ deref(props.Active.Conditions) }</td>
+							<td>{ fmtDatePtr(props.Active.ExpiresAt) }</td>
+							<td>{ deref(props.Active.Note) }</td>
+						</tr>
+					</tbody>
+				</table>
+				<p class="warn">内容を変更するには、現在の承認を取消してから再登録してください (取消済みの行は履歴として残ります)。</p>
+
+				<form method="post" action={ templ.SafeURL(detailPath(props.Department.ID, props.Product.ID) + "/revoke") } class="vform">
+					@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
+					<div class="field">
+						<label for="revoke_reason">取消理由 <span class="required">*</span></label>
+						<textarea id="revoke_reason" name="revoke_reason" rows="2" required></textarea>
+						if msg, ok := props.Errors["revoke_reason"]; ok {
+							<p class="field-error">{ msg }</p>
+						}
+					</div>
+					<div class="form-actions">
+						<button type="submit" class="btn btn-danger">取消</button>
+						<a class="btn" href="/approvals">一覧へ戻る</a>
+					</div>
+				</form>
+			} else {
+				<h2>新規登録</h2>
+				<form method="post" action={ templ.SafeURL(detailPath(props.Department.ID, props.Product.ID)) } class="vform">
+					@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
+					<div class="field">
+						<label for="status">承認状態 <span class="required">*</span></label>
+						<select id="status" name="status">
+							@statusOption(approval.StatusApproved, "承認", props.Input.Status)
+							@statusOption(approval.StatusConditional, "条件付き承認", props.Input.Status)
+							@statusOption(approval.StatusProhibited, "禁止", props.Input.Status)
+						</select>
+						if msg, ok := props.Errors["status"]; ok {
+							<p class="field-error">{ msg }</p>
+						}
+					</div>
+					<div class="field">
+						<label for="conditions">条件 (条件付き承認のとき必須)</label>
+						<textarea id="conditions" name="conditions" rows="3">{ props.Input.Conditions }</textarea>
+						if msg, ok := props.Errors["conditions"]; ok {
+							<p class="field-error">{ msg }</p>
+						}
+					</div>
+					<div class="field">
+						<label for="expires_at">有効期限 (YYYY-MM-DD、空欄で無期限)</label>
+						<input id="expires_at" type="date" name="expires_at" value={ props.Input.ExpiresAt }/>
+						if msg, ok := props.Errors["expires_at"]; ok {
+							<p class="field-error">{ msg }</p>
+						}
+					</div>
+					<div class="field">
+						<label for="note">メモ</label>
+						<textarea id="note" name="note" rows="3">{ props.Input.Note }</textarea>
+					</div>
+					<div class="form-actions">
+						<button type="submit" class="btn btn-primary">登録</button>
+						<a class="btn" href="/approvals">一覧へ戻る</a>
+					</div>
+				</form>
+			}
+
+			<h2>履歴</h2>
+			if len(props.History) == 0 {
+				<p class="empty">履歴はありません。</p>
+			} else {
+				<table class="data-table">
+					<thead>
+						<tr>
+							<th>状態</th>
+							<th>スコープ</th>
+							<th>条件</th>
+							<th>承認者</th>
+							<th>承認日時</th>
+							<th>有効期限</th>
+							<th>取消日時</th>
+							<th>取消者</th>
+							<th>取消理由</th>
+							<th>メモ</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, h := range props.History {
+							<tr>
+								<td>{ statusLabel(h.Status) }</td>
+								<td>{ h.ScopeType }</td>
+								<td>{ deref(h.Conditions) }</td>
+								<td>{ deref(h.ApprovedByUsername) }</td>
+								<td>{ fmtDateTimePtr(h.ApprovedAt) }</td>
+								<td>{ fmtDatePtr(h.ExpiresAt) }</td>
+								<td>{ fmtDateTimePtr(h.RevokedAt) }</td>
+								<td>{ deref(h.RevokedByUsername) }</td>
+								<td>{ deref(h.RevokeReason) }</td>
+								<td>{ deref(h.Note) }</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			}
+		</section>
+	}
+}
+
+// statusOption は登録フォームの status select の 1 option。
+templ statusOption(value, label, selected string) {
+	if value == selected {
+		<option value={ value } selected>{ label }</option>
+	} else {
+		<option value={ value }>{ label }</option>
+	}
+}
