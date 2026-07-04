@@ -302,8 +302,34 @@ func (h *licenseHandlers) renameLicenseDir(oldDir, newDir string) error {
 	if err := os.MkdirAll(filepath.Dir(newAbs), 0o755); err != nil {
 		return fmt.Errorf("create parent of %s: %w", newAbs, err)
 	}
+	if err := prepareRenameTarget(newAbs); err != nil {
+		return err
+	}
 	if err := os.Rename(oldAbs, newAbs); err != nil {
 		return fmt.Errorf("rename license dir: %w", err)
+	}
+	return nil
+}
+
+// prepareRenameTarget は os.Rename の移動先を整える。resolveLicenseFsDir
+// が「空ディレクトリは再利用可」とするため移動先に空ディレクトリが残って
+// いるケースがあり、Windows の os.Rename (MoveFile) は既存ディレクトリ上
+// への rename を失敗させる (Linux の rename(2) は空なら許すため OS 差で
+// 挙動が割れる)。空なら除去し、空でなければ中身に触れずエラーにする
+// (上書き事故防止。resolveLicenseFsDir 通過後のレースでしか起きない)。
+func prepareRenameTarget(targetAbs string) error {
+	entries, err := os.ReadDir(targetAbs)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("inspect rename target %s: %w", targetAbs, err)
+	}
+	if len(entries) > 0 {
+		return fmt.Errorf("rename target %s already exists and is not empty", targetAbs)
+	}
+	if err := os.Remove(targetAbs); err != nil {
+		return fmt.Errorf("remove empty rename target %s: %w", targetAbs, err)
 	}
 	return nil
 }
