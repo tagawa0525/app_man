@@ -2,23 +2,14 @@
 -- non-ASCII comments and splits queries incorrectly.
 
 -- ListApprovalsForDepartment returns the active (not revoked) approvals
--- of a department joined with product and vendor display columns.
--- default_approval_status is included so the view can run
--- approval.Evaluate without a second product lookup.
+-- of a department. Only the columns the /approvals list actually needs
+-- for approval.Evaluate are selected; product display columns come from
+-- the separate product listing the caller already loads.
 -- name: ListApprovalsForDepartment :many
-SELECT
-  a.id, a.department_id, a.product_id, a.status, a.scope_type,
-  a.conditions, a.approved_by_app_user_id, a.approved_at, a.expires_at,
-  a.approval_source, a.note, a.created_at, a.updated_at,
-  p.canonical_name AS product_name,
-  p.edition,
-  p.default_approval_status,
-  v.name AS vendor_name
+SELECT a.product_id, a.status, a.scope_type, a.expires_at
 FROM department_product_approvals a
-JOIN products p ON p.id = a.product_id
-JOIN vendors v ON v.id = p.vendor_id
 WHERE a.department_id = ? AND a.revoked_at IS NULL
-ORDER BY v.name, p.canonical_name, p.edition, a.id;
+ORDER BY a.product_id;
 
 -- GetActiveApproval returns the single active approval row for a
 -- (department, product) pair. At most one row can exist thanks to the
