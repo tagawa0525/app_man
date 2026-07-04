@@ -8,7 +8,8 @@ import (
 
 // FormInput は new / edit 兼用フォームの入力値。バリデーション失敗時の
 // 再表示用に生の文字列で保持する。ProductKeys は write-only 運用のため
-// 編集フォームでは常に空で渡す (空欄提出 = 変更なし)。
+// フィールド自体を持たない (機微情報を view 層に渡さない。handler 側の
+// licenseParsed が保持し、フォームは常に空欄で描画する)。
 type FormInput struct {
 	ProductID     string
 	DepartmentID  string
@@ -24,7 +25,6 @@ type FormInput struct {
 	Purchaser     string
 	UnitPrice     string
 	Currency      string
-	ProductKeys   string
 	Note          string
 }
 
@@ -196,9 +196,13 @@ templ Form(role middleware.Role, props FormProps) {
 
 				<div class="field">
 					<label for="product_keys">ライセンスキー</label>
-					<textarea id="product_keys" name="product_keys" rows="4">{ props.Input.ProductKeys }</textarea>
+					// write-only 方針: エラー再描画でも入力値を HTML に埋め戻さない
+					// (レスポンス本文への平文残留防止)。常に空欄で描画する。
+					<textarea id="product_keys" name="product_keys" rows="4"></textarea>
 					if props.IsEdit {
 						<p class="field-help">空欄のままなら変更されません。入力すると既存のキーを上書きします。</p>
+					} else {
+						<p class="field-help">入力エラーで再表示された場合は再入力してください（安全のため保持しません）。</p>
 					}
 				</div>
 

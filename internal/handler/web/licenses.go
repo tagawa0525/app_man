@@ -437,17 +437,18 @@ func decodeLicenseForm(r *http.Request, products []repository.ListProductsRow, d
 		Purchaser:     strings.TrimSpace(r.PostFormValue("purchaser")),
 		UnitPrice:     strings.TrimSpace(r.PostFormValue("unit_price")),
 		Currency:      strings.TrimSpace(r.PostFormValue("currency")),
-		ProductKeys:   strings.TrimSpace(r.PostFormValue("product_keys")),
 		Note:          r.PostFormValue("note"),
 	}
 	errs := map[string]string{}
+	// product_keys は view の FormInput に含めない (write-only。エラー
+	// 再描画でも平文を HTML に戻さないため、server 側の parsed のみが持つ)
 	parsed := licenseParsed{
 		LicenseSlug:  in.LicenseSlug,
 		DisplayName:  in.DisplayName,
 		CountUnit:    in.CountUnit,
 		ContractType: in.ContractType,
 		Currency:     in.Currency,
-		ProductKeys:  in.ProductKeys,
+		ProductKeys:  strings.TrimSpace(r.PostFormValue("product_keys")),
 		Note:         nilIfEmpty(in.Note),
 	}
 
