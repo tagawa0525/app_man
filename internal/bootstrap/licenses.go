@@ -249,14 +249,81 @@ func licenseFsDir(vendorName, productName, licenseSlug string) string {
 		slug.Slugify(licenseSlug))
 }
 
-// resolveLicenseRef は assignments CSV のライセンス参照 5 列
+// lookupEntry は自然キー lookup 1 回分のメモ。「見つからなかった」
+// (found=false) も「lookup 自体の失敗」(err non-nil) も記憶し、同じキーを
+// 参照する後続行で再クエリしない (products importer の vendorCacheEntry と
+// 同じ流儀)。
+type lookupEntry[T any] struct {
+	found bool
+	val   T
+	err   error
+}
+
+// memoLookup は cache に無ければ fetch を 1 回だけ呼び、結果 (不在・失敗
+// 含む) を記憶して返す。sql.ErrNoRows は「見つからなかった」に正規化する。
+func memoLookup[K comparable, T any](cache map[K]lookupEntry[T], k K, fetch func() (T, error)) (T, bool, error) {
+	if e, ok := cache[k]; ok {
+		return e.val, e.found, e.err
+	}
+	var e lookupEntry[T]
+	v, err := fetch()
+	switch {
+	case err == nil:
+		e.found, e.val = true, v
+	case errors.Is(err, sql.ErrNoRows):
+		// 不在 — found=false のまま記憶する
+	default:
+		e.err = err
+	}
+	cache[k] = e
+	return e.val, e.found, e.err
+}
+
+// licenseRefResolver は assignments CSV のライセンス参照 5 列
 // (vendor_name / product_name / edition / department_code / license_slug)
-// を DB のライセンスに解決する。成功時は (license, nil)。失敗時は行番号
-// 付きの検証エラーを返す (Validate からそのまま errs に連結できる)。
+// を DB のライセンスに解決する。同一参照が多数行で繰り返される CSV で
+// lookup が行数 × 4 にならないよう、途中段の vendor / product /
+// department も含めてメモ化する。Validate / Insert の各フェーズ先頭で
+// newLicenseRefResolver を作る (Insert には WithTx 済みの別の q が渡る
+// ため、フェーズをまたいでキャッシュを持ち回らない)。
 //
 // licenses kind と違い、廃止部署 (valid_to NOT NULL) は拒否しない —
 // 既存ライセンスが廃止部署の所管のまま残っているのは正常な状態のため。
-func resolveLicenseRef(ctx context.Context, q *repository.Queries, r Row) (repository.License, []ValidationError) {
+type licenseRefResolver struct {
+	q        *repository.Queries
+	vendors  map[string]lookupEntry[repository.Vendor]
+	products map[productRefKey]lookupEntry[repository.Product]
+	depts    map[string]lookupEntry[repository.Department]
+	licenses map[licenseRefKey]lookupEntry[repository.License]
+}
+
+type productRefKey struct {
+	vendorID int64
+	name     string
+	edition  string
+}
+
+type licenseRefKey struct {
+	productID int64
+	deptID    int64
+	slug      string
+}
+
+func newLicenseRefResolver(q *repository.Queries) *licenseRefResolver {
+	return &licenseRefResolver{
+		q:        q,
+		vendors:  map[string]lookupEntry[repository.Vendor]{},
+		products: map[productRefKey]lookupEntry[repository.Product]{},
+		depts:    map[string]lookupEntry[repository.Department]{},
+		licenses: map[licenseRefKey]lookupEntry[repository.License]{},
+	}
+}
+
+// resolve は r のライセンス参照 5 列を解決する。成功時は (license, nil)。
+// 失敗時は行番号付きの検証エラーを返す (Validate からそのまま errs に
+// 連結できる)。lookup 結果がメモ化済みでも、エラーの行番号は常に r の
+// ものを使う。
+func (rr *licenseRefResolver) resolve(ctx context.Context, r Row) (repository.License, []ValidationError) {
 	vendor := strings.TrimSpace(r.Fields["vendor_name"])
 	product := strings.TrimSpace(r.Fields["product_name"])
 	edition := strings.TrimSpace(r.Fields["edition"])
@@ -280,35 +347,43 @@ func resolveLicenseRef(ctx context.Context, q *repository.Queries, r Row) (repos
 		return repository.License{}, errs
 	}
 
-	v, err := q.GetVendorByName(ctx, vendor)
-	if errors.Is(err, sql.ErrNoRows) {
-		return repository.License{}, []ValidationError{{Line: r.Line, Column: "vendor_name", Message: "ベンダー '" + vendor + "' が見つかりません"}}
-	}
+	v, found, err := memoLookup(rr.vendors, vendor, func() (repository.Vendor, error) {
+		return rr.q.GetVendorByName(ctx, vendor)
+	})
 	if err != nil {
 		return repository.License{}, []ValidationError{{Line: r.Line, Column: "vendor_name", Message: "lookup error: " + err.Error()}}
 	}
-	p, err := getProductByKeyForBootstrap(ctx, q, v.ID, product, edition)
-	if errors.Is(err, sql.ErrNoRows) {
-		return repository.License{}, []ValidationError{{Line: r.Line, Column: "product_name", Message: "製品 '" + product + "' が見つかりません"}}
+	if !found {
+		return repository.License{}, []ValidationError{{Line: r.Line, Column: "vendor_name", Message: "ベンダー '" + vendor + "' が見つかりません"}}
 	}
+	p, found, err := memoLookup(rr.products, productRefKey{v.ID, product, edition}, func() (repository.Product, error) {
+		return getProductByKeyForBootstrap(ctx, rr.q, v.ID, product, edition)
+	})
 	if err != nil {
 		return repository.License{}, []ValidationError{{Line: r.Line, Column: "product_name", Message: "lookup error: " + err.Error()}}
 	}
-	d, err := q.GetDepartmentByCode(ctx, dept)
-	if errors.Is(err, sql.ErrNoRows) {
-		return repository.License{}, []ValidationError{{Line: r.Line, Column: "department_code", Message: "部署 '" + dept + "' が見つかりません"}}
+	if !found {
+		return repository.License{}, []ValidationError{{Line: r.Line, Column: "product_name", Message: "製品 '" + product + "' が見つかりません"}}
 	}
+	d, found, err := memoLookup(rr.depts, dept, func() (repository.Department, error) {
+		return rr.q.GetDepartmentByCode(ctx, dept)
+	})
 	if err != nil {
 		return repository.License{}, []ValidationError{{Line: r.Line, Column: "department_code", Message: "lookup error: " + err.Error()}}
 	}
-	lic, err := q.GetLicenseByKey(ctx, repository.GetLicenseByKeyParams{
-		ProductID: p.ID, OwningDepartmentID: d.ID, LicenseSlug: licSlug,
-	})
-	if errors.Is(err, sql.ErrNoRows) {
-		return repository.License{}, []ValidationError{{Line: r.Line, Column: "license_slug", Message: "ライセンス '" + licSlug + "' が見つかりません"}}
+	if !found {
+		return repository.License{}, []ValidationError{{Line: r.Line, Column: "department_code", Message: "部署 '" + dept + "' が見つかりません"}}
 	}
+	lic, found, err := memoLookup(rr.licenses, licenseRefKey{p.ID, d.ID, licSlug}, func() (repository.License, error) {
+		return rr.q.GetLicenseByKey(ctx, repository.GetLicenseByKeyParams{
+			ProductID: p.ID, OwningDepartmentID: d.ID, LicenseSlug: licSlug,
+		})
+	})
 	if err != nil {
 		return repository.License{}, []ValidationError{{Line: r.Line, Column: "license_slug", Message: "lookup error: " + err.Error()}}
+	}
+	if !found {
+		return repository.License{}, []ValidationError{{Line: r.Line, Column: "license_slug", Message: "ライセンス '" + licSlug + "' が見つかりません"}}
 	}
 	return lic, nil
 }

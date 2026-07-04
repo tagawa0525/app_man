@@ -13,7 +13,7 @@ import (
 // CSV ヘッダ: vendor_name,product_name,edition,department_code,license_slug,
 // asset_code,note
 //
-//   - 先頭 5 列はライセンス参照 (resolveLicenseRef で自然キー解決)
+//   - 先頭 5 列はライセンス参照 (licenseRefResolver で自然キー解決)
 //   - asset_code 必須。退役端末 (retired_at NOT NULL) への割当は
 //     検証エラー (web の 400 と同基準)
 //   - DB のアクティブ割当・CSV 内の重複は検証エラー (web の 409 と同基準。
@@ -36,8 +36,9 @@ func (DeviceAssignmentsImporter) Validate(ctx context.Context, q *repository.Que
 	type asgKey struct{ licenseID, deviceID int64 }
 	seen := map[asgKey]int{}
 
+	rr := newLicenseRefResolver(q)
 	for _, r := range rows {
-		lic, refErrs := resolveLicenseRef(ctx, q, r)
+		lic, refErrs := rr.resolve(ctx, r)
 		errs = append(errs, refErrs...)
 
 		code := strings.TrimSpace(r.Fields["asset_code"])
@@ -83,8 +84,9 @@ func (DeviceAssignmentsImporter) Validate(ctx context.Context, q *repository.Que
 }
 
 func (DeviceAssignmentsImporter) Insert(ctx context.Context, q *repository.Queries, rows []Row) (int, error) {
+	rr := newLicenseRefResolver(q)
 	for _, r := range rows {
-		lic, refErrs := resolveLicenseRef(ctx, q, r)
+		lic, refErrs := rr.resolve(ctx, r)
 		if len(refErrs) > 0 {
 			return 0, errors.New("line " + itoa(r.Line) + ": resolve license: " + refErrs[0].Message)
 		}
