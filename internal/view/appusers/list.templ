@@ -63,7 +63,7 @@ templ List(role middleware.Role, props ListProps) {
 								<form method="post" action={ templ.SafeURL("/admin/app-users/" + itoa(row.ID) + "/notify-email") } class="inline-form">
 									@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
 									<input
-										type="text"
+										type="email"
 										name="notify_email"
 										value={ row.NotifyEmail }
 										size="24"
