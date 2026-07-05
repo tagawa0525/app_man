@@ -1,0 +1,133 @@
+// Package roles はロール管理画面 (仕様 §6.1) の templ ビュー。
+// app_user 選択・アクティブロール一覧・付与フォーム・剥奪ボタンのみ持ち、
+// 検証やロックアウト防止は web 層 (internal/handler/web/roles.go) が行う。
+package roles
+
+import (
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/repository"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+// UserOption は app_user 選択 select の 1 件。
+type UserOption struct {
+	ID       int64
+	Username string
+	Disabled bool
+}
+
+// RoleRow はアクティブロール 1 行の描画データ。
+type RoleRow struct {
+	ID   int64
+	Role string
+	// DepartmentName は department_id NULL のとき「全社」。
+	DepartmentName string
+	// GrantedAt は JST 変換済みの日時文字列。
+	GrantedAt string
+}
+
+// ListProps は GET /admin/roles (system_admin 専用) の描画引数。
+// SelectedID = 0 は app_user 未選択。
+type ListProps struct {
+	Users            []UserOption
+	SelectedID       int64
+	SelectedUsername string
+	Roles            []RoleRow
+	// Departments は付与フォームの現役部署 select。
+	Departments []repository.Department
+	Flash       string
+}
+
+templ List(role middleware.Role, props ListProps) {
+	@layout.Base(layout.BaseProps{
+		Title:     "ロール管理",
+		Role:      role,
+		Flash:     props.Flash,
+		CSRFToken: middleware.CSRFTokenFrom(ctx),
+	}) {
+		<section class="page-admin-roles">
+			<header class="page-header">
+				<h1>ロール管理</h1>
+			</header>
+			<form class="search-bar" method="get" action="/admin/roles">
+				<label for="app_user_id">アプリユーザ</label>
+				<select id="app_user_id" name="app_user_id">
+					<option value="">選択してください</option>
+					for _, u := range props.Users {
+						if u.ID == props.SelectedID {
+							<option value={ itoa(u.ID) } selected>{ userOptionLabel(u) }</option>
+						} else {
+							<option value={ itoa(u.ID) }>{ userOptionLabel(u) }</option>
+						}
+					}
+				</select>
+				<button type="submit">表示</button>
+			</form>
+			if props.SelectedID == 0 {
+				<p class="empty">アプリユーザを選択するとアクティブロールを表示します。</p>
+			} else {
+				<h2>{ props.SelectedUsername } のアクティブロール</h2>
+				if len(props.Roles) == 0 {
+					<p class="empty">アクティブなロールがありません。</p>
+				} else {
+					<table class="data-table">
+						<thead>
+							<tr>
+								<th>ロール</th>
+								<th>部署</th>
+								<th>付与日時</th>
+								<th>操作</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, row := range props.Roles {
+								<tr>
+									<td>{ row.Role }</td>
+									<td>{ row.DepartmentName }</td>
+									<td>{ row.GrantedAt }</td>
+									<td>
+										<form method="post" action={ templ.SafeURL("/admin/roles/" + itoa(props.SelectedID) + "/" + itoa(row.ID) + "/revoke") } class="inline-form">
+											@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
+											<button type="submit" class="btn">剥奪</button>
+										</form>
+									</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				}
+				<h2>ロール付与</h2>
+				<form method="post" action={ templ.SafeURL("/admin/roles/" + itoa(props.SelectedID)) } class="inline-form">
+					@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
+					<label>
+						ロール
+						<select name="role">
+							for _, r := range middleware.AllRoles() {
+								<option value={ string(r) }>{ string(r) }</option>
+							}
+						</select>
+					</label>
+					<label>
+						部署
+						<select name="department_id">
+							<option value="">全社 (system_admin のみ)</option>
+							for _, d := range props.Departments {
+								<option value={ itoa(d.ID) }>{ d.Name }</option>
+							}
+						</select>
+					</label>
+					<button type="submit" class="btn">付与</button>
+				</form>
+			}
+		</section>
+	}
+}
+
+// userOptionLabel は select の表示名。無効化済みユーザには印を付ける
+// (選択自体は許す: 無効化中でもロールの整理はできた方が運用しやすい)。
+func userOptionLabel(u UserOption) string {
+	if u.Disabled {
+		return u.Username + " (無効)"
+	}
+	return u.Username
+}
