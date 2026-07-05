@@ -74,10 +74,10 @@ LIMIT 101
 `
 
 type ListAuditLogsParams struct {
-	Column1 string
-	Column2 string
-	Column3 string
-	Column4 int64
+	ActionPrefix string
+	EntityType   string
+	Username     string
+	BeforeID     int64
 }
 
 type ListAuditLogsRow struct {
@@ -106,10 +106,10 @@ type ListAuditLogsRow struct {
 // monotonic in time.
 func (q *Queries) ListAuditLogs(ctx context.Context, arg ListAuditLogsParams) ([]ListAuditLogsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listAuditLogs,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
-		arg.Column4,
+		arg.ActionPrefix,
+		arg.EntityType,
+		arg.Username,
+		arg.BeforeID,
 	)
 	if err != nil {
 		return nil, err

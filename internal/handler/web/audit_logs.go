@@ -57,10 +57,10 @@ func (h *auditLogHandlers) list(w http.ResponseWriter, r *http.Request) {
 
 	q := repository.New(h.db)
 	rows, err := q.ListAuditLogs(r.Context(), repository.ListAuditLogsParams{
-		Column1: action,
-		Column2: entityType,
-		Column3: username,
-		Column4: beforeID,
+		ActionPrefix: action,
+		EntityType:   entityType,
+		Username:     username,
+		BeforeID:     beforeID,
 	})
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "list audit logs", "err", err)

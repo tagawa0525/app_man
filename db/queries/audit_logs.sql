@@ -36,9 +36,9 @@ SELECT
   u.username
 FROM audit_logs a
 LEFT JOIN app_users u ON u.id = a.app_user_id
-WHERE (CAST(?1 AS TEXT) = '' OR substr(a.action, 1, length(CAST(?1 AS TEXT))) = CAST(?1 AS TEXT))
-  AND (CAST(?2 AS TEXT) = '' OR a.entity_type = CAST(?2 AS TEXT))
-  AND (CAST(?3 AS TEXT) = '' OR u.username = CAST(?3 AS TEXT))
-  AND (CAST(?4 AS INTEGER) = 0 OR a.id < CAST(?4 AS INTEGER))
+WHERE (CAST(sqlc.arg(action_prefix) AS TEXT) = '' OR substr(a.action, 1, length(CAST(sqlc.arg(action_prefix) AS TEXT))) = CAST(sqlc.arg(action_prefix) AS TEXT))
+  AND (CAST(sqlc.arg(entity_type) AS TEXT) = '' OR a.entity_type = CAST(sqlc.arg(entity_type) AS TEXT))
+  AND (CAST(sqlc.arg(username) AS TEXT) = '' OR u.username = CAST(sqlc.arg(username) AS TEXT))
+  AND (CAST(sqlc.arg(before_id) AS INTEGER) = 0 OR a.id < CAST(sqlc.arg(before_id) AS INTEGER))
 ORDER BY a.id DESC
 LIMIT 101;
