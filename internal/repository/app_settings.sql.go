@@ -9,7 +9,23 @@ import (
 	"context"
 )
 
+const deleteAppSetting = `-- name: DeleteAppSetting :execrows
+DELETE FROM app_settings
+WHERE key = ?
+`
+
+// DeleteAppSetting removes one setting row. Absence of the key means
+// "use the default" (spec 5.11), so reset-to-default is a DELETE.
+func (q *Queries) DeleteAppSetting(ctx context.Context, key string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteAppSetting, key)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getAppSetting = `-- name: GetAppSetting :one
+
 SELECT
   key,
   value,
@@ -20,8 +36,87 @@ WHERE key = ?
 LIMIT 1
 `
 
+// Comments in this file must stay ASCII-only; sqlc v1.31.1 misparses
+// non-ASCII comments and splits queries incorrectly.
 func (q *Queries) GetAppSetting(ctx context.Context, key string) (AppSetting, error) {
 	row := q.db.QueryRowContext(ctx, getAppSetting, key)
+	var i AppSetting
+	err := row.Scan(
+		&i.Key,
+		&i.Value,
+		&i.UpdatedAt,
+		&i.UpdatedByAppUserID,
+	)
+	return i, err
+}
+
+const listAppSettings = `-- name: ListAppSettings :many
+SELECT
+  key,
+  value,
+  updated_at,
+  updated_by_app_user_id
+FROM app_settings
+ORDER BY key
+`
+
+// ListAppSettings returns every stored setting row. The settings screen
+// (spec 5.11) merges this with the known-key registry; keys absent here
+// fall back to their defaults.
+func (q *Queries) ListAppSettings(ctx context.Context) ([]AppSetting, error) {
+	rows, err := q.db.QueryContext(ctx, listAppSettings)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AppSetting
+	for rows.Next() {
+		var i AppSetting
+		if err := rows.Scan(
+			&i.Key,
+			&i.Value,
+			&i.UpdatedAt,
+			&i.UpdatedByAppUserID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const upsertAppSetting = `-- name: UpsertAppSetting :one
+INSERT INTO app_settings (
+  key,
+  value,
+  updated_by_app_user_id
+) VALUES (
+  ?, ?, ?
+)
+ON CONFLICT (key) DO UPDATE SET
+  value = excluded.value,
+  updated_at = CURRENT_TIMESTAMP,
+  updated_by_app_user_id = excluded.updated_by_app_user_id
+RETURNING "key", value, updated_at, updated_by_app_user_id
+`
+
+type UpsertAppSettingParams struct {
+	Key                string
+	Value              *string
+	UpdatedByAppUserID *int64
+}
+
+// UpsertAppSetting inserts or updates one setting (key is the PK).
+// updated_at is bumped on update so the audit trail and the row agree
+// on when the value last changed.
+func (q *Queries) UpsertAppSetting(ctx context.Context, arg UpsertAppSettingParams) (AppSetting, error) {
+	row := q.db.QueryRowContext(ctx, upsertAppSetting, arg.Key, arg.Value, arg.UpdatedByAppUserID)
 	var i AppSetting
 	err := row.Scan(
 		&i.Key,
