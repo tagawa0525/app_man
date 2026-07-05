@@ -229,30 +229,32 @@ func deviceSheet(rows []repository.Device) sheet {
 // licenseSheet は includeKeys=false のとき product_keys 列自体を出さない
 // (空欄の列を残すと「キーが未登録」と読み違えるため、列ごと消す。Plan)。
 func licenseSheet(rows []repository.License, includeKeys bool) sheet {
+	// 列順は DB スキーマ順 (product_keys は currency の直後)。
+	// includeKeys=false のときだけその 1 列を抜く。
 	s := sheet{
 		name: "licenses",
 		header: []string{
 			"id", "product_id", "owning_department_id", "license_slug",
 			"display_name", "total_count", "count_unit", "contract_type",
 			"purchased_at", "started_at", "expires_at", "vendor_order_no",
-			"purchaser", "unit_price", "currency", "fs_dir_path", "note",
-			"created_at", "updated_at",
+			"purchaser", "unit_price", "currency",
 		},
 	}
 	if includeKeys {
 		s.header = append(s.header, "product_keys")
 	}
+	s.header = append(s.header, "fs_dir_path", "note", "created_at", "updated_at")
 	for _, r := range rows {
 		row := cells(
 			r.ID, r.ProductID, r.OwningDepartmentID, r.LicenseSlug,
 			r.DisplayName, r.TotalCount, r.CountUnit, r.ContractType,
 			r.PurchasedAt, r.StartedAt, r.ExpiresAt, r.VendorOrderNo,
-			r.Purchaser, r.UnitPrice, r.Currency, r.FsDirPath, r.Note,
-			r.CreatedAt, r.UpdatedAt,
+			r.Purchaser, r.UnitPrice, r.Currency,
 		)
 		if includeKeys {
 			row = append(row, cellValue(r.ProductKeys))
 		}
+		row = append(row, cells(r.FsDirPath, r.Note, r.CreatedAt, r.UpdatedAt)...)
 		s.rows = append(s.rows, row)
 	}
 	return s
