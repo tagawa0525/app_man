@@ -63,6 +63,69 @@ func (q *Queries) CreateAppUser(ctx context.Context, arg CreateAppUserParams) (A
 	return i, err
 }
 
+const disableAppUser = `-- name: DisableAppUser :execrows
+UPDATE app_users
+SET disabled_at = CURRENT_TIMESTAMP
+WHERE id = ?
+  AND disabled_at IS NULL
+`
+
+func (q *Queries) DisableAppUser(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, disableAppUser, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const enableAppUser = `-- name: EnableAppUser :execrows
+UPDATE app_users
+SET disabled_at = NULL
+WHERE id = ?
+  AND disabled_at IS NOT NULL
+`
+
+func (q *Queries) EnableAppUser(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, enableAppUser, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const getAppUser = `-- name: GetAppUser :one
+SELECT
+  id,
+  username,
+  password_hash,
+  linked_user_id,
+  notify_email,
+  auth_type,
+  disabled_at,
+  last_login_at,
+  created_at
+FROM app_users
+WHERE id = ?
+LIMIT 1
+`
+
+func (q *Queries) GetAppUser(ctx context.Context, id int64) (AppUser, error) {
+	row := q.db.QueryRowContext(ctx, getAppUser, id)
+	var i AppUser
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.PasswordHash,
+		&i.LinkedUserID,
+		&i.NotifyEmail,
+		&i.AuthType,
+		&i.DisabledAt,
+		&i.LastLoginAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getAppUserByUsername = `-- name: GetAppUserByUsername :one
 SELECT
   id,
@@ -96,6 +159,66 @@ func (q *Queries) GetAppUserByUsername(ctx context.Context, username string) (Ap
 	return i, err
 }
 
+const listAppUsersWithRoleCount = `-- name: ListAppUsersWithRoleCount :many
+SELECT
+  au.id,
+  au.username,
+  au.auth_type,
+  au.notify_email,
+  au.disabled_at,
+  u.name AS linked_user_name,
+  (
+    SELECT COUNT(*)
+    FROM user_department_roles r
+    WHERE r.app_user_id = au.id
+      AND r.revoked_at IS NULL
+  ) AS active_role_count
+FROM app_users au
+LEFT JOIN users u ON u.id = au.linked_user_id
+ORDER BY au.username
+`
+
+type ListAppUsersWithRoleCountRow struct {
+	ID              int64
+	Username        string
+	AuthType        string
+	NotifyEmail     *string
+	DisabledAt      *time.Time
+	LinkedUserName  *string
+	ActiveRoleCount int64
+}
+
+func (q *Queries) ListAppUsersWithRoleCount(ctx context.Context) ([]ListAppUsersWithRoleCountRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAppUsersWithRoleCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAppUsersWithRoleCountRow
+	for rows.Next() {
+		var i ListAppUsersWithRoleCountRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.AuthType,
+			&i.NotifyEmail,
+			&i.DisabledAt,
+			&i.LinkedUserName,
+			&i.ActiveRoleCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateAppUserLastLoginAt = `-- name: UpdateAppUserLastLoginAt :exec
 UPDATE app_users
 SET last_login_at = ?
@@ -110,6 +233,25 @@ type UpdateAppUserLastLoginAtParams struct {
 func (q *Queries) UpdateAppUserLastLoginAt(ctx context.Context, arg UpdateAppUserLastLoginAtParams) error {
 	_, err := q.db.ExecContext(ctx, updateAppUserLastLoginAt, arg.LastLoginAt, arg.ID)
 	return err
+}
+
+const updateAppUserNotifyEmail = `-- name: UpdateAppUserNotifyEmail :execrows
+UPDATE app_users
+SET notify_email = ?
+WHERE id = ?
+`
+
+type UpdateAppUserNotifyEmailParams struct {
+	NotifyEmail *string
+	ID          int64
+}
+
+func (q *Queries) UpdateAppUserNotifyEmail(ctx context.Context, arg UpdateAppUserNotifyEmailParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateAppUserNotifyEmail, arg.NotifyEmail, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateAppUserPasswordHash = `-- name: UpdateAppUserPasswordHash :execrows
