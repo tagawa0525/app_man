@@ -250,6 +250,15 @@ func recordAudit(ctx context.Context, q *repository.Queries, r *http.Request, ac
 // struct を渡す)。呼び出し元はキー閲覧 (license_keys.view) と承認系
 // (approval.grant / approval.revoke / product.default_approval_change)。
 func recordAuditDiff(ctx context.Context, q *repository.Queries, r *http.Request, action, entityType string, entityID int64, diff any) error {
+	return recordAuditDiffEntity(ctx, q, r, action, entityType, &entityID, diff)
+}
+
+// recordAuditDiffEntity は entity_id が nullable な recordAuditDiff の本体。
+// app_settings のように数値 id を持たない (key が PK) entity は entityID に
+// nil を渡して entity_id = NULL で記録し、対象の識別子は diff 側 (key 等) が
+// 持つ。0 を偽の id として書くと idx_audit_logs_entity での照会が実在 id と
+// 紛らわしくなるため、「数値 id なし」は NULL で表現する。
+func recordAuditDiffEntity(ctx context.Context, q *repository.Queries, r *http.Request, action, entityType string, entityID *int64, diff any) error {
 	var appUserID *int64
 	if sess := middleware.SessionFrom(r.Context()); sess != nil {
 		appUserID = sess.AppUserID
@@ -267,7 +276,7 @@ func recordAuditDiff(ctx context.Context, q *repository.Queries, r *http.Request
 		AppUserID:  appUserID,
 		Action:     action,
 		EntityType: entityType,
-		EntityID:   &entityID,
+		EntityID:   entityID,
 		DiffJson:   diffJSON,
 	})
 	return err
