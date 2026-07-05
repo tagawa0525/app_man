@@ -15,3 +15,28 @@ INSERT INTO audit_logs (
   ?, ?, ?, ?, ?
 )
 RETURNING *;
+
+-- ListAuditLogs returns one viewer page (spec 6.1: system_admin audit
+-- screen), newest first. app_users is LEFT JOINed so username is NULL
+-- for rows written outside an authenticated session (CLI binaries).
+-- Filters 1-3 are "empty string means no filter": ?1 action prefix
+-- (LIKE), ?2 entity_type exact, ?3 username exact. ?4 is the id cursor:
+-- 0 means first page, otherwise only rows with id < ?4. The CASTs pin
+-- the parameter types so sqlc does not infer interface{} (same trick as
+-- ListLicenses' include-expired flag). LIMIT is 101 = page size 100 +
+-- 1 sentinel row for the handler's has_more check; OFFSET is avoided
+-- because it degrades as the log grows and id is AUTOINCREMENT, hence
+-- monotonic in time.
+-- name: ListAuditLogs :many
+SELECT
+  a.id, a.app_user_id, a.action, a.entity_type, a.entity_id,
+  a.diff_json, a.occurred_at,
+  u.username
+FROM audit_logs a
+LEFT JOIN app_users u ON u.id = a.app_user_id
+WHERE (CAST(?1 AS TEXT) = '' OR a.action LIKE CAST(?1 AS TEXT) || '%')
+  AND (CAST(?2 AS TEXT) = '' OR a.entity_type = CAST(?2 AS TEXT))
+  AND (CAST(?3 AS TEXT) = '' OR u.username = CAST(?3 AS TEXT))
+  AND (CAST(?4 AS INTEGER) = 0 OR a.id < CAST(?4 AS INTEGER))
+ORDER BY a.id DESC
+LIMIT 101;

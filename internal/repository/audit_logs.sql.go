@@ -7,6 +7,7 @@ package repository
 
 import (
 	"context"
+	"time"
 )
 
 const createAuditLog = `-- name: CreateAuditLog :one
@@ -55,4 +56,85 @@ func (q *Queries) CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) 
 		&i.OccurredAt,
 	)
 	return i, err
+}
+
+const listAuditLogs = `-- name: ListAuditLogs :many
+SELECT
+  a.id, a.app_user_id, a.action, a.entity_type, a.entity_id,
+  a.diff_json, a.occurred_at,
+  u.username
+FROM audit_logs a
+LEFT JOIN app_users u ON u.id = a.app_user_id
+WHERE (CAST(?1 AS TEXT) = '' OR a.action LIKE CAST(?1 AS TEXT) || '%')
+  AND (CAST(?2 AS TEXT) = '' OR a.entity_type = CAST(?2 AS TEXT))
+  AND (CAST(?3 AS TEXT) = '' OR u.username = CAST(?3 AS TEXT))
+  AND (CAST(?4 AS INTEGER) = 0 OR a.id < CAST(?4 AS INTEGER))
+ORDER BY a.id DESC
+LIMIT 101
+`
+
+type ListAuditLogsParams struct {
+	Column1 string
+	Column2 string
+	Column3 string
+	Column4 int64
+}
+
+type ListAuditLogsRow struct {
+	ID         int64
+	AppUserID  *int64
+	Action     string
+	EntityType string
+	EntityID   *int64
+	DiffJson   *string
+	OccurredAt time.Time
+	Username   *string
+}
+
+// ListAuditLogs returns one viewer page (spec 6.1: system_admin audit
+// screen), newest first. app_users is LEFT JOINed so username is NULL
+// for rows written outside an authenticated session (CLI binaries).
+// Filters 1-3 are "empty string means no filter": ?1 action prefix
+// (LIKE), ?2 entity_type exact, ?3 username exact. ?4 is the id cursor:
+// 0 means first page, otherwise only rows with id < ?4. The CASTs pin
+// the parameter types so sqlc does not infer interface{} (same trick as
+// ListLicenses' include-expired flag). LIMIT is 101 = page size 100 +
+// 1 sentinel row for the handler's has_more check; OFFSET is avoided
+// because it degrades as the log grows and id is AUTOINCREMENT, hence
+// monotonic in time.
+func (q *Queries) ListAuditLogs(ctx context.Context, arg ListAuditLogsParams) ([]ListAuditLogsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAuditLogs,
+		arg.Column1,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAuditLogsRow
+	for rows.Next() {
+		var i ListAuditLogsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AppUserID,
+			&i.Action,
+			&i.EntityType,
+			&i.EntityID,
+			&i.DiffJson,
+			&i.OccurredAt,
+			&i.Username,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
