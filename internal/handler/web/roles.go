@@ -292,23 +292,15 @@ func (h *roleHandlers) revoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ロックアウト防止 1 層目: 自分の system_admin ロールは剥奪不可。
+	// レースと無関係の方針判定なので事前チェックのまま置く。2 層目
+	// (最後の有効 system_admin) は RevokeUserDepartmentRole の WHERE に
+	// 埋め込んだガードが UPDATE 実行時 (書込みロック下) に原子的に判定
+	// する — handler の COUNT → UPDATE 2 手だと WAL の並行 write tx が
+	// 双方 COUNT=2 を観測して有効 admin 0 人になり得るため使わない。
 	if row.Role == string(middleware.RoleSystemAdmin) {
-		// ロックアウト防止 1 層目: 自分の system_admin ロールは剥奪不可。
 		if sess := middleware.SessionFrom(r.Context()); sess != nil && sess.AppUserID != nil && *sess.AppUserID == appUserID {
 			h.renderRoles(w, r, http.StatusBadRequest, &u, "自分自身の system_admin ロールは剥奪できません。")
-			return
-		}
-		// 2 層目: 有効ユーザが持つアクティブ system_admin が 1 人分しか
-		// 無い状態では剥奪不可 (無効化ユーザは勘定から除外済み)。
-		admins, err := q.CountActiveSystemAdminUsers(r.Context())
-		if err != nil {
-			h.logger.ErrorContext(r.Context(), "count active system admins", "err", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-		if admins <= 1 {
-			h.renderRoles(w, r, http.StatusBadRequest, &u,
-				"有効な system_admin が 1 人しかいないため剥奪できません。先に別の system_admin を用意してください。")
 			return
 		}
 	}
@@ -332,8 +324,35 @@ func (h *roleHandlers) revoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if affected == 0 {
-		// GetUserDepartmentRole 通過後に並行剥奪されたレース。
+		// ガード付き UPDATE の 0 行は 2 系統: (a) 並行剥奪で行が既に
+		// inactive、(b) last-admin ガードで弾かれた。行の存在・active・
+		// system_admin か・有効 admin 数を読み直して 404 / 400 を出し
+		// 分ける。
 		_ = tx.Rollback()
+		latest, lerr := q.GetUserDepartmentRole(r.Context(), roleID)
+		if lerr != nil {
+			if errors.Is(lerr, sql.ErrNoRows) {
+				http.NotFound(w, r)
+				return
+			}
+			h.logger.ErrorContext(r.Context(), "re-read role after guarded revoke", "err", lerr)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if latest.AppUserID == appUserID && latest.RevokedAt == nil &&
+			latest.Role == string(middleware.RoleSystemAdmin) {
+			admins, cerr := q.CountActiveSystemAdminUsers(r.Context())
+			if cerr != nil {
+				h.logger.ErrorContext(r.Context(), "count active system admins", "err", cerr)
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			if admins <= 1 {
+				h.renderRoles(w, r, http.StatusBadRequest, &u,
+					"有効な system_admin が 1 人しかいないため剥奪できません。先に別の system_admin を用意してください。")
+				return
+			}
+		}
 		http.NotFound(w, r)
 		return
 	}

@@ -203,9 +203,20 @@ func (q *Queries) ListActiveRolesWithDepartmentForAppUser(ctx context.Context, a
 const revokeUserDepartmentRole = `-- name: RevokeUserDepartmentRole :execrows
 UPDATE user_department_roles
 SET revoked_at = CURRENT_TIMESTAMP
-WHERE id = ?
-  AND app_user_id = ?
-  AND revoked_at IS NULL
+WHERE user_department_roles.id = ?
+  AND user_department_roles.app_user_id = ?
+  AND user_department_roles.revoked_at IS NULL
+  AND (
+    user_department_roles.role != 'system_admin'
+    OR (
+      SELECT COUNT(DISTINCT udr.app_user_id)
+      FROM user_department_roles udr
+      JOIN app_users au ON au.id = udr.app_user_id
+      WHERE udr.role = 'system_admin'
+        AND udr.revoked_at IS NULL
+        AND au.disabled_at IS NULL
+    ) > 1
+  )
 `
 
 type RevokeUserDepartmentRoleParams struct {
@@ -213,6 +224,10 @@ type RevokeUserDepartmentRoleParams struct {
 	AppUserID int64
 }
 
+// The last-admin guard lives in the WHERE clause so it is evaluated at
+// UPDATE time under the write lock. A separate COUNT-then-UPDATE in the
+// handler is racy: two concurrent WAL write transactions can each see
+// COUNT=2 in their snapshots and both revoke, leaving zero active admins.
 func (q *Queries) RevokeUserDepartmentRole(ctx context.Context, arg RevokeUserDepartmentRoleParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, revokeUserDepartmentRole, arg.ID, arg.AppUserID)
 	if err != nil {
