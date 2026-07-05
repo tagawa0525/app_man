@@ -7,7 +7,46 @@ package repository
 
 import (
 	"context"
+	"time"
 )
+
+const countActiveSystemAdminUsers = `-- name: CountActiveSystemAdminUsers :one
+SELECT COUNT(DISTINCT r.app_user_id)
+FROM user_department_roles r
+JOIN app_users au ON au.id = r.app_user_id
+WHERE r.role = 'system_admin'
+  AND r.revoked_at IS NULL
+  AND au.disabled_at IS NULL
+`
+
+func (q *Queries) CountActiveSystemAdminUsers(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countActiveSystemAdminUsers)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countActiveUserDepartmentRoles = `-- name: CountActiveUserDepartmentRoles :one
+SELECT COUNT(*)
+FROM user_department_roles
+WHERE app_user_id = ?1
+  AND role = ?2
+  AND revoked_at IS NULL
+  AND department_id IS ?3
+`
+
+type CountActiveUserDepartmentRolesParams struct {
+	AppUserID    int64
+	Role         string
+	DepartmentID *int64
+}
+
+func (q *Queries) CountActiveUserDepartmentRoles(ctx context.Context, arg CountActiveUserDepartmentRolesParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countActiveUserDepartmentRoles, arg.AppUserID, arg.Role, arg.DepartmentID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
 
 const createUserDepartmentRole = `-- name: CreateUserDepartmentRole :one
 INSERT INTO user_department_roles (
@@ -34,6 +73,33 @@ type CreateUserDepartmentRoleParams struct {
 
 func (q *Queries) CreateUserDepartmentRole(ctx context.Context, arg CreateUserDepartmentRoleParams) (UserDepartmentRole, error) {
 	row := q.db.QueryRowContext(ctx, createUserDepartmentRole, arg.AppUserID, arg.DepartmentID, arg.Role)
+	var i UserDepartmentRole
+	err := row.Scan(
+		&i.ID,
+		&i.AppUserID,
+		&i.DepartmentID,
+		&i.Role,
+		&i.GrantedAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
+const getUserDepartmentRole = `-- name: GetUserDepartmentRole :one
+SELECT
+  id,
+  app_user_id,
+  department_id,
+  role,
+  granted_at,
+  revoked_at
+FROM user_department_roles
+WHERE id = ?
+LIMIT 1
+`
+
+func (q *Queries) GetUserDepartmentRole(ctx context.Context, id int64) (UserDepartmentRole, error) {
+	row := q.db.QueryRowContext(ctx, getUserDepartmentRole, id)
 	var i UserDepartmentRole
 	err := row.Scan(
 		&i.ID,
@@ -81,4 +147,91 @@ func (q *Queries) ListActiveRolesForAppUser(ctx context.Context, appUserID int64
 		return nil, err
 	}
 	return items, nil
+}
+
+const listActiveRolesWithDepartmentForAppUser = `-- name: ListActiveRolesWithDepartmentForAppUser :many
+SELECT
+  r.id,
+  r.role,
+  r.department_id,
+  d.name AS department_name,
+  r.granted_at
+FROM user_department_roles r
+LEFT JOIN departments d ON d.id = r.department_id
+WHERE r.app_user_id = ?
+  AND r.revoked_at IS NULL
+ORDER BY r.granted_at, r.id
+`
+
+type ListActiveRolesWithDepartmentForAppUserRow struct {
+	ID             int64
+	Role           string
+	DepartmentID   *int64
+	DepartmentName *string
+	GrantedAt      time.Time
+}
+
+func (q *Queries) ListActiveRolesWithDepartmentForAppUser(ctx context.Context, appUserID int64) ([]ListActiveRolesWithDepartmentForAppUserRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveRolesWithDepartmentForAppUser, appUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListActiveRolesWithDepartmentForAppUserRow
+	for rows.Next() {
+		var i ListActiveRolesWithDepartmentForAppUserRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Role,
+			&i.DepartmentID,
+			&i.DepartmentName,
+			&i.GrantedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const revokeUserDepartmentRole = `-- name: RevokeUserDepartmentRole :execrows
+UPDATE user_department_roles
+SET revoked_at = CURRENT_TIMESTAMP
+WHERE user_department_roles.id = ?
+  AND user_department_roles.app_user_id = ?
+  AND user_department_roles.revoked_at IS NULL
+  AND (
+    user_department_roles.role != 'system_admin'
+    OR (
+      SELECT COUNT(DISTINCT udr.app_user_id)
+      FROM user_department_roles udr
+      JOIN app_users au ON au.id = udr.app_user_id
+      WHERE udr.role = 'system_admin'
+        AND udr.revoked_at IS NULL
+        AND au.disabled_at IS NULL
+    ) > 1
+  )
+`
+
+type RevokeUserDepartmentRoleParams struct {
+	ID        int64
+	AppUserID int64
+}
+
+// The last-admin guard lives in the WHERE clause so it is evaluated at
+// UPDATE time under the write lock. A separate COUNT-then-UPDATE in the
+// handler is racy: two concurrent WAL write transactions can each see
+// COUNT=2 in their snapshots and both revoke, leaving zero active admins.
+func (q *Queries) RevokeUserDepartmentRole(ctx context.Context, arg RevokeUserDepartmentRoleParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, revokeUserDepartmentRole, arg.ID, arg.AppUserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

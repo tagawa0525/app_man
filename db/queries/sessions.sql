@@ -34,6 +34,10 @@ WHERE id = sqlc.arg(old_id);
 DELETE FROM sessions
 WHERE id = ?;
 
+-- name: DeleteSessionsForAppUser :execrows
+DELETE FROM sessions
+WHERE app_user_id = ?;
+
 -- name: DeleteExpiredSessions :execrows
 DELETE FROM sessions
 WHERE expires_at <= ?;

@@ -113,6 +113,8 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 	dash := &dashboardHandlers{db: deps.DB, logger: deps.Logger}
 	set := &settingHandlers{db: deps.DB, logger: deps.Logger}
 	al := &auditLogHandlers{db: deps.DB, logger: deps.Logger}
+	appu := &appUserHandlers{db: deps.DB, logger: deps.Logger}
+	rl := &roleHandlers{db: deps.DB, logger: deps.Logger}
 
 	// /login / /logout は role 不問。Authenticator / SessionStore が注入
 	// されている場合のみ登録する (テストで nil を渡したときに panic
@@ -218,5 +220,16 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 		r.Post("/admin/settings/{key}/reset", set.reset)
 		// 監査ログ閲覧 (仕様 §6.1)。閲覧専用で書込みルートは無い。
 		r.Get("/admin/audit-logs", al.list)
+		// アプリユーザ管理 (仕様 §6.1)。作成・パスワードリセットは
+		// CLI (appmgr-create-app-user) の責務で UI は持たない。
+		r.Get("/admin/app-users", appu.list)
+		r.Post("/admin/app-users/{id}/disable", appu.disable)
+		r.Post("/admin/app-users/{id}/enable", appu.enable)
+		r.Post("/admin/app-users/{id}/notify-email", appu.updateNotifyEmail)
+		// ロール管理 (仕様 §6.1)。剥奪はロックアウト防止 2 層
+		// (自分の system_admin / 最後の有効 system_admin) を通る。
+		r.Get("/admin/roles", rl.list)
+		r.Post("/admin/roles/{appUserID}", rl.grant)
+		r.Post("/admin/roles/{appUserID}/{roleID}/revoke", rl.revoke)
 	})
 }
