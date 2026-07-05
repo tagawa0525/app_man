@@ -287,9 +287,10 @@ func TestAdminAuditLogs_InvalidBeforeID_400(t *testing.T) {
 	}
 }
 
-// LIKE メタ文字は前方一致のリテラルとして扱う (Copilot 指摘)。
-// action は app_setting.change のように正規に _ を含むため、除去でなく
-// エスケープ + ESCAPE 句で対応する。
+// % / _ は前方一致のリテラルとして扱う (Copilot 指摘)。action は
+// app_setting.change のように正規に _ を含むため除去は不適で、実装は
+// LIKE をやめ substr/length のリテラル前方一致 (ワイルドカード概念
+// なし) で満たす。
 func TestAdminAuditLogs_Filter_LikeMetacharsLiteral(t *testing.T) {
 	t.Parallel()
 	r, db, store, q := newWebRouter(t)

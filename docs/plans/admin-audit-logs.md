@@ -19,8 +19,8 @@ product.default_approval_change / app_setting.* / bootstrap_import と
 
 ## 対象スコープ
 
-- repository: `ListAuditLogs :many` (フィルタ 3 種は NULL 許容引数 +
-  `?1 IS NULL OR ...` 方式、before_id、LIMIT 101 で has_more 判定)
+- repository: `ListAuditLogs :many` (フィルタ 3 種は「空文字 = 無条件」
+  方式 `CAST(? AS TEXT) = '' OR ...`、before_id、LIMIT 101 で has_more 判定)
 - web: audit_logs.go (GET /admin/audit-logs) + view/auditlogs/
 - handler テスト (フィルタ・カーソル・403)
 
