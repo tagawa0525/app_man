@@ -16,7 +16,7 @@
 | ライセンスキー | チェックボックス opt-in (デフォルト含めない)。含めない場合は licenses シートに product_keys 列自体を出さない。**含めた場合は audit の diff_json に include_keys: true を記録** | 仕様どおり + write-only 方針との整合 (エクスポートは正当な閲覧経路で、audit 必須) |
 | Excel 生成 | `internal/export` パッケージに `WriteExcel(ctx, q, w io.Writer, includeKeys bool) error`。シートごとに repository の List 系を流用し、無ければ最小限の全件クエリを追加 | web ハンドラから分離してテスト可能に |
 | ZIP 内容 | (1) `db-snapshot.db` — `VACUUM INTO` で一時ファイルに書き出して格納 (backup と同方式、完成品保証) (2) `licenses/` ツリー全量 (証書 + meta.yml) | 仕様「DB スナップショット + 全証書 + meta.yml」。VACUUM INTO は稼働中 DB の整合スナップショットを取る唯一の安全手段 |
-| ZIP の一時ファイル | `os.CreateTemp` → VACUUM INTO → zip へコピー → 削除。パスは応答に出さない | サーバの作業領域を汚さない |
+| ZIP の一時ファイル | `os.MkdirTemp` の専用ディレクトリ配下に VACUUM INTO → zip へコピー → defer RemoveAll。パスは応答に出さない (CreateTemp は空ファイルを先に作るため VACUUM INTO が失敗する — backup PR の知見) | サーバの作業領域を汚さない |
 | ストリーミング | ZIP は `zip.NewWriter(w)` で応答へ直接書く。Excel は excelize が全量メモリ構築 (想定規模で問題なし) | 数百 MB 級になったら見直し (今はしない) |
 | ファイル名 | `appmgr-export-<YYYYMMDD-HHMMSS>.xlsx` / `.zip` (JST) | 運用者向け。backup の命名と整合 |
 | audit | export.excel {include_keys} / export.zip を**ダウンロード開始前に記録** (記録失敗は 500 で配信しない) | キー閲覧と同方針: 記録なしの機微データ持ち出しを作らない |
@@ -64,5 +64,7 @@
   ため受容。CGO 不要は確認済み (pure Go)
 - **VACUUM INTO と ModeGlobal**: appmgr-server は バッチのグローバル
   ロック対象外のため、backup 実行中に ZIP エクスポートすると VACUUM
-  同士が競合しうる → SQLite が SQLITE_BUSY を返したら 503 相当の
-  エラー表示 (リトライは運用)。発生条件が狭いため MVP はこれで足りる
+  同士が競合しうる → 失敗は 500 + error ログで返す (当初 503 相当と
+  したが、BUSY 判定分岐はテスト不能な狭経路で、運用対応はどちらも
+  「再実行」のため区別の利得が薄いと判断し 500 に統一)。発生条件が
+  狭いため MVP はこれで足りる
