@@ -1,0 +1,120 @@
+// Package settings は設定値管理画面 (仕様 §5.11) の templ ビュー。
+// 既知キーのレジストリ (説明・既定値・消費バイナリ) は web 層
+// (internal/handler/web/settings.go) が持ち、本パッケージは表示のみ。
+package settings
+
+import (
+	"strconv"
+
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+// Row は既知キー 1 行の描画データ。
+type Row struct {
+	Key         string
+	Description string
+	// Consumer はこのキーを読むバイナリ名。
+	Consumer string
+	// Note は補足 (未実装の消費者等)。空なら表示しない。
+	Note string
+	// Default はキーの行が無いときに使われる既定値 (仕様 §5.11)。
+	Default int
+	// Value は DB に保存されている現在値 (IsSet のときのみ有効)。
+	Value string
+	// IsSet は app_settings に行があるか。false なら既定値フォール
+	// バック表示になり、リセットボタンは出さない。
+	IsSet bool
+}
+
+// UnknownRow は DB にあるが既知キーのレジストリに無い行。読み取り専用で
+// 表末尾に表示する (編集・リセット不可)。
+type UnknownRow struct {
+	Key   string
+	Value string
+}
+
+// ListProps は GET /admin/settings (system_admin 専用) の描画引数。
+type ListProps struct {
+	Rows    []Row
+	Unknown []UnknownRow
+	Flash   string
+}
+
+templ List(role middleware.Role, props ListProps) {
+	@layout.Base(layout.BaseProps{
+		Title:     "設定値管理",
+		Role:      role,
+		Flash:     props.Flash,
+		CSRFToken: middleware.CSRFTokenFrom(ctx),
+	}) {
+		<section class="page-admin-settings">
+			<header class="page-header">
+				<h1>設定値管理</h1>
+			</header>
+			<p>app_settings の既知キーを編集します (仕様 §5.11)。行が無いキーは各バイナリが既定値で動作します。値は 1 以上の整数のみ、リセットで行を削除して既定値に戻します。</p>
+			<table class="data-table">
+				<thead>
+					<tr>
+						<th>キー</th>
+						<th>説明</th>
+						<th>用途</th>
+						<th>現在値</th>
+						<th>操作</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, row := range props.Rows {
+						<tr>
+							<td><code>{ row.Key }</code></td>
+							<td>
+								{ row.Description }
+								if row.Note != "" {
+									<br/>
+									<small>{ row.Note }</small>
+								}
+							</td>
+							<td>{ row.Consumer }</td>
+							<td>
+								if row.IsSet {
+									{ row.Value }
+								} else {
+									{ "既定値 " + strconv.Itoa(row.Default) + " を使用中" }
+								}
+							</td>
+							<td>
+								<form method="post" action={ templ.SafeURL("/admin/settings/" + row.Key) } class="inline-form">
+									@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
+									<input
+										type="text"
+										name="value"
+										value={ row.Value }
+										placeholder={ strconv.Itoa(row.Default) }
+										size="8"
+										aria-label={ "設定値: " + row.Key }
+									/>
+									<button type="submit" class="btn">更新</button>
+								</form>
+								if row.IsSet {
+									<form method="post" action={ templ.SafeURL("/admin/settings/" + row.Key + "/reset") } class="inline-form">
+										@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
+										<button type="submit" class="btn">リセット</button>
+									</form>
+								}
+							</td>
+						</tr>
+					}
+					for _, u := range props.Unknown {
+						<tr>
+							<td><code>{ u.Key }</code></td>
+							<td>既知キーのレジストリに無いキーです</td>
+							<td>-</td>
+							<td>{ u.Value }</td>
+							<td>読み取り専用</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</section>
+	}
+}

@@ -111,6 +111,7 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 	lic := &licenseHandlers{db: deps.DB, logger: deps.Logger, store: deps.FileStore, fsCfg: deps.FileStoreCfg}
 	ap := &approvalHandlers{db: deps.DB, logger: deps.Logger}
 	dash := &dashboardHandlers{db: deps.DB, logger: deps.Logger}
+	set := &settingHandlers{db: deps.DB, logger: deps.Logger}
 
 	// /login / /logout は role 不問。Authenticator / SessionStore が注入
 	// されている場合のみ登録する (テストで nil を渡したときに panic
@@ -205,9 +206,14 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 		r.Post("/approvals/{deptID}/{productID}", ap.create)
 		r.Post("/approvals/{deptID}/{productID}/revoke", ap.revoke)
 	})
-	// 全社承認設定は system_admin のみ。
+	// 全社承認設定・設定値管理は system_admin のみ。
 	r.With(mw.RequireRole(systemAdmins...)).Group(func(r chi.Router) {
 		r.Get("/admin/global-approvals", ap.globalList)
 		r.Post("/admin/global-approvals/{productID}", ap.globalUpdate)
+		// 設定値管理 (仕様 §5.11)。key は既知キーの固定リスト
+		// (settings.go の knownAppSettings) 外なら 404。
+		r.Get("/admin/settings", set.list)
+		r.Post("/admin/settings/{key}", set.update)
+		r.Post("/admin/settings/{key}/reset", set.reset)
 	})
 }
