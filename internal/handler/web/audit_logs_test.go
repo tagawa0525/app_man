@@ -147,9 +147,10 @@ func TestAdminAuditLogs_List_DescendingWithOperator(t *testing.T) {
 	}
 
 	// CLI 起源: 操作者「-」、entity_id NULL も「-」、diff なし。
+	// 日時文字列にも "-" が含まれるため、セル単位 (<td>-</td>) で数える。
 	cli := auditRowChunk(t, rec, "bootstrap_import")
-	if !strings.Contains(cli, "-") {
-		t.Errorf("CLI-origin row does not show '-':\n%s", cli)
+	if got := strings.Count(cli, "<td>-</td>"); got < 2 {
+		t.Errorf("CLI-origin row should render '-' cells for operator and entity_id (got %d):\n%s", got, cli)
 	}
 	if strings.Contains(cli, "audit_op") {
 		t.Errorf("CLI-origin row shows unrelated username:\n%s", cli)
