@@ -115,6 +115,7 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 	al := &auditLogHandlers{db: deps.DB, logger: deps.Logger}
 	appu := &appUserHandlers{db: deps.DB, logger: deps.Logger}
 	rl := &roleHandlers{db: deps.DB, logger: deps.Logger}
+	ex := &exportHandlers{db: deps.DB, logger: deps.Logger, fsCfg: deps.FileStoreCfg}
 
 	// /login / /logout は role 不問。Authenticator / SessionStore が注入
 	// されている場合のみ登録する (テストで nil を渡したときに panic
@@ -231,5 +232,10 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 		r.Get("/admin/roles", rl.list)
 		r.Post("/admin/roles/{appUserID}", rl.grant)
 		r.Post("/admin/roles/{appUserID}/{roleID}/revoke", rl.revoke)
+		// エクスポート (仕様 §5.10)。ダウンロードは POST のみ: GET だと
+		// audit_logs 記録を迂回するリンクが作れてしまう。
+		r.Get("/admin/export", ex.index)
+		r.Post("/admin/export/excel", ex.excel)
+		r.Post("/admin/export/zip", ex.zip)
 	})
 }
