@@ -339,20 +339,16 @@ func (h *roleHandlers) revoke(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		if latest.AppUserID == appUserID && latest.RevokedAt == nil &&
-			latest.Role == string(middleware.RoleSystemAdmin) {
-			admins, cerr := q.CountActiveSystemAdminUsers(r.Context())
-			if cerr != nil {
-				h.logger.ErrorContext(r.Context(), "count active system admins", "err", cerr)
-				http.Error(w, "internal error", http.StatusInternalServerError)
-				return
-			}
-			if admins <= 1 {
-				h.renderRoles(w, r, http.StatusBadRequest, &u,
-					"有効な system_admin が 1 人しかいないため剥奪できません。先に別の system_admin を用意してください。")
-				return
-			}
+		if latest.AppUserID == appUserID && latest.RevokedAt == nil {
+			// 行がまだアクティブなのに 0 行 = ガード付き UPDATE の
+			// last-admin 条件に弾かれたケースしかない (UPDATE 時点の
+			// 判定が正)。事後に admin 数を読み直しても UPDATE 時点と
+			// ズレうるので再カウントせず 400 を返す。
+			h.renderRoles(w, r, http.StatusBadRequest, &u,
+				"有効な system_admin が 1 人しかいないため剥奪できません。先に別の system_admin を用意してください。")
+			return
 		}
+		// 行が消えている / 既に剥奪済み (並行操作) は 404。
 		http.NotFound(w, r)
 		return
 	}
