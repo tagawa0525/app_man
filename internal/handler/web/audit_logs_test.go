@@ -286,3 +286,35 @@ func TestAdminAuditLogs_InvalidBeforeID_400(t *testing.T) {
 		}
 	}
 }
+
+// LIKE メタ文字は前方一致のリテラルとして扱う (Copilot 指摘)。
+// action は app_setting.change のように正規に _ を含むため、除去でなく
+// エスケープ + ESCAPE 句で対応する。
+func TestAdminAuditLogs_Filter_LikeMetacharsLiteral(t *testing.T) {
+	t.Parallel()
+	r, db, store, q := newWebRouter(t)
+
+	seedAuditLog(t, q, nil, "app_setting.change", "app_setting", nil, nil)
+	// _ をワイルドカード解釈すると "app_setting." の _ が X にもマッチする
+	seedAuditLog(t, q, nil, "appXsetting.change", "app_setting", nil, nil)
+
+	req := handlertest.AuthenticatedRequest(t, db, store, http.MethodGet,
+		"/admin/audit-logs?action=app_setting.", middleware.RoleSystemAdmin, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	handlertest.AssertStatus(t, rec, http.StatusOK)
+	handlertest.AssertContains(t, rec, "app_setting.change")
+	if contains(rec.Body.String(), "appXsetting.change") {
+		t.Errorf("underscore in filter must match literally, not as wildcard:\n%s", rec.Body.String())
+	}
+
+	// % 単独はリテラル % の前方一致 = どの行にもマッチしない
+	req = handlertest.AuthenticatedRequest(t, db, store, http.MethodGet,
+		"/admin/audit-logs?action=%25", middleware.RoleSystemAdmin, nil)
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	handlertest.AssertStatus(t, rec, http.StatusOK)
+	if body := rec.Body.String(); contains(body, "app_setting.change") || contains(body, "appXsetting.change") {
+		t.Errorf("bare %% filter must not act as match-all:\n%s", body)
+	}
+}
