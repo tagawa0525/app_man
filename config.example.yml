@@ -36,3 +36,17 @@ auth:
 backup:
   output_dir: ./data/backups  # VACUUM INTO の出力先。appmgr-backup 実行時に必須
   generations: 14             # 保持世代数。0 = 無制限保持、負値はエラー
+
+notifier:
+  mode: "off"                 # smtp / teams / file / multi / off。未指定は off (appmgr-notify が no-op)
+  smtp:                       # mode=smtp (または multi の channels に smtp) のとき host / from 必須
+    host: smtp.example.local
+    port: 25                  # 0 = 既定値 25
+    from: app-manager@example.com
+  teams:
+    # webhook_url_env: TEAMS_WEBHOOK_URL   # teams 使用時に必須。環境変数名で指定
+  file:
+    output_dir: ./data/files/mail-out      # file 使用時に必須。開発・テスト用のメール出力先
+  multi:
+    channels: [smtp, teams]   # mode=multi のときのみ使用。smtp / teams / file から指定
+  expiry_days_before: [30, 90] # ライセンス満了 N 日前通知。正整数のみ、未指定は [30, 90]

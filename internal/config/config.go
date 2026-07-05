@@ -16,6 +16,7 @@ type Config struct {
 	Logging   LoggingConfig   `yaml:"logging"`
 	Auth      AuthConfig      `yaml:"auth"`
 	Backup    BackupConfig    `yaml:"backup"`
+	Notifier  NotifierConfig  `yaml:"notifier"`
 }
 
 type ServerConfig struct {
@@ -58,6 +59,49 @@ type FileStoreConfig struct {
 type BackupConfig struct {
 	OutputDir   string `yaml:"output_dir"`  // VACUUM INTO の出力先。appmgr-backup 実行時に必須
 	Generations int    `yaml:"generations"` // 保持世代数。0 = 無制限、負値はエラー
+}
+
+// NotifierConfig は通知チャネル (appmgr-notify) の設定。仕様 §5.9 / §10。
+// mode が off (または未指定) のとき通知バッチは no-op になる。チャネル固有の
+// 必須項目 (host / from / webhook_url / output_dir) は「そのモードで実際に
+// 使われるときだけ」検査する — file モードだけ使う環境で smtp 設定を
+// 要求しないため。
+type NotifierConfig struct {
+	// Mode は smtp / teams / file / multi / off。未指定 (空) は off に正規化。
+	Mode  string              `yaml:"mode"`
+	SMTP  NotifierSMTPConfig  `yaml:"smtp"`
+	Teams NotifierTeamsConfig `yaml:"teams"`
+	File  NotifierFileConfig  `yaml:"file"`
+	Multi NotifierMultiConfig `yaml:"multi"`
+	// ExpiryDaysBefore はライセンス満了通知を出す「満了 N 日前」の一覧。
+	// 正整数のみ。未指定なら [30, 90] にフォールバック (仕様 §10 の例)。
+	ExpiryDaysBefore []int `yaml:"expiry_days_before"`
+}
+
+// NotifierSMTPConfig は SMTP チャネルの設定。AUTH なし平文 (社内リレー前提)。
+type NotifierSMTPConfig struct {
+	Host string `yaml:"host"` // smtp 使用時に必須
+	Port int    `yaml:"port"` // 未指定 (= 0) なら 25 にフォールバック
+	From string `yaml:"from"` // smtp 使用時に必須
+}
+
+// NotifierTeamsConfig は Teams Incoming Webhook チャネルの設定。
+type NotifierTeamsConfig struct {
+	// WebhookURL は機微情報のため通常 webhook_url_env で環境変数から
+	// 解決する (resolveEnvKeys が自動処理)。teams 使用時に必須。
+	WebhookURL string `yaml:"webhook_url"`
+}
+
+// NotifierFileConfig はファイル出力チャネル (開発・テスト用) の設定。
+type NotifierFileConfig struct {
+	OutputDir string `yaml:"output_dir"` // file 使用時に必須
+}
+
+// NotifierMultiConfig は同報 (multi) モードの設定。
+type NotifierMultiConfig struct {
+	// Channels は同報先チャネル名の一覧。smtp / teams / file のみ許可
+	// (multi の入れ子や off は不可)。mode=multi のとき必須。
+	Channels []string `yaml:"channels"`
 }
 
 type DatabaseConfig struct {
@@ -132,6 +176,69 @@ func (c *Config) validate() error {
 	}
 	if len(c.FileStore.AllowedMimeTypes) == 0 {
 		c.FileStore.AllowedMimeTypes = []string{"application/pdf", "image/png", "image/jpeg"}
+	}
+	return c.validateNotifier()
+}
+
+func (c *Config) validateNotifier() error {
+	n := &c.Notifier
+
+	switch n.Mode {
+	case "":
+		n.Mode = "off"
+	case "smtp", "teams", "file", "multi", "off":
+	default:
+		return fmt.Errorf("notifier.mode must be one of smtp/teams/file/multi/off, got %q", n.Mode)
+	}
+
+	// used は各チャネルが実際に使われるかどうか。必須項目の検査は
+	// 使われるチャネルに限定する。
+	used := map[string]bool{}
+	switch n.Mode {
+	case "smtp", "teams", "file":
+		used[n.Mode] = true
+	case "multi":
+		if len(n.Multi.Channels) == 0 {
+			return fmt.Errorf("notifier.multi.channels is required when notifier.mode is multi")
+		}
+		for _, ch := range n.Multi.Channels {
+			switch ch {
+			case "smtp", "teams", "file":
+				used[ch] = true
+			default:
+				return fmt.Errorf("notifier.multi.channels must contain only smtp/teams/file, got %q", ch)
+			}
+		}
+	}
+
+	if used["smtp"] {
+		if n.SMTP.Host == "" {
+			return fmt.Errorf("notifier.smtp.host is required when the smtp channel is used")
+		}
+		if n.SMTP.From == "" {
+			return fmt.Errorf("notifier.smtp.from is required when the smtp channel is used")
+		}
+		if n.SMTP.Port < 0 || n.SMTP.Port > 65535 {
+			return fmt.Errorf("notifier.smtp.port must be in 0-65535 (0 means default 25), got %d", n.SMTP.Port)
+		}
+		if n.SMTP.Port == 0 {
+			n.SMTP.Port = 25
+		}
+	}
+	if used["teams"] && n.Teams.WebhookURL == "" {
+		return fmt.Errorf("notifier.teams.webhook_url (or webhook_url_env) is required when the teams channel is used")
+	}
+	if used["file"] && n.File.OutputDir == "" {
+		return fmt.Errorf("notifier.file.output_dir is required when the file channel is used")
+	}
+
+	for _, d := range n.ExpiryDaysBefore {
+		if d <= 0 {
+			return fmt.Errorf("notifier.expiry_days_before must contain only positive integers, got %d", d)
+		}
+	}
+	if len(n.ExpiryDaysBefore) == 0 {
+		n.ExpiryDaysBefore = []int{30, 90}
 	}
 	return nil
 }

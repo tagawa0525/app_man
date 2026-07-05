@@ -53,6 +53,11 @@ logging:
 			UploadMaxBytes:   20971520,
 			AllowedMimeTypes: []string{"application/pdf", "image/png", "image/jpeg"},
 		},
+		Notifier: config.NotifierConfig{
+			// 未指定 → validate で off / [30, 90] に補完される
+			Mode:             "off",
+			ExpiryDaysBefore: []int{30, 90},
+		},
 	}
 
 	tests := []struct {
@@ -473,6 +478,254 @@ logging:
 	_, err := config.Load(path)
 	if err == nil {
 		t.Fatal("Load() expected error for negative file_store.upload_max_bytes, got nil")
+	}
+}
+
+// notifierTestBase は notifier テスト用の必須最小 YAML。各テストで
+// notifier セクションだけ差し替えて使う。
+const notifierTestBase = `server:
+  listen: 0.0.0.0:8180
+  base_url: http://localhost:8180
+
+database:
+  path: ./data/app.db
+  wal: true
+
+locks:
+  base_dir: ./data/locks
+
+logging:
+  level: info
+  base_dir: ./logs
+  format: json
+`
+
+func loadConfigFromYAML(t *testing.T, yamlBody string) (*config.Config, error) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(path, []byte(yamlBody), 0o644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+	return config.Load(path)
+}
+
+func TestLoad_notifier_smtpExplicit(t *testing.T) {
+	yamlBody := notifierTestBase + `
+notifier:
+  mode: smtp
+  smtp:
+    host: smtp.example.local
+    from: app-manager@example.com
+  expiry_days_before: [7, 30]
+`
+	got, err := loadConfigFromYAML(t, yamlBody)
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+	want := config.NotifierConfig{
+		Mode: "smtp",
+		SMTP: config.NotifierSMTPConfig{
+			Host: "smtp.example.local",
+			Port: 25, // 未指定 → validate で 25 に補完される
+			From: "app-manager@example.com",
+		},
+		ExpiryDaysBefore: []int{7, 30},
+	}
+	if !reflect.DeepEqual(got.Notifier, want) {
+		t.Errorf("Notifier = %+v, want %+v", got.Notifier, want)
+	}
+}
+
+func TestLoad_notifier_multiExplicit(t *testing.T) {
+	yamlBody := notifierTestBase + `
+notifier:
+  mode: multi
+  smtp:
+    host: smtp.example.local
+    port: 587
+    from: app-manager@example.com
+  file:
+    output_dir: ./data/files/mail-out
+  multi:
+    channels: [smtp, file]
+`
+	got, err := loadConfigFromYAML(t, yamlBody)
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+	if got.Notifier.Mode != "multi" {
+		t.Errorf("Notifier.Mode = %q, want %q", got.Notifier.Mode, "multi")
+	}
+	if !reflect.DeepEqual(got.Notifier.Multi.Channels, []string{"smtp", "file"}) {
+		t.Errorf("Notifier.Multi.Channels = %v, want [smtp file]", got.Notifier.Multi.Channels)
+	}
+	if got.Notifier.SMTP.Port != 587 {
+		t.Errorf("Notifier.SMTP.Port = %d, want 587 (from YAML)", got.Notifier.SMTP.Port)
+	}
+}
+
+func TestLoad_notifier_webhookURLEnvExpansion(t *testing.T) {
+	const envName = "TEST_APP_MAN_TEAMS_WEBHOOK_URL"
+	const envValue = "https://example.webhook.office.com/webhookb2/xyz"
+	t.Setenv(envName, envValue)
+
+	yamlBody := notifierTestBase + `
+notifier:
+  mode: teams
+  teams:
+    webhook_url_env: ` + envName + `
+`
+	got, err := loadConfigFromYAML(t, yamlBody)
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+	if got.Notifier.Teams.WebhookURL != envValue {
+		t.Errorf("Notifier.Teams.WebhookURL = %q, want %q (env-expanded)", got.Notifier.Teams.WebhookURL, envValue)
+	}
+}
+
+// TestLoad_notifier_unusedChannelNotValidated はチャネル固有の必須項目が
+// 「そのモードで使われるときだけ」検査されることを確認する。file モード
+// なら smtp / teams の設定が空でも通る。
+func TestLoad_notifier_unusedChannelNotValidated(t *testing.T) {
+	yamlBody := notifierTestBase + `
+notifier:
+  mode: file
+  file:
+    output_dir: ./data/files/mail-out
+`
+	got, err := loadConfigFromYAML(t, yamlBody)
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+	if got.Notifier.File.OutputDir != "./data/files/mail-out" {
+		t.Errorf("Notifier.File.OutputDir = %q, want %q", got.Notifier.File.OutputDir, "./data/files/mail-out")
+	}
+	// smtp 未使用なので port の既定値補完もされない
+	if got.Notifier.SMTP.Port != 0 {
+		t.Errorf("Notifier.SMTP.Port = %d, want 0 (smtp unused)", got.Notifier.SMTP.Port)
+	}
+}
+
+func TestLoad_notifier_invalidRejected(t *testing.T) {
+	tests := []struct {
+		name     string
+		notifier string
+	}{
+		{
+			name: "unknown mode",
+			notifier: `
+notifier:
+  mode: pigeon
+`,
+		},
+		{
+			name: "smtp mode missing host",
+			notifier: `
+notifier:
+  mode: smtp
+  smtp:
+    from: app-manager@example.com
+`,
+		},
+		{
+			name: "smtp mode missing from",
+			notifier: `
+notifier:
+  mode: smtp
+  smtp:
+    host: smtp.example.local
+`,
+		},
+		{
+			name: "smtp port out of range",
+			notifier: `
+notifier:
+  mode: smtp
+  smtp:
+    host: smtp.example.local
+    port: 65536
+    from: app-manager@example.com
+`,
+		},
+		{
+			name: "teams mode missing webhook_url",
+			notifier: `
+notifier:
+  mode: teams
+`,
+		},
+		{
+			name: "file mode missing output_dir",
+			notifier: `
+notifier:
+  mode: file
+`,
+		},
+		{
+			name: "multi mode with empty channels",
+			notifier: `
+notifier:
+  mode: multi
+`,
+		},
+		{
+			name: "multi channels with unknown channel",
+			notifier: `
+notifier:
+  mode: multi
+  multi:
+    channels: [file, pigeon]
+  file:
+    output_dir: ./data/files/mail-out
+`,
+		},
+		{
+			name: "multi channels must not nest multi",
+			notifier: `
+notifier:
+  mode: multi
+  multi:
+    channels: [multi]
+`,
+		},
+		{
+			name: "multi channel smtp missing host",
+			notifier: `
+notifier:
+  mode: multi
+  multi:
+    channels: [smtp]
+  smtp:
+    from: app-manager@example.com
+`,
+		},
+		{
+			name: "zero expiry_days_before",
+			notifier: `
+notifier:
+  mode: "off"
+  expiry_days_before: [0]
+`,
+		},
+		{
+			name: "negative expiry_days_before",
+			notifier: `
+notifier:
+  mode: "off"
+  expiry_days_before: [30, -1]
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := loadConfigFromYAML(t, notifierTestBase+tt.notifier)
+			if err == nil {
+				t.Fatal("Load() expected error, got nil")
+			}
+		})
 	}
 }
 
