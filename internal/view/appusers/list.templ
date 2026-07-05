@@ -1,0 +1,103 @@
+// Package appusers はアプリユーザ管理画面 (仕様 §6.1) の templ ビュー。
+// 一覧表示と行内操作 (無効化・再有効化・通知先メール変更) のみ持ち、
+// データ整形は web 層 (internal/handler/web/app_users.go) が行う。
+package appusers
+
+import (
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+// Row は app_users 1 行の描画データ。
+type Row struct {
+	ID       int64
+	Username string
+	AuthType string
+	// LinkedUserName は linked_user_id → users.name。NULL は「-」。
+	LinkedUserName string
+	// NotifyEmail は現在の通知先 (NULL は空文字)。
+	NotifyEmail string
+	// Disabled は disabled_at IS NOT NULL。
+	Disabled bool
+	// ActiveRoleCount は revoked_at IS NULL のロール数。
+	ActiveRoleCount int64
+}
+
+// ListProps は GET /admin/app-users (system_admin 専用) の描画引数。
+type ListProps struct {
+	Rows  []Row
+	Flash string
+}
+
+templ List(role middleware.Role, props ListProps) {
+	@layout.Base(layout.BaseProps{
+		Title:     "アプリユーザ管理",
+		Role:      role,
+		Flash:     props.Flash,
+		CSRFToken: middleware.CSRFTokenFrom(ctx),
+	}) {
+		<section class="page-admin-app-users">
+			<header class="page-header">
+				<h1>アプリユーザ管理</h1>
+			</header>
+			<p>アカウント作成・パスワードリセットは CLI (appmgr-create-app-user) の責務です。ここでは無効化・再有効化・通知先メールの変更とロール管理への導線のみ提供します。</p>
+			<table class="data-table">
+				<thead>
+					<tr>
+						<th>ユーザ名</th>
+						<th>認証</th>
+						<th>連携ユーザ</th>
+						<th>通知先メール</th>
+						<th>状態</th>
+						<th>ロール数</th>
+						<th>操作</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, row := range props.Rows {
+						<tr>
+							<td>{ row.Username }</td>
+							<td>{ row.AuthType }</td>
+							<td>{ row.LinkedUserName }</td>
+							<td>
+								<form method="post" action={ templ.SafeURL("/admin/app-users/" + itoa(row.ID) + "/notify-email") } class="inline-form">
+									@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
+									<input
+										type="text"
+										name="notify_email"
+										value={ row.NotifyEmail }
+										size="24"
+										aria-label={ "通知先メール: " + row.Username }
+									/>
+									<button type="submit" class="btn">変更</button>
+								</form>
+							</td>
+							<td>
+								if row.Disabled {
+									無効
+								} else {
+									有効
+								}
+							</td>
+							<td>{ itoa(row.ActiveRoleCount) }</td>
+							<td>
+								<a class="btn" href={ templ.SafeURL("/admin/roles?app_user_id=" + itoa(row.ID)) }>ロール管理</a>
+								if row.Disabled {
+									<form method="post" action={ templ.SafeURL("/admin/app-users/" + itoa(row.ID) + "/enable") } class="inline-form">
+										@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
+										<button type="submit" class="btn">再有効化</button>
+									</form>
+								} else {
+									<form method="post" action={ templ.SafeURL("/admin/app-users/" + itoa(row.ID) + "/disable") } class="inline-form">
+										@layout.CSRFInput(middleware.CSRFTokenFrom(ctx))
+										<button type="submit" class="btn">無効化</button>
+									</form>
+								}
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</section>
+	}
+}
