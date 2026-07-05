@@ -65,7 +65,7 @@ SELECT
   u.username
 FROM audit_logs a
 LEFT JOIN app_users u ON u.id = a.app_user_id
-WHERE (CAST(?1 AS TEXT) = '' OR a.action LIKE CAST(?1 AS TEXT) || '%')
+WHERE (CAST(?1 AS TEXT) = '' OR substr(a.action, 1, length(CAST(?1 AS TEXT))) = CAST(?1 AS TEXT))
   AND (CAST(?2 AS TEXT) = '' OR a.entity_type = CAST(?2 AS TEXT))
   AND (CAST(?3 AS TEXT) = '' OR u.username = CAST(?3 AS TEXT))
   AND (CAST(?4 AS INTEGER) = 0 OR a.id < CAST(?4 AS INTEGER))
@@ -95,7 +95,9 @@ type ListAuditLogsRow struct {
 // screen), newest first. app_users is LEFT JOINed so username is NULL
 // for rows written outside an authenticated session (CLI binaries).
 // Filters 1-3 are "empty string means no filter": ?1 action prefix
-// (LIKE), ?2 entity_type exact, ?3 username exact. ?4 is the id cursor:
+// (literal prefix via substr/length -- no LIKE, so % and _ in user
+// input never act as wildcards; sqlc v1.31.1 cannot parse ESCAPE),
+// ?2 entity_type exact, ?3 username exact. ?4 is the id cursor:
 // 0 means first page, otherwise only rows with id < ?4. The CASTs pin
 // the parameter types so sqlc does not infer interface{} (same trick as
 // ListLicenses' include-expired flag). LIMIT is 101 = page size 100 +
