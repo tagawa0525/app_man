@@ -167,14 +167,13 @@ SELECT
   au.notify_email,
   au.disabled_at,
   u.name AS linked_user_name,
-  (
-    SELECT COUNT(*)
-    FROM user_department_roles r
-    WHERE r.app_user_id = au.id
-      AND r.revoked_at IS NULL
-  ) AS active_role_count
+  COUNT(r.id) AS active_role_count
 FROM app_users au
 LEFT JOIN users u ON u.id = au.linked_user_id
+LEFT JOIN user_department_roles r
+  ON r.app_user_id = au.id
+  AND r.revoked_at IS NULL
+GROUP BY au.id
 ORDER BY au.username
 `
 
