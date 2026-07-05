@@ -112,6 +112,7 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 	ap := &approvalHandlers{db: deps.DB, logger: deps.Logger}
 	dash := &dashboardHandlers{db: deps.DB, logger: deps.Logger}
 	set := &settingHandlers{db: deps.DB, logger: deps.Logger}
+	al := &auditLogHandlers{db: deps.DB, logger: deps.Logger}
 
 	// /login / /logout は role 不問。Authenticator / SessionStore が注入
 	// されている場合のみ登録する (テストで nil を渡したときに panic
@@ -215,5 +216,7 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 		r.Get("/admin/settings", set.list)
 		r.Post("/admin/settings/{key}", set.update)
 		r.Post("/admin/settings/{key}/reset", set.reset)
+		// 監査ログ閲覧 (仕様 §6.1)。閲覧専用で書込みルートは無い。
+		r.Get("/admin/audit-logs", al.list)
 	})
 }

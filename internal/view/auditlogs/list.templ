@@ -1,0 +1,105 @@
+// Package auditlogs は監査ログ閲覧画面 (仕様 §6.1) の templ ビュー。
+// 閲覧専用 (書込み UI なし) で、フィルタ・カーソルの組み立ては web 層
+// (internal/handler/web/audit_logs.go) が持ち、本パッケージは表示のみ。
+package auditlogs
+
+import (
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
+	"github.com/tagawa0525/app_man/internal/view/layout"
+)
+
+// Row は audit_logs 1 行の描画データ。web 層で表示形へ変換済みの値を
+// 受け取る (JST 変換・NULL の「-」化はここではしない)。
+type Row struct {
+	// OccurredAt は JST 変換済みの日時文字列。
+	OccurredAt string
+	// Username は操作者。app_user_id NULL (CLI 実行) は「-」。
+	Username string
+	Action   string
+	// EntityType / EntityID は対象。entity_id NULL は「-」。
+	EntityType string
+	EntityID   string
+	// DiffJSON は生 JSON。空 (NULL) なら <details> ごと出さない。
+	DiffJSON string
+}
+
+// ListProps は GET /admin/audit-logs (system_admin 専用) の描画引数。
+type ListProps struct {
+	Rows []Row
+	// Action / EntityType / Username は現在のフィルタ値 (フォーム再表示用)。
+	Action     string
+	EntityType string
+	Username   string
+	// MoreURL は「さらに表示」リンク先 (現在のフィルタ + before_id)。
+	// 空なら次ページなし。
+	MoreURL string
+}
+
+templ List(role middleware.Role, props ListProps) {
+	@layout.Base(layout.BaseProps{
+		Title:     "監査ログ",
+		Role:      role,
+		CSRFToken: middleware.CSRFTokenFrom(ctx),
+	}) {
+		<section class="page-admin-audit-logs">
+			<header class="page-header">
+				<h1>監査ログ</h1>
+			</header>
+			<p>audit_logs を新しい順に 100 件ずつ表示します (仕様 §6.1)。閲覧専用で、削除は appmgr-prune-logs の責務です。</p>
+			<form method="get" action="/admin/audit-logs" class="filter-form">
+				<label>
+					action (前方一致)
+					<input type="text" name="action" value={ props.Action }/>
+				</label>
+				<label>
+					entity_type (完全一致)
+					<input type="text" name="entity_type" value={ props.EntityType }/>
+				</label>
+				<label>
+					操作者 username (完全一致)
+					<input type="text" name="username" value={ props.Username }/>
+				</label>
+				<button type="submit" class="btn">絞り込み</button>
+			</form>
+			<table class="data-table">
+				<thead>
+					<tr>
+						<th>日時 (JST)</th>
+						<th>操作者</th>
+						<th>action</th>
+						<th>entity_type</th>
+						<th>entity_id</th>
+						<th>diff</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, row := range props.Rows {
+						<tr>
+							<td>{ row.OccurredAt }</td>
+							<td>{ row.Username }</td>
+							<td><code>{ row.Action }</code></td>
+							<td>{ row.EntityType }</td>
+							<td>{ row.EntityID }</td>
+							<td>
+								if row.DiffJSON != "" {
+									<details>
+										<summary>diff</summary>
+										<pre>{ row.DiffJSON }</pre>
+									</details>
+								}
+							</td>
+						</tr>
+					}
+					if len(props.Rows) == 0 {
+						<tr>
+							<td colspan="6">該当する監査ログはありません</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+			if props.MoreURL != "" {
+				<p><a href={ templ.SafeURL(props.MoreURL) }>さらに表示</a></p>
+			}
+		</section>
+	}
+}
