@@ -110,9 +110,31 @@ func (n *SMTPNotifier) Send(ctx context.Context, msg Notification) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	// SMTP ヘッダインジェクション対策: CR/LF 混入を接続前に拒否する。
+	// net/smtp も from / to は検証し、Subject は Q エンコードで実害を
+	// 防げるが、3 フィールドとも本実装の責務として決定論的なエラーで
+	// 弾く (呼び出し側が failed + last_error として記録する)。
+	if err := rejectCRLF("from", n.From); err != nil {
+		return err
+	}
+	if err := rejectCRLF("recipient", msg.Recipient); err != nil {
+		return err
+	}
+	if err := rejectCRLF("subject", msg.Subject); err != nil {
+		return err
+	}
 	addr := net.JoinHostPort(n.Host, strconv.Itoa(n.Port))
 	if err := smtp.SendMail(addr, nil, n.From, []string{msg.Recipient}, buildMailMessage(n.From, msg)); err != nil {
 		return fmt.Errorf("send mail via %s: %w", addr, err)
+	}
+	return nil
+}
+
+// rejectCRLF は SMTP ヘッダへ改行で別ヘッダを注入される攻撃 (header
+// injection) を防ぐため、ヘッダに入る値の CR/LF を拒否する。
+func rejectCRLF(field, v string) error {
+	if strings.ContainsAny(v, "\r\n") {
+		return fmt.Errorf("smtp header %s must not contain CR/LF (header injection): %q", field, v)
 	}
 	return nil
 }
