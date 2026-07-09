@@ -31,11 +31,26 @@ var authUserCounter int64
 // 引数:
 //   - db: handlertest.NewTestDB(t) で作った in-memory sqlite
 //   - store: session.NewSQLiteStore(db) で作ったストア
-//   - role: 付与する単一 role (department NULL)
+//   - role: 付与する単一 role (department NULL = 全社スコープ行)
 //
 // 戻り値の Cookie は HttpOnly や SameSite を設定しない (テストでは不要、
 // 値だけ session.CookieName=<id> として認識されれば十分)。
 func AuthenticatedAs(t *testing.T, db *sql.DB, store session.Store, role middleware.Role) *http.Cookie {
+	t.Helper()
+	return authenticatedAs(t, db, store, role, nil)
+}
+
+// AuthenticatedAsInDept は AuthenticatedAs の部署スコープ版。role 行の
+// department_id に deptID を入れる (仕様 §7.1 の部署別ロールを再現する)。
+// deptID は departments に実在する行の ID であること (FK 制約)。
+func AuthenticatedAsInDept(t *testing.T, db *sql.DB, store session.Store, role middleware.Role, deptID int64) *http.Cookie {
+	t.Helper()
+	return authenticatedAs(t, db, store, role, &deptID)
+}
+
+// authenticatedAs は AuthenticatedAs / AuthenticatedAsInDept の実体。
+// deptID nil なら全社スコープ行 (department_id NULL) を作る。
+func authenticatedAs(t *testing.T, db *sql.DB, store session.Store, role middleware.Role, deptID *int64) *http.Cookie {
 	t.Helper()
 	ctx := context.Background()
 	n := atomic.AddInt64(&authUserCounter, 1)
@@ -53,8 +68,8 @@ func AuthenticatedAs(t *testing.T, db *sql.DB, store session.Store, role middlew
 	}
 
 	if _, err := db.ExecContext(ctx,
-		`INSERT INTO user_department_roles (app_user_id, department_id, role) VALUES (?, NULL, ?)`,
-		appUserID, string(role)); err != nil {
+		`INSERT INTO user_department_roles (app_user_id, department_id, role) VALUES (?, ?, ?)`,
+		appUserID, deptID, string(role)); err != nil {
 		t.Fatalf("AuthenticatedAs: insert user_department_roles: %v", err)
 	}
 
@@ -109,12 +124,29 @@ func AuthenticatedPostForm(t *testing.T, db *sql.DB, store session.Store,
 	target string, role middleware.Role, values url.Values,
 ) *http.Request {
 	t.Helper()
+	return authenticatedPostForm(t, db, store, target, role, nil, values)
+}
+
+// AuthenticatedPostFormInDept は AuthenticatedPostForm の部署スコープ版。
+// role 行の department_id に deptID を入れる (AuthenticatedAsInDept 参照)。
+func AuthenticatedPostFormInDept(t *testing.T, db *sql.DB, store session.Store,
+	target string, role middleware.Role, deptID int64, values url.Values,
+) *http.Request {
+	t.Helper()
+	return authenticatedPostForm(t, db, store, target, role, &deptID, values)
+}
+
+// authenticatedPostForm は AuthenticatedPostForm 系の実体。
+func authenticatedPostForm(t *testing.T, db *sql.DB, store session.Store,
+	target string, role middleware.Role, deptID *int64, values url.Values,
+) *http.Request {
+	t.Helper()
 	if values == nil {
 		values = url.Values{}
 	}
 	req := httptest.NewRequest(http.MethodPost, target, nil)
 	if role != "" {
-		cookie := AuthenticatedAs(t, db, store, role)
+		cookie := authenticatedAs(t, db, store, role, deptID)
 		req.AddCookie(cookie)
 		if values.Get("_csrf") == "" {
 			sess, err := store.GetByID(req.Context(), cookie.Value)

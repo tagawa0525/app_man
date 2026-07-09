@@ -271,6 +271,13 @@ func (h *licenseHandlers) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 所管に指定した部署への license_manager 相当の部署スコープ検証 (§7.2)。
+	// ルートの RequireRole(editors) 通過後の第 2 層。
+	if !middleware.HasDepartmentRole(r.Context(), middleware.RoleLicenseManager, parsed.DepartmentID) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
 	// fs_dir_path は他ライセンスとの重複 (DB) と空でない既存物理ディレクトリ
 	// の両方を見て _2, _3... サフィックスで衝突回避する (仕様 §3.2)。
 	fsDir, err := h.resolveLicenseFsDir(r.Context(), q,
@@ -391,6 +398,12 @@ func (h *licenseHandlers) update(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	// 現在の所管部署への license_manager 相当の部署スコープ検証 (§7.2)。
+	// 変更先の部署はフォームのパース後に別途チェックする (両方必要)。
+	if !middleware.HasDepartmentRole(r.Context(), middleware.RoleLicenseManager, existing.OwningDepartmentID) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	products, depts, err := h.loadLicenseFormRefs(r, q)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "load refs for update license", "err", err)
@@ -418,6 +431,13 @@ func (h *licenseHandlers) update(w http.ResponseWriter, r *http.Request) {
 			Input:            in,
 			Errors:           errs,
 		})
+		return
+	}
+
+	// 変更先の部署にも同じ部署スコープ権限が要る (自部署から権限外の部署へ
+	// 付け替えて手放す操作を許さない)。
+	if !middleware.HasDepartmentRole(r.Context(), middleware.RoleLicenseManager, parsed.DepartmentID) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 

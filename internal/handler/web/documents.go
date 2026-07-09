@@ -44,14 +44,9 @@ func (h *licenseHandlers) uploadDocument(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	q := repository.New(h.db)
-	lic, err := q.GetLicenseByID(r.Context(), id)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			http.NotFound(w, r)
-			return
-		}
-		h.logger.ErrorContext(r.Context(), "get license for upload", "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+	// 実在確認 + 所管部署への license_manager 相当の部署スコープ検証 (§7.2)。
+	lic, ok := h.licenseForWrite(w, r, q, id)
+	if !ok {
 		return
 	}
 
@@ -205,14 +200,10 @@ func (h *licenseHandlers) revealKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := repository.New(h.db)
-	row, err := q.GetLicenseByID(r.Context(), id)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			http.NotFound(w, r)
-			return
-		}
-		h.logger.ErrorContext(r.Context(), "get license for key reveal", "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+	// 実在確認 + 所管部署への license_manager 相当の部署スコープ検証 (§7.2)。
+	// 拒否時はキーも audit_logs も出さない (403 のみ)。
+	row, ok := h.licenseForWrite(w, r, q, id)
+	if !ok {
 		return
 	}
 
