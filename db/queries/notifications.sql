@@ -120,10 +120,17 @@ WHERE kind = ?
   AND created_at >= ?;
 
 -- ListUnsummarizedGaveUp returns gave_up notifications not yet covered
--- by a gave_up_summary: rows whose last attempt happened after the most
--- recent summary record was created (all gave_up rows when no summary
--- exists yet). gave_up rows always carry last_attempted_at because the
--- retry flow sets it on every attempt.
+-- by a delivered gave_up_summary: rows whose last attempt happened
+-- after the most recent *sent* summary was created (all gave_up rows
+-- when no sent summary exists yet). gave_up rows always carry
+-- last_attempted_at because the retry flow sets it on every attempt.
+-- The checkpoint deliberately ignores non-sent summaries: a failed
+-- summary never reached the admins, so letting it advance the
+-- checkpoint would hide those gave_up rows from every future summary.
+-- A failed summary is also re-sent by --retry-failed with its original
+-- body; if that retry later succeeds after the next daily run already
+-- re-summarized, the same rows can be reported twice. Duplicated
+-- listing is accepted as safer than permanent omission.
 -- name: ListUnsummarizedGaveUp :many
 SELECT id, kind, channel, recipient, subject, body,
   related_entity_type, related_entity_id, status, retry_count,
@@ -133,7 +140,8 @@ WHERE status = 'gave_up'
   AND kind != 'gave_up_summary'
   AND last_attempted_at > COALESCE(
     (SELECT MAX(s.created_at) FROM notifications s
-     WHERE s.kind = 'gave_up_summary'),
+     WHERE s.kind = 'gave_up_summary'
+       AND s.status = 'sent'),
     '1970-01-01 00:00:00')
 ORDER BY id;
 
