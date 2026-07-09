@@ -400,3 +400,19 @@ func TestFromConfig(t *testing.T) {
 		}
 	})
 }
+
+// Webhook URL は機微情報のため、接続エラー等のエラー文字列に URL が
+// そのまま含まれてはならない (last_error / ログ / サマリ本文へ流れる)。
+func TestTeamsWebhookNotifier_redactsURLInErrors(t *testing.T) {
+	t.Parallel()
+	// 接続先のない URL (クローズ済みポート) で *url.Error を誘発する。
+	const secretURL = "http://127.0.0.1:1/hooks/secret-token-xyz"
+	n := &notify.TeamsWebhookNotifier{WebhookURL: secretURL}
+	err := n.Send(context.Background(), notify.Notification{ID: 1, Recipient: "teams", Subject: "s", Body: "b"})
+	if err == nil {
+		t.Fatal("Send to unreachable webhook should fail")
+	}
+	if strings.Contains(err.Error(), "secret-token-xyz") || strings.Contains(err.Error(), secretURL) {
+		t.Errorf("error must not leak webhook URL: %v", err)
+	}
+}
