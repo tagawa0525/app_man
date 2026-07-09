@@ -161,7 +161,7 @@ func fetchNotifications(t *testing.T, sqlDB *sql.DB) []notifRow {
 	if err != nil {
 		t.Fatalf("query notifications: %v", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck // 読取専用カーソル。エラーは rows.Err() で拾う
 	var out []notifRow
 	for rows.Next() {
 		var r notifRow
