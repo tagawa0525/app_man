@@ -85,7 +85,9 @@ func (n *TeamsWebhookNotifier) Send(ctx context.Context, msg Notification) error
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("post teams webhook: %w", err)
+		// *url.Error 等は URL (機微情報) を含むため、エラー文字列から
+		// 確実に取り除く。%w で包むと Error() 経由で漏れるので包まない
+		return fmt.Errorf("post teams webhook: %s", redactURL(err.Error(), n.WebhookURL))
 	}
 	defer resp.Body.Close() //nolint:errcheck // 読み捨てクローズの失敗は送信結果に影響しない
 
@@ -94,6 +96,16 @@ func (n *TeamsWebhookNotifier) Send(ctx context.Context, msg Notification) error
 		return fmt.Errorf("teams webhook returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(detail)))
 	}
 	return nil
+}
+
+// redactURL は err メッセージ中の webhook URL を伏字にする。
+// notifications.last_error・ログ・gave_up サマリ本文に流れても
+// 機微情報 (URL 内のトークン) が漏れないようにするため。
+func redactURL(msg, url string) string {
+	if url == "" {
+		return msg
+	}
+	return strings.ReplaceAll(msg, url, "[redacted webhook URL]")
 }
 
 // SMTPNotifier は SMTP チャネル。AUTH なし平文で送信する (社内リレー
