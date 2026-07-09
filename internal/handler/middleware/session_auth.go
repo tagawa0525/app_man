@@ -32,11 +32,12 @@ type AuthConfig struct {
 //   - 公開パスは素通り
 //   - SessionFrom(ctx) == nil は router 組立ミスとして 500 + error ログ
 //   - session.AppUserID == nil は /login?next=<original> に 303 redirect
-//   - session.AppUserID != nil は user_department_roles を引いて最高権限 role を
-//     context に詰める。0 件なら 403
+//   - session.AppUserID != nil は user_department_roles を引いて最高権限 role
+//     (RoleFrom) と全ロール行 (RoleGrantsFrom) を context に詰める。0 件なら 403
 //
 // 仕様書 §7.2「セッションからログインユーザを特定 → user_department_roles を
-// 引き保有ロール・部署を取得」に対応する MVP 実装。部署別認可は別 PR。
+// 引き保有ロール・部署を取得」に対応する。データの所属部署との突合は
+// 書込み系ハンドラが HasDepartmentRole で行う。
 func AuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 	if cfg.DB == nil {
 		panic("middleware.AuthMiddleware: DB is required")
@@ -97,7 +98,12 @@ func AuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 				return
 			}
 
-			next.ServeHTTP(w, r.WithContext(WithRole(r.Context(), role)))
+			// 既に取得済みの全ロール行を追加クエリなしで公開する
+			// (HasDepartmentRole の判定材料。表示の出し分けは従来どおり
+			// 最高ロールの RoleFrom で足りる)。
+			ctx := WithRole(r.Context(), role)
+			ctx = WithRoleGrants(ctx, roleGrants(rows))
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
@@ -141,6 +147,20 @@ func extractPath(rawURL string) string {
 		return ""
 	}
 	return u.Path
+}
+
+// roleGrants は rows を []RoleGrant に写す。不明 role 文字列の行は
+// pickHighestRole と同じ基準 (IsValidRole) で除外する。
+func roleGrants(rows []repository.ListActiveRolesForAppUserRow) []RoleGrant {
+	grants := make([]RoleGrant, 0, len(rows))
+	for _, row := range rows {
+		r := Role(row.Role)
+		if !IsValidRole(r) {
+			continue
+		}
+		grants = append(grants, RoleGrant{Role: r, DepartmentID: row.DepartmentID})
+	}
+	return grants
 }
 
 // pickHighestRole は rows の中で AllRoles() 順最初に出現する Role を返す。
