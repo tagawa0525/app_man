@@ -720,6 +720,55 @@ func TestRetryAll_SkipsSupersededFailed(t *testing.T) {
 	}
 }
 
+// TestNotifyAll_ResummarizesAfterFailedSummary は「サマリ送信が失敗した」
+// 場合に、その失敗サマリがチェックポイントを進めず、翌日相当の通常実行で
+// 同じ gave_up 行が再サマリされることを確認する。チェックポイントが status
+// を見ないと、届いていないサマリの存在だけで以前の gave_up が将来のサマリ
+// から永久に漏れる (PR #37 Copilot 指摘)。
+func TestNotifyAll_ResummarizesAfterFailedSummary(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := handlertest.NewTestDB(t)
+	q := repository.New(sqlDB)
+	ctx := context.Background()
+	admin := seedAppUser(t, q, "admin", ptr("admin@example.com"), nil)
+	grantRole(t, q, admin.ID, nil, "system_admin")
+
+	// gave_up 行と、その後に作成されたが送信に失敗したサマリを投入する。
+	if _, err := sqlDB.Exec(`INSERT INTO notifications
+		(kind, channel, recipient, status, retry_count, last_attempted_at)
+		VALUES ('license_expiry_30', 'file', 'mgr@example.com', 'gave_up', 1, datetime('now'))`); err != nil {
+		t.Fatalf("insert gave_up: %v", err)
+	}
+	if _, err := sqlDB.Exec(`INSERT INTO notifications
+		(kind, channel, recipient, subject, body, status, last_attempted_at, created_at)
+		VALUES ('gave_up_summary', 'file', 'admin@example.com', 's', 'b', 'failed',
+		        datetime('now', '+1 second'), datetime('now', '+1 second'))`); err != nil {
+		t.Fatalf("insert failed summary: %v", err)
+	}
+
+	// 翌日相当の通常実行: 当日 dedup (作成基準) は前日の失敗サマリを数えず、
+	// チェックポイントは sent のサマリのみ → 同じ gave_up 行が再サマリされる。
+	good := &fakeNotifier{}
+	tomorrow := time.Now().UTC().Add(24 * time.Hour)
+	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), fileChannel(good), []int{30}, tomorrow, false); err != nil {
+		t.Fatalf("notifyAll (next day): %v", err)
+	}
+
+	var sentSummaries []notifRow
+	for _, r := range fetchNotifications(t, sqlDB) {
+		if r.Kind == "gave_up_summary" && r.Status == "sent" {
+			sentSummaries = append(sentSummaries, r)
+		}
+	}
+	if len(sentSummaries) != 1 {
+		t.Fatalf("sent gave_up_summary: want 1 (re-summarized despite failed summary), got %d", len(sentSummaries))
+	}
+	if len(good.sent) != 1 || !strings.Contains(good.sent[0].Body, "mgr@example.com") {
+		t.Errorf("re-summary should list the gave_up recipient, got %+v", good.sent)
+	}
+}
+
 // TestRunNotify_ModeOffIsNoOp は mode=off (チャネル不在) で検出ごとスキップ
 // され、info ログのみで正常終了することを確認する (DB にも触れない)。
 func TestRunNotify_ModeOffIsNoOp(t *testing.T) {
