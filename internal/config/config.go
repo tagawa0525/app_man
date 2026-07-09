@@ -236,10 +236,16 @@ func (c *Config) validateNotifier() error {
 		return fmt.Errorf("notifier.file.output_dir is required when the file channel is used")
 	}
 
+	seenDays := make(map[int]bool, len(n.ExpiryDaysBefore))
 	for _, d := range n.ExpiryDaysBefore {
 		if d <= 0 {
 			return fmt.Errorf("notifier.expiry_days_before must contain only positive integers, got %d", d)
 		}
+		// 重複は無駄な検出ループと dry-run の would_send 重複計上になる
+		if seenDays[d] {
+			return fmt.Errorf("notifier.expiry_days_before must not contain duplicates, got %d twice", d)
+		}
+		seenDays[d] = true
 	}
 	if len(n.ExpiryDaysBefore) == 0 {
 		n.ExpiryDaysBefore = []int{30, 90}
