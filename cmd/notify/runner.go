@@ -395,7 +395,8 @@ func deliver(ctx context.Context, q *repository.Queries, notifier notify.Notifie
 // 部署に有効な license_manager が 1 人もいなければ system_admin 全員に
 // フォールバックする (仕様の「設定された宛先」は未実装のため、握りつぶさない
 // 最小策。Plan の判断)。両方の email が空の候補者は warn を出してスキップし、
-// skipped に数える。
+// skipped に数える。フォールバック先も含めて候補者がゼロの場合も、静かに
+// スキップせず warn + skipped=1 で運用者に見えるようにする。
 func resolveDeptRecipients(ctx context.Context, q *repository.Queries, logger *slog.Logger,
 	deptID int64) (emails []string, skipped int, err error) {
 	type candidate struct {
@@ -423,6 +424,13 @@ func resolveDeptRecipients(ctx context.Context, q *repository.Queries, logger *s
 		for _, a := range admins {
 			cands = append(cands, candidate{a.Username, a.NotifyEmail, a.LinkedUserEmail})
 		}
+	}
+	if len(cands) == 0 {
+		// license_manager 不在 + system_admin も不在。通知イベントが痕跡
+		// なく消えないよう warn + 計上する。
+		logger.Warn("no recipient candidates; skipping (no license_manager and no system_admin)",
+			slog.Int64("department_id", deptID))
+		return nil, 1, nil
 	}
 
 	for _, cand := range cands {
