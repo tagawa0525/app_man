@@ -254,7 +254,7 @@ func (q *Queries) ListLicenseManagerEmailsForDepartment(ctx context.Context, dep
 	return items, nil
 }
 
-const listLicensesExpiringInDays = `-- name: ListLicensesExpiringInDays :many
+const listLicensesExpiringOn = `-- name: ListLicensesExpiringOn :many
 SELECT
   l.id,
   l.display_name,
@@ -268,11 +268,11 @@ JOIN products p ON p.id = l.product_id
 JOIN vendors ve ON ve.id = p.vendor_id
 JOIN departments d ON d.id = l.owning_department_id
 WHERE l.expires_at IS NOT NULL
-  AND CAST(julianday(date(l.expires_at)) - julianday(date('now')) AS INTEGER) = CAST(?1 AS INTEGER)
+  AND substr(CAST(l.expires_at AS TEXT), 1, 10) = CAST(?1 AS TEXT)
 ORDER BY l.id
 `
 
-type ListLicensesExpiringInDaysRow struct {
+type ListLicensesExpiringOnRow struct {
 	ID                 int64
 	DisplayName        string
 	ExpiresAt          *time.Time
@@ -282,20 +282,23 @@ type ListLicensesExpiringInDaysRow struct {
 	DepartmentName     string
 }
 
-// ListLicensesExpiringInDays returns licenses whose expires_at (UTC
-// date; date('now') is UTC in SQLite) is exactly N days from today,
+// ListLicensesExpiringOn returns licenses whose expires_at falls on the
+// given UTC date ('YYYY-MM-DD', computed by the caller as today+N),
 // joined with product, vendor and owning department names for the
-// notification body. julianday of two plain dates differs by an exact
-// integer, so the CAST comparison is safe.
-func (q *Queries) ListLicensesExpiringInDays(ctx context.Context, days int64) ([]ListLicensesExpiringInDaysRow, error) {
-	rows, err := q.db.QueryContext(ctx, listLicensesExpiringInDays, days)
+// notification body. The comparison uses substr(...,1,10) instead of
+// date(expires_at): the Go sqlite driver stores time.Time values in Go's
+// time.String() format ("2026-08-08 00:00:00 +0000 UTC"), which SQLite's
+// date() cannot parse (it returns NULL, so no row would ever match).
+// substr works for both that format and CURRENT_TIMESTAMP-style text.
+func (q *Queries) ListLicensesExpiringOn(ctx context.Context, expiresOn string) ([]ListLicensesExpiringOnRow, error) {
+	rows, err := q.db.QueryContext(ctx, listLicensesExpiringOn, expiresOn)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListLicensesExpiringInDaysRow
+	var items []ListLicensesExpiringOnRow
 	for rows.Next() {
-		var i ListLicensesExpiringInDaysRow
+		var i ListLicensesExpiringOnRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.DisplayName,

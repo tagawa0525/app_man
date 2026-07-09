@@ -100,12 +100,15 @@ WHERE status = 'gave_up'
     '1970-01-01 00:00:00')
 ORDER BY id;
 
--- ListLicensesExpiringInDays returns licenses whose expires_at (UTC
--- date; date('now') is UTC in SQLite) is exactly N days from today,
+-- ListLicensesExpiringOn returns licenses whose expires_at falls on the
+-- given UTC date ('YYYY-MM-DD', computed by the caller as today+N),
 -- joined with product, vendor and owning department names for the
--- notification body. julianday of two plain dates differs by an exact
--- integer, so the CAST comparison is safe.
--- name: ListLicensesExpiringInDays :many
+-- notification body. The comparison uses substr(...,1,10) instead of
+-- date(expires_at): the Go sqlite driver stores time.Time values in Go's
+-- time.String() format ("2026-08-08 00:00:00 +0000 UTC"), which SQLite's
+-- date() cannot parse (it returns NULL, so no row would ever match).
+-- substr works for both that format and CURRENT_TIMESTAMP-style text.
+-- name: ListLicensesExpiringOn :many
 SELECT
   l.id,
   l.display_name,
@@ -119,7 +122,7 @@ JOIN products p ON p.id = l.product_id
 JOIN vendors ve ON ve.id = p.vendor_id
 JOIN departments d ON d.id = l.owning_department_id
 WHERE l.expires_at IS NOT NULL
-  AND CAST(julianday(date(l.expires_at)) - julianday(date('now')) AS INTEGER) = CAST(sqlc.arg(days) AS INTEGER)
+  AND substr(CAST(l.expires_at AS TEXT), 1, 10) = CAST(sqlc.arg(expires_on) AS TEXT)
 ORDER BY l.id;
 
 -- ListLicenseManagerEmailsForDepartment returns active license_manager
