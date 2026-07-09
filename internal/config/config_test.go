@@ -682,6 +682,17 @@ notifier:
 `,
 		},
 		{
+			// 同一 days の重複は無駄な検出ループと would_send の重複計上になる
+			name: "expiry_days_before with duplicates",
+			notifier: `
+notifier:
+  mode: file
+  file:
+    output_dir: ./data/files/mail-out
+  expiry_days_before: [30, 30]
+`,
+		},
+		{
 			// 同一チャネルの重複は同じ通知の二重送信になるため拒否する
 			name: "multi channels with duplicates",
 			notifier: `
