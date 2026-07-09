@@ -823,3 +823,41 @@ func TestRunNotify_ModeOffIsNoOp(t *testing.T) {
 		t.Errorf("info log should mention mode off, got: %s", buf.String())
 	}
 }
+
+// TestNotifyAll_GaveUpSummaryWarnsWhenNoAdmins は gave_up が存在するのに
+// system_admin が不在 (または全員 email 空) のとき、サマリが静かに
+// スキップされず warn + skipped_no_recipient に計上されることを確認する
+// (PR #37 Copilot 指摘)。
+func TestNotifyAll_GaveUpSummaryWarnsWhenNoAdmins(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := handlertest.NewTestDB(t)
+	ctx := context.Background()
+	// gave_up 行のみ存在し、app_users は 1 人もいない。
+	if _, err := sqlDB.Exec(`INSERT INTO notifications
+		(kind, channel, recipient, status, retry_count, last_attempted_at)
+		VALUES ('license_expiry_30', 'file', 'mgr@example.com', 'gave_up', 1, datetime('now'))`); err != nil {
+		t.Fatalf("insert gave_up: %v", err)
+	}
+
+	var buf bytes.Buffer
+	fake := &fakeNotifier{}
+	if err := notifyAll(ctx, sqlDB, slog.New(slog.NewJSONHandler(&buf, nil)), fileChannel(fake), []int{30}, time.Now().UTC(), false); err != nil {
+		t.Fatalf("notifyAll: %v", err)
+	}
+
+	for _, r := range fetchNotifications(t, sqlDB) {
+		if r.Kind == "gave_up_summary" {
+			t.Errorf("summary record must not be created without recipients: %+v", r)
+		}
+	}
+	if len(fake.sent) != 0 {
+		t.Errorf("nothing must be sent, got %d", len(fake.sent))
+	}
+	if !strings.Contains(buf.String(), "WARN") {
+		t.Errorf("warn log expected for summary with zero admins, got: %s", buf.String())
+	}
+	if !strings.Contains(buf.String(), `"skipped_no_recipient":1`) {
+		t.Errorf("summary log should count skipped_no_recipient=1, got: %s", buf.String())
+	}
+}
