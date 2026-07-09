@@ -81,7 +81,9 @@ func (n *TeamsWebhookNotifier) Send(ctx context.Context, msg Notification) error
 
 	client := n.Client
 	if client == nil {
-		client = http.DefaultClient
+		// http.DefaultClient は Timeout を持たず、ネットワークの詰まりで
+		// バッチ全体 (と lock) が無期限に止まりうる。既定は有限にする
+		client = &http.Client{Timeout: 30 * time.Second}
 	}
 	resp, err := client.Do(req)
 	if err != nil {
