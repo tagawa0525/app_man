@@ -10,24 +10,27 @@ import (
 	"time"
 )
 
-const countNotificationsByKindSince = `-- name: CountNotificationsByKindSince :one
+const countNotificationsByKindOnOrAfterDay = `-- name: CountNotificationsByKindOnOrAfterDay :one
 SELECT count(*) FROM notifications
 WHERE kind = ?
-  AND created_at >= ?
+  AND substr(CAST(created_at AS TEXT), 1, 10) >= CAST(?2 AS TEXT)
 `
 
-type CountNotificationsByKindSinceParams struct {
-	Kind      string
-	CreatedAt time.Time
+type CountNotificationsByKindOnOrAfterDayParams struct {
+	Kind string
+	Day  string
 }
 
-// CountNotificationsByKindSince supports the daily gave_up summary
-// dedup: pass kind='gave_up_summary' and the UTC start of today to
-// check whether a summary was already created today.
-// CountSentNotificationForEvent cannot be reused because summary rows
-// have NULL related_entity_type/id and '=' never matches NULL.
-func (q *Queries) CountNotificationsByKindSince(ctx context.Context, arg CountNotificationsByKindSinceParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countNotificationsByKindSince, arg.Kind, arg.CreatedAt)
+// CountNotificationsByKindOnOrAfterDay supports the daily gave_up
+// summary dedup: pass kind='gave_up_summary' and the UTC day as a
+// YYYY-MM-DD string. The date-prefix comparison via substr works for
+// both storage formats (CURRENT_TIMESTAMP "YYYY-MM-DD HH:MM:SS" and
+// the Go driver's "... +0000 UTC"); binding a raw time.Time instead
+// would miss rows created exactly at midnight because of the string
+// format difference. CountSentNotificationForEvent cannot be reused
+// because summary rows have NULL related_entity_type/id.
+func (q *Queries) CountNotificationsByKindOnOrAfterDay(ctx context.Context, arg CountNotificationsByKindOnOrAfterDayParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countNotificationsByKindOnOrAfterDay, arg.Kind, arg.Day)
 	var count int64
 	err := row.Scan(&count)
 	return count, err

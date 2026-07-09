@@ -198,11 +198,11 @@ func sendGaveUpSummary(ctx context.Context, q *repository.Queries, logger *slog.
 		return nil
 	}
 
-	u := now.UTC()
-	dayStart := time.Date(u.Year(), u.Month(), u.Day(), 0, 0, 0, 0, time.UTC)
-	count, err := q.CountNotificationsByKindSince(ctx, repository.CountNotificationsByKindSinceParams{
-		Kind:      kindGaveUpSummary,
-		CreatedAt: dayStart,
+	// 当日判定は日付文字列の前方比較 (保存形式の差で 00:00:00 ちょうどの
+	// 行が漏れる time.Time bind を避ける。満了検出と同方式)
+	count, err := q.CountNotificationsByKindOnOrAfterDay(ctx, repository.CountNotificationsByKindOnOrAfterDayParams{
+		Kind: kindGaveUpSummary,
+		Day:  now.UTC().Format("2006-01-02"),
 	})
 	if err != nil {
 		return fmt.Errorf("count today's gave_up summaries: %w", err)
