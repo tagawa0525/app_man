@@ -204,6 +204,10 @@ func (c *Config) validateNotifier() error {
 		for _, ch := range n.Multi.Channels {
 			switch ch {
 			case "smtp", "teams", "file":
+				// 重複は同じ通知の二重送信になるため拒否する。
+				if used[ch] {
+					return fmt.Errorf("notifier.multi.channels must not contain duplicates, got %q twice", ch)
+				}
 				used[ch] = true
 			default:
 				return fmt.Errorf("notifier.multi.channels must contain only smtp/teams/file, got %q", ch)
