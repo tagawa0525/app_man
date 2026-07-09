@@ -52,22 +52,59 @@ SET retry_count = retry_count + 1,
     last_error = sqlc.arg(last_error)
 WHERE id = sqlc.arg(id);
 
+-- ListFailedNotificationsForRetry returns failed notifications still
+-- eligible for retry. Rows are excluded (superseded) when a sent record
+-- already exists for the same (kind, channel, recipient, related_*):
+-- the daily run re-creates events whose only records are failed (spec
+-- dedup checks sent only), so once that re-created record is delivered,
+-- retrying the stale failed row would double-send. IS is used for the
+-- related_* comparison because summary rows carry NULLs and '=' never
+-- matches NULL.
 -- name: ListFailedNotificationsForRetry :many
 SELECT id, kind, channel, recipient, subject, body,
   related_entity_type, related_entity_id, status, retry_count,
   last_attempted_at, last_error, sent_at, created_at
-FROM notifications
-WHERE status = 'failed'
-  AND retry_count < ?
-ORDER BY id;
+FROM notifications n
+WHERE n.status = 'failed'
+  AND n.retry_count < ?
+  AND NOT EXISTS (
+    SELECT 1 FROM notifications s
+    WHERE s.status = 'sent'
+      AND s.kind = n.kind
+      AND s.channel = n.channel
+      AND s.recipient = n.recipient
+      AND s.related_entity_type IS n.related_entity_type
+      AND s.related_entity_id IS n.related_entity_id
+  )
+ORDER BY n.id;
+
+-- CountSupersededFailedNotifications counts the failed rows that
+-- ListFailedNotificationsForRetry excludes by the sent-exists rule, so
+-- the retry run can report them as skipped_superseded.
+-- name: CountSupersededFailedNotifications :one
+SELECT count(*) FROM notifications n
+WHERE n.status = 'failed'
+  AND n.retry_count < ?
+  AND EXISTS (
+    SELECT 1 FROM notifications s
+    WHERE s.status = 'sent'
+      AND s.kind = n.kind
+      AND s.channel = n.channel
+      AND s.recipient = n.recipient
+      AND s.related_entity_type IS n.related_entity_type
+      AND s.related_entity_id IS n.related_entity_id
+  );
 
 -- CountSentNotificationForEvent implements the duplicate-suppression
--- key (kind, related_entity_type, related_entity_id) from spec 5.9:
--- when a sent record already exists for the event, no new record is
--- created. Callers pass non-NULL related_* values.
+-- key (kind, channel, related_entity_type, related_entity_id) from spec
+-- 5.9: when a sent record already exists for the event on the channel,
+-- no new record is created. The channel is part of the key so that a
+-- multi partial success re-sends only on channels that have not
+-- succeeded yet. Callers pass non-NULL related_* values.
 -- name: CountSentNotificationForEvent :one
 SELECT count(*) FROM notifications
 WHERE kind = ?
+  AND channel = ?
   AND related_entity_type = ?
   AND related_entity_id = ?
   AND status = 'sent';

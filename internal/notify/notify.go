@@ -155,8 +155,8 @@ func buildMailMessage(from string, msg Notification) []byte {
 	return b.Bytes()
 }
 
-// NamedNotifier は Multi の 1 チャネル。Name はエラーメッセージで失敗
-// チャネルを特定するために持つ。
+// NamedNotifier は名前付きの 1 チャネル。Name は notifications.channel への
+// 記録とエラーメッセージでの失敗チャネル特定に使う。
 type NamedNotifier struct {
 	Name     string
 	Notifier Notifier
@@ -164,6 +164,10 @@ type NamedNotifier struct {
 
 // MultiNotifier は複数チャネルへの同報。1 つが失敗しても残り全チャネルへ
 // 送信を試み、失敗をまとめて返す (部分成功でもエラー)。
+//
+// cmd/notify はチャネル別レコード方式 (FromConfig のチャネル列を展開して
+// チャネルごとに notifications レコードを作る) のため本型を使わないが、
+// 仕様 §5.9 が列挙する Notifier IF の実装として提供を続ける。
 type MultiNotifier struct {
 	Channels []NamedNotifier
 }
@@ -178,33 +182,41 @@ func (n *MultiNotifier) Send(ctx context.Context, msg Notification) error {
 	return errors.Join(errs...)
 }
 
-// FromConfig は NotifierConfig から Notifier を組み立てる。
+// FromConfig は NotifierConfig から (チャネル名, Notifier) の列を組み立てる。
+// 単一モード (smtp / teams / file) は 1 要素、multi は channels を設定順に
+// 展開、mode=off (および空) は空を返す — off は「チャネル不在」であり、
+// 呼び出し側 (cmd/notify) が空を見て検出ごとスキップする設計。
 //
-// mode=off (および空) は (nil, nil) を返す — off は「チャネル不在」であり、
-// 呼び出し側 (cmd/notify) が nil を見て検出ごとスキップする設計。静かに
-// 成功する NoopNotifier では誤送信フローが sent 記録を残してしまうため、
-// 誤って Send された場合に nil パニックとして顕在化する方を安全側とする。
+// チャネル列で返すのは、呼び出し側が宛先 × チャネルごとに notifications
+// レコードを作成して個別に送信できるようにするため。multi の部分成功時に
+// 成功チャネルは sent / 失敗チャネルだけ failed になり、--retry-failed は
+// 失敗チャネルのみを再送できる (MultiNotifier での同報 1 レコードだと部分
+// 成功の再送で成功済みチャネルへ重複送信される)。
 //
 // 必須項目の検証は config.Load 側で済んでいる前提 (ここでは組み立てのみ)。
-func FromConfig(cfg config.NotifierConfig) (Notifier, error) {
+func FromConfig(cfg config.NotifierConfig) ([]NamedNotifier, error) {
 	switch cfg.Mode {
 	case "", "off":
 		return nil, nil
 	case "smtp", "teams", "file":
-		return newChannel(cfg.Mode, cfg)
+		ch, err := newChannel(cfg.Mode, cfg)
+		if err != nil {
+			return nil, err
+		}
+		return []NamedNotifier{{Name: cfg.Mode, Notifier: ch}}, nil
 	case "multi":
 		if len(cfg.Multi.Channels) == 0 {
 			return nil, fmt.Errorf("notifier.multi.channels is empty")
 		}
-		multi := &MultiNotifier{}
+		channels := make([]NamedNotifier, 0, len(cfg.Multi.Channels))
 		for _, name := range cfg.Multi.Channels {
 			ch, err := newChannel(name, cfg)
 			if err != nil {
 				return nil, err
 			}
-			multi.Channels = append(multi.Channels, NamedNotifier{Name: name, Notifier: ch})
+			channels = append(channels, NamedNotifier{Name: name, Notifier: ch})
 		}
-		return multi, nil
+		return channels, nil
 	default:
 		return nil, fmt.Errorf("unknown notifier mode %q", cfg.Mode)
 	}

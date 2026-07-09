@@ -27,17 +27,17 @@ const kindGaveUpSummary = "gave_up_summary"
 
 // runNotify は notify.FromConfig + db.Open と本体 (notifyAll / retryAll) の
 // 薄い合成。now は満了検出の基準時刻 (main が time.Now() を渡す)。テストは
-// in-memory DB と fake Notifier を注入できる本体を直接呼ぶため、この関数は
+// in-memory DB と fake チャネル列を注入できる本体を直接呼ぶため、この関数は
 // mode=off の no-op 以外テスト対象にしない。
 func runNotify(ctx context.Context, deps clirun.Deps, retryFailed bool, now time.Time) error {
-	notifier, err := notify.FromConfig(deps.Cfg.Notifier)
+	channels, err := notify.FromConfig(deps.Cfg.Notifier)
 	if err != nil {
 		return fmt.Errorf("build notifier: %w", err)
 	}
-	if notifier == nil {
-		// mode=off はチャネル不在 (FromConfig が (nil, nil) を返す設計)。
-		// 検出ごとスキップし、DB にも触れず正常終了する — 通知未設定の
-		// 環境でスケジューラ登録だけ先行しても無害 (Plan の判断)。
+	if len(channels) == 0 {
+		// mode=off はチャネル不在 (FromConfig が空を返す設計)。検出ごと
+		// スキップし、DB にも触れず正常終了する — 通知未設定の環境で
+		// スケジューラ登録だけ先行しても無害 (Plan の判断)。
 		deps.Logger.Info("notifier mode is off; skipping notification run")
 		return nil
 	}
@@ -53,19 +53,19 @@ func runNotify(ctx context.Context, deps clirun.Deps, retryFailed bool, now time
 	}()
 
 	if retryFailed {
-		return retryAll(ctx, sqlDB, deps.Logger, notifier, deps.DryRun)
+		return retryAll(ctx, sqlDB, deps.Logger, channels, deps.DryRun)
 	}
-	return notifyAll(ctx, sqlDB, deps.Logger, notifier,
-		deps.Cfg.Notifier.Mode, deps.Cfg.Notifier.ExpiryDaysBefore, now, deps.DryRun)
+	return notifyAll(ctx, sqlDB, deps.Logger, channels,
+		deps.Cfg.Notifier.ExpiryDaysBefore, now, deps.DryRun)
 }
 
 // notifyCounters は通常実行のサマリログ用の集計。
 type notifyCounters struct {
 	detected           int // 満了 N 日ちょうどで検出したライセンス数
-	wouldSend          int // dry-run で送信対象になった宛先数
+	wouldSend          int // dry-run で送信対象になった宛先 x チャネル数
 	sent               int
 	failed             int
-	skippedDup         int // sent 済みイベントの重複抑止
+	skippedDup         int // sent 済み (イベント x チャネル) の重複抑止
 	skippedNoRecipient int // notify_email / linked_user email が両方空
 }
 
@@ -73,16 +73,21 @@ type notifyCounters struct {
 // ちょうどのライセンスを検出し、所管部署の license_manager (不在なら
 // system_admin) へ通知する。末尾で gave_up 日次サマリを送る。
 //
-// runNotify から切り離してあるのは、テストが handlertest.NewTestDB の
-// in-memory DB と fake Notifier を注入できる継ぎ目を作るため (generate-meta
-// の generateAll と同流儀)。channel は notifications.channel に記録する値
-// (= notifier の mode)。
+// レコードは宛先 × チャネルごとに作成する (チャネル別レコード方式)。multi
+// の部分成功時は成功チャネルが sent / 失敗チャネルだけが failed になり、
+// --retry-failed は失敗チャネルのみ再送する。重複抑止もチャネル単位
+// ((kind, channel, related)) で判定し、部分成功の再実行は未達チャネル
+// だけを再作成する。
 //
-// 1 宛先の送信失敗で中断せず全宛先を処理する。失敗は failed + last_error で
+// runNotify から切り離してあるのは、テストが handlertest.NewTestDB の
+// in-memory DB と fake チャネル列を注入できる継ぎ目を作るため
+// (generate-meta の generateAll と同流儀)。
+//
+// 1 レコードの送信失敗で中断せず全件処理する。失敗は failed + last_error で
 // 記録済みのため --retry-failed で再送でき、failed が 1 件以上なら error を
 // 返して exit 1 でスケジューラ / 運用者に通知する。
-func notifyAll(ctx context.Context, sqlDB *sql.DB, logger *slog.Logger, notifier notify.Notifier,
-	channel string, expiryDays []int, now time.Time, dryRun bool) error {
+func notifyAll(ctx context.Context, sqlDB *sql.DB, logger *slog.Logger, channels []notify.NamedNotifier,
+	expiryDays []int, now time.Time, dryRun bool) error {
 	q := repository.New(sqlDB)
 	var c notifyCounters
 
@@ -99,16 +104,26 @@ func notifyAll(ctx context.Context, sqlDB *sql.DB, logger *slog.Logger, notifier
 			c.detected++
 			entityType := "license"
 			entityID := row.ID
-			dup, err := q.CountSentNotificationForEvent(ctx, repository.CountSentNotificationForEventParams{
-				Kind:              kind,
-				RelatedEntityType: &entityType,
-				RelatedEntityID:   &entityID,
-			})
-			if err != nil {
-				return fmt.Errorf("count sent notifications for %s license %d: %w", kind, row.ID, err)
+
+			// チャネル別に sent 済みか判定し、未達チャネルだけ残す。
+			var pending []notify.NamedNotifier
+			for _, ch := range channels {
+				dup, err := q.CountSentNotificationForEvent(ctx, repository.CountSentNotificationForEventParams{
+					Kind:              kind,
+					Channel:           ch.Name,
+					RelatedEntityType: &entityType,
+					RelatedEntityID:   &entityID,
+				})
+				if err != nil {
+					return fmt.Errorf("count sent notifications for %s license %d channel %s: %w", kind, row.ID, ch.Name, err)
+				}
+				if dup > 0 {
+					c.skippedDup++
+					continue
+				}
+				pending = append(pending, ch)
 			}
-			if dup > 0 {
-				c.skippedDup++
+			if len(pending) == 0 {
 				continue
 			}
 
@@ -119,31 +134,34 @@ func notifyAll(ctx context.Context, sqlDB *sql.DB, logger *slog.Logger, notifier
 			c.skippedNoRecipient += skipped
 
 			subject, body := expiryMessage(row, days)
-			for _, email := range emails {
-				if dryRun {
-					c.wouldSend++
-					continue
+			for _, ch := range pending {
+				for _, email := range emails {
+					if dryRun {
+						c.wouldSend++
+						continue
+					}
+					sendErr, err := deliver(ctx, q, ch.Notifier, kind, ch.Name, email, subject, body, &entityType, &entityID)
+					if err != nil {
+						return err
+					}
+					if sendErr != nil {
+						c.failed++
+						// 本文 (ライセンス情報) はログに出さない (§8.5)。
+						logger.Warn("send notification failed",
+							slog.String("kind", kind),
+							slog.Int64("license_id", row.ID),
+							slog.String("channel", ch.Name),
+							slog.String("recipient", email),
+							slog.Any("error", sendErr))
+						continue
+					}
+					c.sent++
 				}
-				sendErr, err := deliver(ctx, q, notifier, kind, channel, email, subject, body, &entityType, &entityID)
-				if err != nil {
-					return err
-				}
-				if sendErr != nil {
-					c.failed++
-					// 本文 (ライセンス情報) はログに出さない (§8.5)。
-					logger.Warn("send notification failed",
-						slog.String("kind", kind),
-						slog.Int64("license_id", row.ID),
-						slog.String("recipient", email),
-						slog.Any("error", sendErr))
-					continue
-				}
-				c.sent++
 			}
 		}
 	}
 
-	if err := sendGaveUpSummary(ctx, q, logger, notifier, channel, now, dryRun, &c); err != nil {
+	if err := sendGaveUpSummary(ctx, q, logger, channels, now, dryRun, &c); err != nil {
 		return err
 	}
 
@@ -168,9 +186,10 @@ func notifyAll(ctx context.Context, sqlDB *sql.DB, logger *slog.Logger, notifier
 // sendGaveUpSummary は未サマリの gave_up がある場合に、system_admin 宛の
 // 日次サマリを送る (仕様 §5.9「system_admin 向けの日次サマリに集約」)。
 // related_* は NULL のため重複抑止は「当日 (UTC) 分のサマリ作成済みか」で
-// 判定する。集計は呼び出し側の notifyCounters に加算する。
+// 判定する (チャネル問わず日次 1 回)。集計は呼び出し側の notifyCounters に
+// 加算する。
 func sendGaveUpSummary(ctx context.Context, q *repository.Queries, logger *slog.Logger,
-	notifier notify.Notifier, channel string, now time.Time, dryRun bool, c *notifyCounters) error {
+	channels []notify.NamedNotifier, now time.Time, dryRun bool, c *notifyCounters) error {
 	rows, err := q.ListUnsummarizedGaveUp(ctx)
 	if err != nil {
 		return fmt.Errorf("list unsummarized gave_up notifications: %w", err)
@@ -211,32 +230,38 @@ func sendGaveUpSummary(ctx context.Context, q *repository.Queries, logger *slog.
 	}
 
 	subject, body := gaveUpSummaryMessage(rows)
-	for _, email := range emails {
-		if dryRun {
-			c.wouldSend++
-			continue
+	for _, ch := range channels {
+		for _, email := range emails {
+			if dryRun {
+				c.wouldSend++
+				continue
+			}
+			sendErr, err := deliver(ctx, q, ch.Notifier, kindGaveUpSummary, ch.Name, email, subject, body, nil, nil)
+			if err != nil {
+				return err
+			}
+			if sendErr != nil {
+				c.failed++
+				logger.Warn("send gave_up summary failed",
+					slog.String("channel", ch.Name),
+					slog.String("recipient", email),
+					slog.Any("error", sendErr))
+				continue
+			}
+			c.sent++
 		}
-		sendErr, err := deliver(ctx, q, notifier, kindGaveUpSummary, channel, email, subject, body, nil, nil)
-		if err != nil {
-			return err
-		}
-		if sendErr != nil {
-			c.failed++
-			logger.Warn("send gave_up summary failed",
-				slog.String("recipient", email),
-				slog.Any("error", sendErr))
-			continue
-		}
-		c.sent++
 	}
 	return nil
 }
 
 // retryAll は --retry-failed の本体。status='failed' かつ retry_count <
-// notification_max_retry の通知を、記録済みの宛先・件名・本文で再送する。
-// 成功: sent / 失敗: retry_count++ (上限到達で gave_up)。dry-run は対象
-// 件数のみログに出す。
-func retryAll(ctx context.Context, sqlDB *sql.DB, logger *slog.Logger, notifier notify.Notifier, dryRun bool) error {
+// notification_max_retry の通知を、記録済みの宛先・件名・本文で、レコードの
+// channel に対応する Notifier から再送する。成功: sent / 失敗:
+// retry_count++ (上限到達で gave_up)。同一 (kind, channel, recipient,
+// related) の sent が存在する failed は再送せず skipped_superseded として
+// 数える (通常実行が再作成・送達済みのイベントを二重送信しない)。dry-run
+// は対象件数のみログに出す。
+func retryAll(ctx context.Context, sqlDB *sql.DB, logger *slog.Logger, channels []notify.NamedNotifier, dryRun bool) error {
 	q := repository.New(sqlDB)
 	maxRetry, err := resolveMaxRetry(ctx, q)
 	if err != nil {
@@ -246,13 +271,34 @@ func retryAll(ctx context.Context, sqlDB *sql.DB, logger *slog.Logger, notifier 
 	if err != nil {
 		return fmt.Errorf("list failed notifications: %w", err)
 	}
+	superseded, err := q.CountSupersededFailedNotifications(ctx, int64(maxRetry))
+	if err != nil {
+		return fmt.Errorf("count superseded notifications: %w", err)
+	}
 	if dryRun {
-		logger.Info("notify retry dry-run", slog.Int("would_retry", len(rows)))
+		logger.Info("notify retry dry-run",
+			slog.Int("would_retry", len(rows)),
+			slog.Int64("skipped_superseded", superseded))
 		return nil
 	}
 
-	sent, failed, gaveUp := 0, 0, 0
+	byName := make(map[string]notify.Notifier, len(channels))
+	for _, ch := range channels {
+		byName[ch.Name] = ch.Notifier
+	}
+
+	sent, failed, gaveUp, skippedChannel := 0, 0, 0, 0
 	for _, row := range rows {
+		notifier, ok := byName[row.Channel]
+		if !ok {
+			// 設定変更でチャネルが外れたレコード。送信試行ではないため
+			// retry_count は増やさず、failed のまま残す。
+			logger.Warn("channel not configured; skipping retry",
+				slog.Int64("notification_id", row.ID),
+				slog.String("channel", row.Channel))
+			skippedChannel++
+			continue
+		}
 		sendErr := notifier.Send(ctx, notify.Notification{
 			ID:        row.ID,
 			Recipient: row.Recipient,
@@ -280,6 +326,7 @@ func retryAll(ctx context.Context, sqlDB *sql.DB, logger *slog.Logger, notifier 
 		}
 		logger.Warn("retry send failed",
 			slog.Int64("notification_id", row.ID),
+			slog.String("channel", row.Channel),
 			slog.Int64("retry_count", row.RetryCount+1),
 			slog.String("status", status),
 			slog.Any("error", sendErr))
@@ -295,6 +342,8 @@ func retryAll(ctx context.Context, sqlDB *sql.DB, logger *slog.Logger, notifier 
 		slog.Int("sent", sent),
 		slog.Int("failed", failed),
 		slog.Int("gave_up", gaveUp),
+		slog.Int64("skipped_superseded", superseded),
+		slog.Int("skipped_unknown_channel", skippedChannel),
 	)
 	if failed+gaveUp > 0 {
 		return fmt.Errorf("notify retry: %d of %d retries failed", failed+gaveUp, len(rows))
