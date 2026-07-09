@@ -682,6 +682,18 @@ notifier:
 `,
 		},
 		{
+			// 同一チャネルの重複は同じ通知の二重送信になるため拒否する
+			name: "multi channels with duplicates",
+			notifier: `
+notifier:
+  mode: multi
+  multi:
+    channels: [file, file]
+  file:
+    output_dir: ./data/files/mail-out
+`,
+		},
+		{
 			name: "multi channels must not nest multi",
 			notifier: `
 notifier:
