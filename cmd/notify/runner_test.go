@@ -861,3 +861,30 @@ func TestNotifyAll_GaveUpSummaryWarnsWhenNoAdmins(t *testing.T) {
 		t.Errorf("summary log should count skipped_no_recipient=1, got: %s", buf.String())
 	}
 }
+
+// TestRetryAll_UnknownChannelIsError は設定から外れたチャネルの failed 行が
+// skip されたとき、exit 0 で握りつぶさずエラーになることを確認する
+// (スケジューラ/運用者が設定不整合に気付けるように。PR #37 Copilot 指摘)。
+func TestRetryAll_UnknownChannelIsError(t *testing.T) {
+	t.Parallel()
+	sqlDB := handlertest.NewTestDB(t)
+	ctx := context.Background()
+	if _, err := sqlDB.Exec(`INSERT INTO notifications
+		(kind, channel, recipient, status, retry_count, last_attempted_at)
+		VALUES ('license_expiry_30', 'teams', 'a@x', 'failed', 0, datetime('now'))`); err != nil {
+		t.Fatalf("insert failed row: %v", err)
+	}
+
+	var buf bytes.Buffer
+	fake := &fakeNotifier{}
+	err := retryAll(ctx, sqlDB, slog.New(slog.NewJSONHandler(&buf, nil)), fileChannel(fake), false)
+	if err == nil {
+		t.Fatal("retryAll should return error when failed rows are skipped for unknown channel")
+	}
+	if !strings.Contains(err.Error(), "unknown channel") {
+		t.Errorf("error should mention unknown channel, got: %v", err)
+	}
+	if len(fake.sent) != 0 {
+		t.Errorf("nothing must be sent, got %d", len(fake.sent))
+	}
+}
