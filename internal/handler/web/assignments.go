@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tagawa0525/app_man/internal/handler/middleware"
 	"github.com/tagawa0525/app_man/internal/repository"
 )
 
@@ -31,7 +32,7 @@ func (h *licenseHandlers) assignUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := repository.New(h.db)
-	if !h.licenseExists(w, r, q, id) {
+	if _, ok := h.licenseForWrite(w, r, q, id); !ok {
 		return
 	}
 
@@ -105,6 +106,9 @@ func (h *licenseHandlers) revokeUserAssignment(w http.ResponseWriter, r *http.Re
 		return
 	}
 	q := repository.New(h.db)
+	if _, ok := h.licenseForWrite(w, r, q, id); !ok {
+		return
+	}
 	affected, err := q.RevokeUserAssignment(r.Context(), repository.RevokeUserAssignmentParams{
 		ID:        aid,
 		LicenseID: id,
@@ -129,7 +133,7 @@ func (h *licenseHandlers) assignDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := repository.New(h.db)
-	if !h.licenseExists(w, r, q, id) {
+	if _, ok := h.licenseForWrite(w, r, q, id); !ok {
 		return
 	}
 
@@ -202,6 +206,9 @@ func (h *licenseHandlers) revokeDeviceAssignment(w http.ResponseWriter, r *http.
 		return
 	}
 	q := repository.New(h.db)
+	if _, ok := h.licenseForWrite(w, r, q, id); !ok {
+		return
+	}
 	affected, err := q.RevokeDeviceAssignment(r.Context(), repository.RevokeDeviceAssignmentParams{
 		ID:        aid,
 		LicenseID: id,
@@ -218,18 +225,25 @@ func (h *licenseHandlers) revokeDeviceAssignment(w http.ResponseWriter, r *http.
 	http.Redirect(w, r, "/licenses/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
 }
 
-// licenseExists は割当 POST の対象ライセンスの実在確認。存在しなければ
-// 404 を書き込んで false を返す (未知 license_id への INSERT が FK 違反 →
-// 500 になるのを防ぐ)。
-func (h *licenseHandlers) licenseExists(w http.ResponseWriter, r *http.Request, q *repository.Queries, id int64) bool {
-	if _, err := q.GetLicenseByID(r.Context(), id); err != nil {
+// licenseForWrite はライセンスへの書込み系 POST 共通の前段チェック。
+// 対象ライセンスを取得し (存在しなければ 404。未知 license_id への INSERT
+// が FK 違反 → 500 になるのも防ぐ)、その所管部署に対する license_manager
+// 相当の部署スコープ権限 (仕様 §7.2) を検証する。権限が無ければ
+// RequireRole と同じ体裁の 403。失敗時は応答を書き込んで ok=false を返す。
+func (h *licenseHandlers) licenseForWrite(w http.ResponseWriter, r *http.Request, q *repository.Queries, id int64) (repository.GetLicenseByIDRow, bool) {
+	lic, err := q.GetLicenseByID(r.Context(), id)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.NotFound(w, r)
-			return false
+			return lic, false
 		}
-		h.logger.ErrorContext(r.Context(), "get license for assignment", "err", err)
+		h.logger.ErrorContext(r.Context(), "get license for write", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
-		return false
+		return lic, false
 	}
-	return true
+	if !middleware.HasDepartmentRole(r.Context(), middleware.RoleLicenseManager, lic.OwningDepartmentID) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return lic, false
+	}
+	return lic, true
 }

@@ -193,6 +193,9 @@ func TestDeptScope_Licenses_Update(t *testing.T) {
 	}
 
 	// system_admin (部署 A スコープ行) は部署 B → A の付け替えも成功。
+	// moveForm には直前のリクエストの _csrf が残っているので消してから
+	// 再利用する (AuthenticatedPostFormInDept が新 session の値を埋め直す)。
+	moveForm.Del("_csrf")
 	req = handlertest.AuthenticatedPostFormInDept(t, db, store,
 		fmt.Sprintf("/licenses/%d", licB.ID), middleware.RoleSystemAdmin, a.dept.ID, moveForm)
 	rec = httptest.NewRecorder()

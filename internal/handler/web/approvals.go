@@ -285,6 +285,12 @@ func (h *approvalHandlers) create(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// 対象部署への dept_security_admin 相当の部署スコープ検証 (§7.2)。
+	// ルートの RequireRole(securityAdmins) 通過後の第 2 層。
+	if !middleware.HasDepartmentRole(r.Context(), middleware.RoleDepartmentSecurityAdmin, dept.ID) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	input, expiresAt, errs := decodeApprovalForm(r)
 	if len(errs) > 0 {
 		h.renderDetail(w, r, http.StatusBadRequest, dept, product, input, errs, "")
@@ -370,6 +376,11 @@ func (h *approvalHandlers) create(w http.ResponseWriter, r *http.Request) {
 func (h *approvalHandlers) revoke(w http.ResponseWriter, r *http.Request) {
 	dept, product, ok := h.loadDeptProduct(w, r)
 	if !ok {
+		return
+	}
+	// 登録と同じ部署スコープ検証 (取消も §7.1 の「自部署の承認登録」の一部)。
+	if !middleware.HasDepartmentRole(r.Context(), middleware.RoleDepartmentSecurityAdmin, dept.ID) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	_ = r.ParseForm()
