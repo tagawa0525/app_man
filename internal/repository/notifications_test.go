@@ -11,11 +11,11 @@ import (
 // notifications_test.go は gave_up サマリの当日 dedup 判定を repository
 // レベルで固定する (PR #37 Copilot 指摘)。
 
-// CountNotificationsByKindOnOrAfterDay は保存形式の違い (CURRENT_TIMESTAMP
+// CountNotificationsByKindOnDay は保存形式の違い (CURRENT_TIMESTAMP
 // の "YYYY-MM-DD HH:MM:SS" と Go ドライバの "…+0000 UTC") に依存せず、
 // 深夜 0 時ちょうどに作成された行も当日分として数える。time.Time を
 // そのまま bind すると文字列比較の形式差で 00:00:00 の行が漏れる。
-func TestCountNotificationsByKindOnOrAfterDay_MidnightRow(t *testing.T) {
+func TestCountNotificationsByKindOnDay_MidnightRow(t *testing.T) {
 	t.Parallel()
 	sqlDB := handlertest.NewTestDB(t)
 	q := repository.New(sqlDB)
@@ -38,14 +38,32 @@ func TestCountNotificationsByKindOnOrAfterDay_MidnightRow(t *testing.T) {
 	if err := sqlDB.QueryRow(`SELECT date('now')`).Scan(&today); err != nil {
 		t.Fatalf("date('now'): %v", err)
 	}
-	n, err := q.CountNotificationsByKindOnOrAfterDay(ctx, repository.CountNotificationsByKindOnOrAfterDayParams{
+	n, err := q.CountNotificationsByKindOnDay(ctx, repository.CountNotificationsByKindOnDayParams{
 		Kind: "gave_up_summary",
 		Day:  today,
 	})
 	if err != nil {
-		t.Fatalf("CountNotificationsByKindOnOrAfterDay: %v", err)
+		t.Fatalf("CountNotificationsByKindOnDay: %v", err)
 	}
 	if n != 1 {
 		t.Errorf("count = %d, want 1 (midnight row counted, yesterday excluded)", n)
+	}
+
+	// 将来日付の行 (サーバ時刻ズレ等) が当日判定を恒久ブロックしないこと:
+	// >= 比較だと将来行 1 件で以後の当日実行が常にスキップされる。
+	if _, err := sqlDB.Exec(`INSERT INTO notifications
+		(kind, channel, recipient, status, created_at)
+		VALUES ('gave_up_summary', 'file', 'a@x', 'sent', date('now', '+30 day') || ' 00:00:00')`); err != nil {
+		t.Fatalf("insert future summary: %v", err)
+	}
+	n, err = q.CountNotificationsByKindOnDay(ctx, repository.CountNotificationsByKindOnDayParams{
+		Kind: "gave_up_summary",
+		Day:  today,
+	})
+	if err != nil {
+		t.Fatalf("CountNotificationsByKindOnDay (with future row): %v", err)
+	}
+	if n != 1 {
+		t.Errorf("count = %d, want 1 (future-dated row must not count as today)", n)
 	}
 }

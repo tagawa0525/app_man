@@ -416,3 +416,17 @@ func TestTeamsWebhookNotifier_redactsURLInErrors(t *testing.T) {
 		t.Errorf("error must not leak webhook URL: %v", err)
 	}
 }
+
+// リクエスト生成エラー (不正 URL 等) の経路でも webhook URL を漏らさない。
+func TestTeamsWebhookNotifier_redactsURLInRequestBuildErrors(t *testing.T) {
+	t.Parallel()
+	const badURL = "http://127.0.0.1:1/hooks/secret-token-abc\x7f" // 制御文字で NewRequest が失敗する
+	n := &notify.TeamsWebhookNotifier{WebhookURL: badURL}
+	err := n.Send(context.Background(), notify.Notification{ID: 1, Recipient: "teams", Subject: "s", Body: "b"})
+	if err == nil {
+		t.Fatal("Send with invalid URL should fail")
+	}
+	if strings.Contains(err.Error(), "secret-token-abc") {
+		t.Errorf("request-build error must not leak webhook URL: %v", err)
+	}
+}
