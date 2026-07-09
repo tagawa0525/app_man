@@ -171,6 +171,21 @@ appmgr-prune-logs -config config.yml -dry-run   # 対象件数をログに出す
 
 値が不正（非整数・0 以下）な場合は exit 1 で全体を中断し、どのテーブルも削除しない（保持期間の解釈ミスによる大量削除の防止）。なお `import_logs` は `raw_installations` から参照されている行を削除対象から除外するため、`import_logs` の保持期間を `raw_installations` より短く設定しても FK 違反で失敗しない。
 
+## 通知（notify）
+
+`appmgr-notify` はライセンス満了 N 日前（`notifier.expiry_days_before`、既定 `[30, 90]`）の通知を送信する日次バッチ。宛先は所管部署の license_manager（`app_users.notify_email` を優先、無ければ紐づく `users.email`、両方空は warn ログを出してスキップ）で、部署に license_manager がいなければ system_admin 全員に送る。通知は送信前に必ず `notifications` テーブルにレコードを作成し、成功で `sent`、失敗で `failed`（`last_error` にエラー詳細）を記録する。同一イベント（kind + 対象ライセンス）に `sent` レコードがあれば再送しないため、日次で何度実行しても重複送信されない。
+
+```sh
+appmgr-notify -config config.yml                          # 満了通知の検出・送信 + gave_up サマリ
+appmgr-notify -config config.yml -dry-run                 # 検出件数・would_send をログに出すのみ（notifications へも書かない）
+appmgr-notify -config config.yml -retry-failed            # 送信失敗（failed）分の再送
+appmgr-notify -config config.yml -retry-failed -dry-run   # 再送対象件数をログに出すのみ
+```
+
+タスクスケジューラには通常実行を日次で登録する（登録手順は「バックアップ」節を参照。exit code の意味も同じ）。`-retry-failed` は失敗を翌日以降に自動回収したい場合に通常実行の後に続けて登録するか、障害復旧後に手動で実行する。再送上限は `app_settings` の `notification_max_retry`（キーが無ければ既定 5、不正値は exit 1 で再送を開始しない）。上限まで失敗した通知は `gave_up` に遷移し、次の通常実行で system_admin 宛の日次サマリ 1 通に集約される（同日 2 通目は作られない）。
+
+通知チャネルは `config.yml` の `notifier.mode`（`smtp` / `teams` / `file` / `multi` / `off`）で切り替える。未設定（= `off`）では何もせず exit 0 になるため、スケジューラ登録だけ先行しても無害。SMTP や Teams を本番投入する前は、`mode: file` にして `notifier.file.output_dir`（例: `./data/files/mail-out`）へ 1 通 1 ファイルで書き出される宛先・件名・本文を確認してから切り替えるとよい（実運用と同じ検出・記録・重複抑止のフローで動く）。
+
 ## 初期データ移行（import-bootstrap）
 
 `appmgr-import-bootstrap` は既存 Excel から書き出した CSV（UTF-8・ヘッダ行あり）を検証し、一括投入する。全行を検証してエラーが 1 件でもあれば行番号付きで列挙して 1 行も投入しない（1 トランザクション）。`--commit` を付けない限り dry-run（検証のみ）で、commit 成功時は `audit_logs` に `bootstrap_import` として記録される。
