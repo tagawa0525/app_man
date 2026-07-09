@@ -221,6 +221,64 @@ func TestSMTPNotifier_connectionFailure(t *testing.T) {
 	}
 }
 
+// TestSMTPNotifier_rejectsHeaderInjection は From / Recipient / Subject に
+// CR/LF が混入した Notification を接続前に拒否することを検証する (SMTP
+// ヘッダインジェクション対策)。net/smtp も from / to は検証するが、Subject
+// を含む 3 フィールドを本実装の責務として決定論的なエラーで弾く (呼び出し
+// 側はこれを failed + last_error として記録する)。
+func TestSMTPNotifier_rejectsHeaderInjection(t *testing.T) {
+	tests := []struct {
+		name string
+		from string
+		msg  notify.Notification
+	}{
+		{
+			name: "recipient with CRLF",
+			from: "app-manager@example.com",
+			msg: notify.Notification{
+				ID:        9,
+				Recipient: "alice@example.com\r\nBcc: evil@example.com",
+				Subject:   "s",
+				Body:      "b",
+			},
+		},
+		{
+			name: "subject with LF",
+			from: "app-manager@example.com",
+			msg: notify.Notification{
+				ID:        10,
+				Recipient: "alice@example.com",
+				Subject:   "hello\nBcc: evil@example.com",
+				Body:      "b",
+			},
+		},
+		{
+			name: "from with CR",
+			from: "app-manager@example.com\rBcc: evil@example.com",
+			msg: notify.Notification{
+				ID:        11,
+				Recipient: "alice@example.com",
+				Subject:   "s",
+				Body:      "b",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 検証で接続前に弾かれるため、到達不能なホストでよい
+			// (検証が無いと dial まで進み、別のエラーになる)。
+			n := &notify.SMTPNotifier{Host: "smtp.example.invalid", Port: 25, From: tt.from}
+			err := n.Send(context.Background(), tt.msg)
+			if err == nil {
+				t.Fatal("Send() expected error for CR/LF in header field, got nil")
+			}
+			if !strings.Contains(err.Error(), "header") {
+				t.Errorf("Send() error = %v, want header-injection validation error", err)
+			}
+		})
+	}
+}
+
 // TestFromConfig は mode ごとに適切な実装が返ることを検証する。
 // mode=off は (nil, nil) — off は「チャネル不在」であり、呼び出し側
 // (cmd/notify) が nil を見て検出ごとスキップする設計。誤って Send される
