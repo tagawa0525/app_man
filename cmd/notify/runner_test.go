@@ -720,6 +720,41 @@ func TestRetryAll_SkipsSupersededFailed(t *testing.T) {
 	}
 }
 
+// TestNotifyAll_WarnsWhenNoRecipientCandidates は license_manager 不在かつ
+// system_admin も不在で宛先候補がゼロのとき、静かにスキップせず warn ログ +
+// skipped_no_recipient に計上されることを確認する (PR #37 Copilot 指摘)。
+func TestNotifyAll_WarnsWhenNoRecipientCandidates(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := handlertest.NewTestDB(t)
+	q := repository.New(sqlDB)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	productID, deptID := seedCatalog(t, q)
+	seedExpiringLicense(t, q, productID, deptID, 30, now)
+	// app_users を 1 人も作らない: license_manager もフォールバック先の
+	// system_admin も不在。
+
+	var buf bytes.Buffer
+	fake := &fakeNotifier{}
+	if err := notifyAll(ctx, sqlDB, slog.New(slog.NewJSONHandler(&buf, nil)), fileChannel(fake), []int{30}, now, false); err != nil {
+		t.Fatalf("notifyAll: %v", err)
+	}
+
+	if rows := fetchNotifications(t, sqlDB); len(rows) != 0 {
+		t.Errorf("no record must be created without recipients, got %d rows", len(rows))
+	}
+	if len(fake.sent) != 0 {
+		t.Errorf("nothing must be sent, got %d", len(fake.sent))
+	}
+	if !strings.Contains(buf.String(), "WARN") {
+		t.Errorf("warn log expected for zero recipient candidates, got: %s", buf.String())
+	}
+	if !strings.Contains(buf.String(), `"skipped_no_recipient":1`) {
+		t.Errorf("summary log should count skipped_no_recipient=1, got: %s", buf.String())
+	}
+}
+
 // TestNotifyAll_ResummarizesAfterFailedSummary は「サマリ送信が失敗した」
 // 場合に、その失敗サマリがチェックポイントを進めず、翌日相当の通常実行で
 // 同じ gave_up 行が再サマリされることを確認する。チェックポイントが status
