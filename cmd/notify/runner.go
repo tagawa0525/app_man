@@ -357,6 +357,11 @@ func retryAll(ctx context.Context, sqlDB *sql.DB, logger *slog.Logger, channels 
 	if failed+gaveUp > 0 {
 		return fmt.Errorf("notify retry: %d of %d retries failed", failed+gaveUp, len(rows))
 	}
+	// 設定から外れたチャネルの failed 行は再送も解消もされないまま残る。
+	// exit 0 で握りつぶすと設定不整合に気付けないためエラーにする
+	if skippedChannel > 0 {
+		return fmt.Errorf("notify retry: %d failed notification(s) skipped for unknown channel (check notifier config)", skippedChannel)
+	}
 	return nil
 }
 
