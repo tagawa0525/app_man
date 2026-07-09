@@ -279,35 +279,39 @@ func TestSMTPNotifier_rejectsHeaderInjection(t *testing.T) {
 	}
 }
 
-// TestFromConfig は mode ごとに適切な実装が返ることを検証する。
-// mode=off は (nil, nil) — off は「チャネル不在」であり、呼び出し側
-// (cmd/notify) が nil を見て検出ごとスキップする設計。誤って Send される
-// 事故は nil パニックとして顕在化するため、静かに成功する NoopNotifier
-// より安全側に倒す。
+// TestFromConfig は mode ごとに (チャネル名, Notifier) の列が返ることを
+// 検証する。単一モードは 1 要素、multi は channels を設定順に展開、
+// mode=off は空 — off は「チャネル不在」であり、呼び出し側 (cmd/notify) が
+// 空を見て検出ごとスキップする設計。チャネル列で返すのは、runner が宛先 ×
+// チャネルごとに notifications レコードを作り、multi の部分成功時に失敗
+// チャネルだけを再送できるようにするため (チャネル別レコード方式)。
 func TestFromConfig(t *testing.T) {
-	t.Run("off returns nil notifier", func(t *testing.T) {
+	t.Run("off returns no channels", func(t *testing.T) {
 		for _, mode := range []string{"off", ""} {
-			n, err := notify.FromConfig(config.NotifierConfig{Mode: mode})
+			chs, err := notify.FromConfig(config.NotifierConfig{Mode: mode})
 			if err != nil {
 				t.Fatalf("FromConfig(mode=%q) unexpected error: %v", mode, err)
 			}
-			if n != nil {
-				t.Errorf("FromConfig(mode=%q) = %T, want nil", mode, n)
+			if len(chs) != 0 {
+				t.Errorf("FromConfig(mode=%q) = %d channels, want 0", mode, len(chs))
 			}
 		}
 	})
 
 	t.Run("file", func(t *testing.T) {
-		n, err := notify.FromConfig(config.NotifierConfig{
+		chs, err := notify.FromConfig(config.NotifierConfig{
 			Mode: "file",
 			File: config.NotifierFileConfig{OutputDir: "./mail-out"},
 		})
 		if err != nil {
 			t.Fatalf("FromConfig() unexpected error: %v", err)
 		}
-		fn, ok := n.(*notify.FileNotifier)
+		if len(chs) != 1 || chs[0].Name != "file" {
+			t.Fatalf("FromConfig() = %+v, want single channel named file", chs)
+		}
+		fn, ok := chs[0].Notifier.(*notify.FileNotifier)
 		if !ok {
-			t.Fatalf("FromConfig() = %T, want *notify.FileNotifier", n)
+			t.Fatalf("Notifier = %T, want *notify.FileNotifier", chs[0].Notifier)
 		}
 		if fn.OutputDir != "./mail-out" {
 			t.Errorf("OutputDir = %q, want %q", fn.OutputDir, "./mail-out")
@@ -315,16 +319,19 @@ func TestFromConfig(t *testing.T) {
 	})
 
 	t.Run("teams", func(t *testing.T) {
-		n, err := notify.FromConfig(config.NotifierConfig{
+		chs, err := notify.FromConfig(config.NotifierConfig{
 			Mode:  "teams",
 			Teams: config.NotifierTeamsConfig{WebhookURL: "https://example.invalid/hook"},
 		})
 		if err != nil {
 			t.Fatalf("FromConfig() unexpected error: %v", err)
 		}
-		tn, ok := n.(*notify.TeamsWebhookNotifier)
+		if len(chs) != 1 || chs[0].Name != "teams" {
+			t.Fatalf("FromConfig() = %+v, want single channel named teams", chs)
+		}
+		tn, ok := chs[0].Notifier.(*notify.TeamsWebhookNotifier)
 		if !ok {
-			t.Fatalf("FromConfig() = %T, want *notify.TeamsWebhookNotifier", n)
+			t.Fatalf("Notifier = %T, want *notify.TeamsWebhookNotifier", chs[0].Notifier)
 		}
 		if tn.WebhookURL != "https://example.invalid/hook" {
 			t.Errorf("WebhookURL = %q, want %q", tn.WebhookURL, "https://example.invalid/hook")
@@ -332,24 +339,27 @@ func TestFromConfig(t *testing.T) {
 	})
 
 	t.Run("smtp", func(t *testing.T) {
-		n, err := notify.FromConfig(config.NotifierConfig{
+		chs, err := notify.FromConfig(config.NotifierConfig{
 			Mode: "smtp",
 			SMTP: config.NotifierSMTPConfig{Host: "smtp.example.local", Port: 25, From: "app@example.com"},
 		})
 		if err != nil {
 			t.Fatalf("FromConfig() unexpected error: %v", err)
 		}
-		sn, ok := n.(*notify.SMTPNotifier)
+		if len(chs) != 1 || chs[0].Name != "smtp" {
+			t.Fatalf("FromConfig() = %+v, want single channel named smtp", chs)
+		}
+		sn, ok := chs[0].Notifier.(*notify.SMTPNotifier)
 		if !ok {
-			t.Fatalf("FromConfig() = %T, want *notify.SMTPNotifier", n)
+			t.Fatalf("Notifier = %T, want *notify.SMTPNotifier", chs[0].Notifier)
 		}
 		if sn.Host != "smtp.example.local" || sn.Port != 25 || sn.From != "app@example.com" {
 			t.Errorf("SMTPNotifier = %+v, want host/port/from from config", sn)
 		}
 	})
 
-	t.Run("multi", func(t *testing.T) {
-		n, err := notify.FromConfig(config.NotifierConfig{
+	t.Run("multi expands channels in config order", func(t *testing.T) {
+		chs, err := notify.FromConfig(config.NotifierConfig{
 			Mode: "multi",
 			SMTP: config.NotifierSMTPConfig{Host: "smtp.example.local", Port: 25, From: "app@example.com"},
 			File: config.NotifierFileConfig{OutputDir: "./mail-out"},
@@ -360,21 +370,17 @@ func TestFromConfig(t *testing.T) {
 		if err != nil {
 			t.Fatalf("FromConfig() unexpected error: %v", err)
 		}
-		mn, ok := n.(*notify.MultiNotifier)
-		if !ok {
-			t.Fatalf("FromConfig() = %T, want *notify.MultiNotifier", n)
+		if len(chs) != 2 {
+			t.Fatalf("len(channels) = %d, want 2", len(chs))
 		}
-		if len(mn.Channels) != 2 {
-			t.Fatalf("len(Channels) = %d, want 2", len(mn.Channels))
+		if chs[0].Name != "smtp" || chs[1].Name != "file" {
+			t.Errorf("channel names = %q, %q, want smtp, file (config order)", chs[0].Name, chs[1].Name)
 		}
-		if mn.Channels[0].Name != "smtp" || mn.Channels[1].Name != "file" {
-			t.Errorf("channel names = %q, %q, want smtp, file (config order)", mn.Channels[0].Name, mn.Channels[1].Name)
+		if _, ok := chs[0].Notifier.(*notify.SMTPNotifier); !ok {
+			t.Errorf("channels[0].Notifier = %T, want *notify.SMTPNotifier", chs[0].Notifier)
 		}
-		if _, ok := mn.Channels[0].Notifier.(*notify.SMTPNotifier); !ok {
-			t.Errorf("Channels[0].Notifier = %T, want *notify.SMTPNotifier", mn.Channels[0].Notifier)
-		}
-		if _, ok := mn.Channels[1].Notifier.(*notify.FileNotifier); !ok {
-			t.Errorf("Channels[1].Notifier = %T, want *notify.FileNotifier", mn.Channels[1].Notifier)
+		if _, ok := chs[1].Notifier.(*notify.FileNotifier); !ok {
+			t.Errorf("channels[1].Notifier = %T, want *notify.FileNotifier", chs[1].Notifier)
 		}
 	})
 

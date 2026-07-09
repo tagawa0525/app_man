@@ -37,6 +37,11 @@ func (f *fakeNotifier) Send(_ context.Context, msg notify.Notification) error {
 
 func ptr(s string) *string { return &s }
 
+// fileChannel は単一 file チャネルの列を作る (mode=file 相当)。
+func fileChannel(n notify.Notifier) []notify.NamedNotifier {
+	return []notify.NamedNotifier{{Name: "file", Notifier: n}}
+}
+
 // seedCatalog は vendor + product + 現役部署を 1 組投入する (licenses の FK 前提)。
 func seedCatalog(t *testing.T, q *repository.Queries) (productID, deptID int64) {
 	t.Helper()
@@ -193,7 +198,7 @@ func TestNotifyAll_SendsAndSuppressesDuplicates(t *testing.T) {
 	grantRole(t, q, mgr.ID, &deptID, "license_manager")
 
 	fake := &fakeNotifier{}
-	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), fake, "file", []int{30}, now, false); err != nil {
+	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), fileChannel(fake), []int{30}, now, false); err != nil {
 		t.Fatalf("notifyAll: %v", err)
 	}
 
@@ -240,7 +245,7 @@ func TestNotifyAll_SendsAndSuppressesDuplicates(t *testing.T) {
 	}
 
 	// 再実行: sent レコードがあるため新規レコードも再送も発生しない。
-	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), fake, "file", []int{30}, now, false); err != nil {
+	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), fileChannel(fake), []int{30}, now, false); err != nil {
 		t.Fatalf("notifyAll (2nd): %v", err)
 	}
 	if rows := fetchNotifications(t, sqlDB); len(rows) != 1 {
@@ -267,7 +272,7 @@ func TestNotifyAll_FallsBackToLinkedUserEmail(t *testing.T) {
 	grantRole(t, q, mgr.ID, &deptID, "license_manager")
 
 	fake := &fakeNotifier{}
-	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), fake, "file", []int{30}, now, false); err != nil {
+	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), fileChannel(fake), []int{30}, now, false); err != nil {
 		t.Fatalf("notifyAll: %v", err)
 	}
 
@@ -296,7 +301,7 @@ func TestNotifyAll_SkipsRecipientWithoutEmail(t *testing.T) {
 
 	var buf bytes.Buffer
 	fake := &fakeNotifier{}
-	if err := notifyAll(ctx, sqlDB, slog.New(slog.NewJSONHandler(&buf, nil)), fake, "file", []int{30}, now, false); err != nil {
+	if err := notifyAll(ctx, sqlDB, slog.New(slog.NewJSONHandler(&buf, nil)), fileChannel(fake), []int{30}, now, false); err != nil {
 		t.Fatalf("notifyAll: %v", err)
 	}
 
@@ -329,7 +334,7 @@ func TestNotifyAll_FallsBackToSystemAdminsWhenNoManager(t *testing.T) {
 	grantRole(t, q, admin.ID, nil, "system_admin")
 
 	fake := &fakeNotifier{}
-	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), fake, "file", []int{30}, now, false); err != nil {
+	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), fileChannel(fake), []int{30}, now, false); err != nil {
 		t.Fatalf("notifyAll: %v", err)
 	}
 
@@ -361,7 +366,7 @@ func TestNotifyAll_SendFailureRecordsFailedAndRetrySucceeds(t *testing.T) {
 	grantRole(t, q, mgr.ID, &deptID, "license_manager")
 
 	failing := &fakeNotifier{failWith: errSendFailed}
-	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), failing, "file", []int{30}, now, false); err == nil {
+	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), fileChannel(failing), []int{30}, now, false); err == nil {
 		t.Fatal("notifyAll with failing channel: want error (exit 1), got nil")
 	}
 
@@ -381,7 +386,7 @@ func TestNotifyAll_SendFailureRecordsFailedAndRetrySucceeds(t *testing.T) {
 
 	// 再送 (成功): sent に遷移し、宛先・件名・本文は記録済みの内容で送られる。
 	good := &fakeNotifier{}
-	if err := retryAll(ctx, sqlDB, slog.New(slog.DiscardHandler), good, false); err != nil {
+	if err := retryAll(ctx, sqlDB, slog.New(slog.DiscardHandler), fileChannel(good), false); err != nil {
 		t.Fatalf("retryAll: %v", err)
 	}
 	rows = fetchNotifications(t, sqlDB)
@@ -417,12 +422,12 @@ func TestRetryAll_GaveUpAtMaxRetryAndDailySummary(t *testing.T) {
 
 	// 初回送信失敗 → failed。
 	failing := &fakeNotifier{failWith: errSendFailed}
-	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), failing, "file", []int{30}, now, false); err == nil {
+	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), fileChannel(failing), []int{30}, now, false); err == nil {
 		t.Fatal("notifyAll with failing channel: want error, got nil")
 	}
 
 	// 再送も失敗 → retry_count 1 が上限 1 に到達し gave_up。
-	if err := retryAll(ctx, sqlDB, slog.New(slog.DiscardHandler), failing, false); err == nil {
+	if err := retryAll(ctx, sqlDB, slog.New(slog.DiscardHandler), fileChannel(failing), false); err == nil {
 		t.Fatal("retryAll reaching max retry: want error, got nil")
 	}
 	rows := fetchNotifications(t, sqlDB)
@@ -435,7 +440,7 @@ func TestRetryAll_GaveUpAtMaxRetryAndDailySummary(t *testing.T) {
 
 	// 上限到達後の再送対象は空 (retry_count < max を満たさない)。
 	good := &fakeNotifier{}
-	if err := retryAll(ctx, sqlDB, slog.New(slog.DiscardHandler), good, false); err != nil {
+	if err := retryAll(ctx, sqlDB, slog.New(slog.DiscardHandler), fileChannel(good), false); err != nil {
 		t.Fatalf("retryAll (no targets): %v", err)
 	}
 	if len(good.sent) != 0 {
@@ -443,7 +448,7 @@ func TestRetryAll_GaveUpAtMaxRetryAndDailySummary(t *testing.T) {
 	}
 
 	// 通常実行: gave_up サマリが system_admin へ送られる (満了通知の再作成と併走)。
-	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), good, "file", []int{30}, now, false); err != nil {
+	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), fileChannel(good), []int{30}, now, false); err != nil {
 		t.Fatalf("notifyAll (summary run): %v", err)
 	}
 	var summaries []notifRow
@@ -484,7 +489,7 @@ func TestRetryAll_GaveUpAtMaxRetryAndDailySummary(t *testing.T) {
 		VALUES ('license_expiry_30', 'file', 'x@example.com', 'gave_up', 1, datetime('now', '+1 second'))`); err != nil {
 		t.Fatalf("insert extra gave_up: %v", err)
 	}
-	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), good, "file", []int{30}, now, false); err != nil {
+	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), fileChannel(good), []int{30}, now, false); err != nil {
 		t.Fatalf("notifyAll (same-day 2nd): %v", err)
 	}
 	count := 0
@@ -514,7 +519,7 @@ func TestNotifyAll_DryRunWritesNothing(t *testing.T) {
 
 	var buf bytes.Buffer
 	fake := &fakeNotifier{}
-	if err := notifyAll(ctx, sqlDB, slog.New(slog.NewJSONHandler(&buf, nil)), fake, "file", []int{30}, now, true); err != nil {
+	if err := notifyAll(ctx, sqlDB, slog.New(slog.NewJSONHandler(&buf, nil)), fileChannel(fake), []int{30}, now, true); err != nil {
 		t.Fatalf("notifyAll dry-run: %v", err)
 	}
 
@@ -546,13 +551,13 @@ func TestRetryAll_DryRunCountsOnly(t *testing.T) {
 	grantRole(t, q, mgr.ID, &deptID, "license_manager")
 
 	failing := &fakeNotifier{failWith: errSendFailed}
-	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), failing, "file", []int{30}, now, false); err == nil {
+	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), fileChannel(failing), []int{30}, now, false); err == nil {
 		t.Fatal("notifyAll with failing channel: want error, got nil")
 	}
 
 	var buf bytes.Buffer
 	good := &fakeNotifier{}
-	if err := retryAll(ctx, sqlDB, slog.New(slog.NewJSONHandler(&buf, nil)), good, true); err != nil {
+	if err := retryAll(ctx, sqlDB, slog.New(slog.NewJSONHandler(&buf, nil)), fileChannel(good), true); err != nil {
 		t.Fatalf("retryAll dry-run: %v", err)
 	}
 	if len(good.sent) != 0 {
@@ -578,7 +583,7 @@ func TestRetryAll_InvalidMaxRetrySetting(t *testing.T) {
 	setAppSetting(t, sqlDB, "notification_max_retry", "zero")
 
 	good := &fakeNotifier{}
-	err := retryAll(ctx, sqlDB, slog.New(slog.DiscardHandler), good, false)
+	err := retryAll(ctx, sqlDB, slog.New(slog.DiscardHandler), fileChannel(good), false)
 	if err == nil {
 		t.Fatal("retryAll with invalid notification_max_retry: want error, got nil")
 	}
@@ -587,7 +592,135 @@ func TestRetryAll_InvalidMaxRetrySetting(t *testing.T) {
 	}
 }
 
-// TestRunNotify_ModeOffIsNoOp は mode=off (Notifier nil) で検出ごとスキップ
+// TestNotifyAll_MultiChannelPartialSuccess は multi 相当 (2 チャネル) で片方
+// だけ失敗したとき、宛先 × チャネルごとのレコードで sent / failed が分離
+// されること、再送は失敗チャネルのみ・そのチャネルの Notifier で行われる
+// こと、再実行は成功済みチャネルを重複送信しないことを確認する
+// (チャネル別レコード方式)。
+func TestNotifyAll_MultiChannelPartialSuccess(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := handlertest.NewTestDB(t)
+	q := repository.New(sqlDB)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	productID, deptID := seedCatalog(t, q)
+	seedExpiringLicense(t, q, productID, deptID, 30, now)
+	mgr := seedAppUser(t, q, "mgr", ptr("mgr@example.com"), nil)
+	grantRole(t, q, mgr.ID, &deptID, "license_manager")
+
+	goodFile := &fakeNotifier{}
+	badSMTP := &fakeNotifier{failWith: errSendFailed}
+	chans := []notify.NamedNotifier{
+		{Name: "file", Notifier: goodFile},
+		{Name: "smtp", Notifier: badSMTP},
+	}
+	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), chans, []int{30}, now, false); err == nil {
+		t.Fatal("notifyAll with one failing channel: want error (exit 1), got nil")
+	}
+
+	rows := fetchNotifications(t, sqlDB)
+	if len(rows) != 2 {
+		t.Fatalf("notifications: want 2 rows (one per channel), got %d (%+v)", len(rows), rows)
+	}
+	byChannel := map[string]notifRow{}
+	for _, r := range rows {
+		byChannel[r.Channel] = r
+	}
+	if r := byChannel["file"]; r.Status != "sent" {
+		t.Errorf("file channel status = %q, want sent (partial success recorded per channel)", r.Status)
+	}
+	if r := byChannel["smtp"]; r.Status != "failed" || r.LastError == nil {
+		t.Errorf("smtp channel status = %q / last_error = %v, want failed with last_error", r.Status, r.LastError)
+	}
+	if len(goodFile.sent) != 1 {
+		t.Errorf("file channel sends = %d, want 1", len(goodFile.sent))
+	}
+
+	// 再送: 失敗した smtp チャネルのレコードだけが、smtp の Notifier で送られる。
+	fileRetry := &fakeNotifier{}
+	smtpRetry := &fakeNotifier{}
+	retryChans := []notify.NamedNotifier{
+		{Name: "file", Notifier: fileRetry},
+		{Name: "smtp", Notifier: smtpRetry},
+	}
+	if err := retryAll(ctx, sqlDB, slog.New(slog.DiscardHandler), retryChans, false); err != nil {
+		t.Fatalf("retryAll: %v", err)
+	}
+	if len(fileRetry.sent) != 0 {
+		t.Errorf("file channel must not be re-sent (already sent), got %d", len(fileRetry.sent))
+	}
+	if len(smtpRetry.sent) != 1 || smtpRetry.sent[0].Recipient != "mgr@example.com" {
+		t.Errorf("smtp retry sends = %+v, want 1 message to mgr@example.com", smtpRetry.sent)
+	}
+	for _, r := range fetchNotifications(t, sqlDB) {
+		if r.Status != "sent" {
+			t.Errorf("row %d (channel %s) status = %q, want sent after retry", r.ID, r.Channel, r.Status)
+		}
+	}
+
+	// 再実行: 両チャネルとも sent 済み → 新規レコードなし。
+	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), chans, []int{30}, now, false); err != nil {
+		t.Fatalf("notifyAll (re-run): %v", err)
+	}
+	if rows := fetchNotifications(t, sqlDB); len(rows) != 2 {
+		t.Errorf("re-run must not create rows: want 2, got %d", len(rows))
+	}
+}
+
+// TestRetryAll_SkipsSupersededFailed は「failed が残ったまま通常実行が同一
+// イベントを再作成して sent になった」場合に、--retry-failed が古い failed
+// を再送しない (skipped_superseded) ことを確認する。仕様の重複抑止は sent
+// のみを見るため通常実行は failed を再作成するが、その後の再送と合わさる
+// と二重送信になる — 同一 (kind, channel, recipient, related) の sent が
+// あれば再送対象から除外する。
+func TestRetryAll_SkipsSupersededFailed(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := handlertest.NewTestDB(t)
+	q := repository.New(sqlDB)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	productID, deptID := seedCatalog(t, q)
+	seedExpiringLicense(t, q, productID, deptID, 30, now)
+	mgr := seedAppUser(t, q, "mgr", ptr("mgr@example.com"), nil)
+	grantRole(t, q, mgr.ID, &deptID, "license_manager")
+
+	// 初回失敗 → failed が残る。
+	failing := &fakeNotifier{failWith: errSendFailed}
+	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), fileChannel(failing), []int{30}, now, false); err == nil {
+		t.Fatal("notifyAll with failing channel: want error, got nil")
+	}
+
+	// チャネル復旧後の通常実行: sent が無いため再作成して送信成功。
+	good := &fakeNotifier{}
+	if err := notifyAll(ctx, sqlDB, slog.New(slog.DiscardHandler), fileChannel(good), []int{30}, now, false); err != nil {
+		t.Fatalf("notifyAll (recovered): %v", err)
+	}
+	rows := fetchNotifications(t, sqlDB)
+	if len(rows) != 2 || rows[0].Status != "failed" || rows[1].Status != "sent" {
+		t.Fatalf("precondition: want [failed, sent], got %+v", rows)
+	}
+
+	// 再送: 旧 failed は同一イベントの sent 存在により除外される。
+	var buf bytes.Buffer
+	retryFake := &fakeNotifier{}
+	if err := retryAll(ctx, sqlDB, slog.New(slog.NewJSONHandler(&buf, nil)), fileChannel(retryFake), false); err != nil {
+		t.Fatalf("retryAll: %v", err)
+	}
+	if len(retryFake.sent) != 0 {
+		t.Errorf("superseded failed must not be re-sent, got %d sends", len(retryFake.sent))
+	}
+	rows = fetchNotifications(t, sqlDB)
+	if rows[0].Status != "failed" || rows[0].RetryCount != 0 {
+		t.Errorf("superseded row must stay untouched: status = %q / retry_count = %d", rows[0].Status, rows[0].RetryCount)
+	}
+	if !strings.Contains(buf.String(), `"skipped_superseded":1`) {
+		t.Errorf("retry log should count skipped_superseded=1, got: %s", buf.String())
+	}
+}
+
+// TestRunNotify_ModeOffIsNoOp は mode=off (チャネル不在) で検出ごとスキップ
 // され、info ログのみで正常終了することを確認する (DB にも触れない)。
 func TestRunNotify_ModeOffIsNoOp(t *testing.T) {
 	t.Parallel()
