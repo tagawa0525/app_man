@@ -75,7 +75,8 @@ func (n *TeamsWebhookNotifier) Send(ctx context.Context, msg Notification) error
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, n.WebhookURL, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("build teams webhook request: %w", err)
+		// parse エラー等の Error() にも URL が含まれるため redact する
+		return fmt.Errorf("build teams webhook request: %s", redactURL(err.Error(), n.WebhookURL))
 	}
 	req.Header.Set("Content-Type", "application/json")
 
@@ -107,7 +108,10 @@ func redactURL(msg, url string) string {
 	if url == "" {
 		return msg
 	}
-	return strings.ReplaceAll(msg, url, "[redacted webhook URL]")
+	msg = strings.ReplaceAll(msg, url, "[redacted webhook URL]")
+	// url.Error / parse エラーは URL を %q (エスケープ付きクォート) で
+	// 含むため、その形も置換する。
+	return strings.ReplaceAll(msg, strconv.Quote(url), `"[redacted webhook URL]"`)
 }
 
 // SMTPNotifier は SMTP チャネル。AUTH なし平文で送信する (社内リレー

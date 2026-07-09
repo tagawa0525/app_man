@@ -10,27 +10,29 @@ import (
 	"time"
 )
 
-const countNotificationsByKindOnOrAfterDay = `-- name: CountNotificationsByKindOnOrAfterDay :one
+const countNotificationsByKindOnDay = `-- name: CountNotificationsByKindOnDay :one
 SELECT count(*) FROM notifications
 WHERE kind = ?
-  AND substr(CAST(created_at AS TEXT), 1, 10) >= CAST(?2 AS TEXT)
+  AND substr(CAST(created_at AS TEXT), 1, 10) = CAST(?2 AS TEXT)
 `
 
-type CountNotificationsByKindOnOrAfterDayParams struct {
+type CountNotificationsByKindOnDayParams struct {
 	Kind string
 	Day  string
 }
 
-// CountNotificationsByKindOnOrAfterDay supports the daily gave_up
-// summary dedup: pass kind='gave_up_summary' and the UTC day as a
-// YYYY-MM-DD string. The date-prefix comparison via substr works for
-// both storage formats (CURRENT_TIMESTAMP "YYYY-MM-DD HH:MM:SS" and
-// the Go driver's "... +0000 UTC"); binding a raw time.Time instead
-// would miss rows created exactly at midnight because of the string
-// format difference. CountSentNotificationForEvent cannot be reused
-// because summary rows have NULL related_entity_type/id.
-func (q *Queries) CountNotificationsByKindOnOrAfterDay(ctx context.Context, arg CountNotificationsByKindOnOrAfterDayParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countNotificationsByKindOnOrAfterDay, arg.Kind, arg.Day)
+// CountNotificationsByKindOnDay supports the daily gave_up summary
+// dedup: pass kind='gave_up_summary' and the UTC day as a YYYY-MM-DD
+// string. The date-prefix comparison via substr works for both storage
+// formats (CURRENT_TIMESTAMP "YYYY-MM-DD HH:MM:SS" and the Go driver's
+// "... +0000 UTC"); binding a raw time.Time instead would miss rows
+// created exactly at midnight because of the string format difference.
+// Equality (not >=) is used so that a future-dated row (clock skew)
+// cannot permanently suppress every later daily summary.
+// CountSentNotificationForEvent cannot be reused because summary rows
+// have NULL related_entity_type/id.
+func (q *Queries) CountNotificationsByKindOnDay(ctx context.Context, arg CountNotificationsByKindOnDayParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countNotificationsByKindOnDay, arg.Kind, arg.Day)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
