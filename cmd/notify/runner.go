@@ -229,6 +229,15 @@ func sendGaveUpSummary(ctx context.Context, q *repository.Queries, logger *slog.
 		emails = append(emails, email)
 	}
 
+	if len(emails) == 0 {
+		// 静かにスキップすると gave_up が未サマリのまま滞留していることに
+		// 気付けない。warn + 計上して運用者が検知できるようにする
+		logger.Warn("gave_up summary has no recipients (no active system_admin with email); skipping",
+			slog.Int("gave_up", len(rows)))
+		c.skippedNoRecipient++
+		return nil
+	}
+
 	subject, body := gaveUpSummaryMessage(rows)
 	for _, ch := range channels {
 		for _, email := range emails {
