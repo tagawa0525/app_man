@@ -168,7 +168,10 @@ func buildMailMessage(from string, msg Notification) []byte {
 	b.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
 	b.WriteString("Content-Transfer-Encoding: 8bit\r\n")
 	b.WriteString("\r\n")
-	b.WriteString(strings.ReplaceAll(msg.Body, "\n", "\r\n"))
+	// 既存の CRLF を LF に正規化してから CRLF へ変換する
+	// (そのまま置換すると \r\r\n に壊れる)
+	body := strings.ReplaceAll(msg.Body, "\r\n", "\n")
+	b.WriteString(strings.ReplaceAll(body, "\n", "\r\n"))
 	b.WriteString("\r\n")
 	return b.Bytes()
 }
