@@ -116,6 +116,7 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 	appu := &appUserHandlers{db: deps.DB, logger: deps.Logger}
 	rl := &roleHandlers{db: deps.DB, logger: deps.Logger}
 	ex := &exportHandlers{db: deps.DB, logger: deps.Logger, fsCfg: deps.FileStoreCfg}
+	dm := &deptMigrateHandlers{db: deps.DB, logger: deps.Logger}
 
 	// /login / /logout は role 不問。Authenticator / SessionStore が注入
 	// されている場合のみ登録する (テストで nil を渡したときに panic
@@ -237,5 +238,9 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 		r.Get("/admin/export", ex.index)
 		r.Post("/admin/export/excel", ex.excel)
 		r.Post("/admin/export/zip", ex.zip)
+		// 部署改廃 (仕様 §5.15)。廃止部署の所管ライセンスを後継部署へ
+		// 移管し、アクティブ承認をコピーする。衝突・重複行はスキップ報告。
+		r.Get("/admin/departments/migrate", dm.form)
+		r.Post("/admin/departments/migrate", dm.migrate)
 	})
 }
